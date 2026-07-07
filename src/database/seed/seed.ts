@@ -1,11 +1,11 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
 import Knex from 'knex'
-import * as bcrypt from 'bcrypt'
+import * as bcrypt from 'bcryptjs'
 import { v4 as uuid } from 'uuid'
 
 const db = Knex({
-  client: 'sqlite3',
+  client: 'better-sqlite3',
   connection: { filename: process.env.DB_FILE ?? './raices_demo.db' },
   useNullAsDefault: true,
 })

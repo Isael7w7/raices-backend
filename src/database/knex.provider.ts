@@ -9,7 +9,7 @@ export const knexProvider: Provider = {
   provide: KNEX_CONNECTION,
   useFactory: () =>
     Knex({
-      client: 'sqlite3',
+      client: 'better-sqlite3',
       connection: { filename: process.env.DB_FILE ?? './raices_demo.db' },
       useNullAsDefault: true,
     }),

@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, UnauthorizedException, Inject } from '@nestjs/common'
 import { JwtService } from '@nestjs/jwt'
-import * as bcrypt from 'bcrypt'
+import * as bcrypt from 'bcryptjs'
 import { v4 as uuid } from 'uuid'
 import { Knex } from 'knex'
 import { KNEX_CONNECTION } from '../../database/knex.provider'
