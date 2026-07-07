@@ -1,8 +1,8 @@
 allowBuilds:
-  '@firebase/util': set this to true or false
+  '@firebase/util': true
   '@nestjs/core': true
   '@scarf/scarf': true
   bcrypt: false
   better-sqlite3: false
-  protobufjs: set this to true or false
+  protobufjs: true
   sqlite3: false
