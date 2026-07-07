@@ -1,6 +1,6 @@
 import { Injectable, Inject, Logger } from '@nestjs/common'
-import { Knex } from 'knex'
-import { KNEX_CONNECTION } from '../../database/knex.provider'
+import { Firestore } from 'firebase-admin/firestore'
+import { FIRESTORE } from '../../database/firebase.provider'
 
 const MOCK_REPLIES = [
   'Entiendo tu consulta. Basándome en tu perfil, te recomiendo explorar las instituciones de la categoría funcional en tu ciudad. ¿Quieres que te muestre opciones específicas?',
@@ -15,7 +15,7 @@ export class AiService {
   private readonly logger = new Logger('AiService')
   private client: any = null
 
-  constructor(@Inject(KNEX_CONNECTION) private readonly db: Knex) {
+  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
     if (process.env.ANTHROPIC_API_KEY) {
       try {
         const Anthropic = require('@anthropic-ai/sdk')
@@ -30,14 +30,16 @@ export class AiService {
   }
 
   private async getUserProfile(userId: string) {
-    return this.db('u_user_profiles').where({ user_id: userId }).first()
+    const snap = await this.db.collection('u_user_profiles')
+      .where('user_id', '==', userId).limit(1).get()
+    return snap.empty ? null : snap.docs[0].data()
   }
 
   async chat(userId: string, message: string, history: any[] = []) {
     const profile = await this.getUserProfile(userId)
 
     if (!this.client) {
-      await new Promise((r) => setTimeout(r, 600)) // simular latencia
+      await new Promise((r) => setTimeout(r, 600))
       const reply = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)]
       return { reply, mock: true }
     }
@@ -61,29 +63,29 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
   }
 
   private async getUserHistory(userId: string) {
-    const [favorites, posts, applications] = await Promise.all([
-      this.db('u_favorites')
-        .join('p_institutions', 'u_favorites.institution_id', 'p_institutions.id')
-        .where('u_favorites.user_id', userId)
-        .select('p_institutions.name', 'p_institutions.category', 'p_institutions.city')
-        .limit(10),
-      this.db('u_posts')
-        .where({ author_id: userId })
-        .count('* as total')
-        .first(),
-      this.db('u_job_applications')
-        .where({ user_id: userId })
-        .count('* as total')
-        .first()
-        .catch(() => ({ total: 0 })),
+    const [favSnap, postsSnap, appsSnap] = await Promise.all([
+      this.db.collection('u_favorites').where('user_id', '==', userId).limit(10).get(),
+      this.db.collection('u_posts').where('author_id', '==', userId).get(),
+      this.db.collection('u_job_applications').where('user_id', '==', userId).get().catch(() => ({ size: 0 } as any)),
     ])
-    return { favorites, postCount: Number((posts as any)?.total ?? 0), applicationCount: Number((applications as any)?.total ?? 0) }
+
+    // Enrich favorites with institution data
+    const favorites: any[] = []
+    for (const fdoc of favSnap.docs) {
+      const instDoc = await this.db.collection('p_institutions').doc(fdoc.data().institution_id).get()
+      if (instDoc.exists) {
+        const inst = instDoc.data()!
+        favorites.push({ name: inst.name, category: inst.category, city: inst.city })
+      }
+    }
+
+    return { favorites, postCount: postsSnap.size, applicationCount: appsSnap.size ?? 0 }
   }
 
   async recommend(userId: string) {
     const [profile, userRecord, history] = await Promise.all([
       this.getUserProfile(userId),
-      this.db('u_profiles').where({ id: userId }).first(),
+      this.db.collection('u_profiles').doc(userId).get(),
       this.getUserHistory(userId),
     ])
 
@@ -91,6 +93,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
       ? (() => { try { return JSON.parse(profile.disability_types) } catch { return [] } })()
       : []
     const hasNoDiagnosis = disabilityTypes.length === 0
+    const userData = userRecord.data()
 
     if (!this.client || !profile) {
       const steps = hasNoDiagnosis ? [
@@ -98,7 +101,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
         'Completa tu perfil con tus necesidades actuales para recibir recomendaciones más precisas',
         'Explora la sección Comunidad para conectar con otras personas en situación similar',
       ] : [
-        `Busca instituciones de ${disabilityTypes.join(' / ')} en ${userRecord?.city ?? 'tu ciudad'}`,
+        `Busca instituciones de ${disabilityTypes.join(' / ')} en ${userData?.city ?? 'tu ciudad'}`,
         'Completa tu historial de terapia y educación para un análisis más profundo',
         'Únete al grupo de comunidad relacionado con tu perfil',
       ]
@@ -119,7 +122,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
 PERFIL DEL USUARIO:
 - Etapa de vida: ${profile.life_stage ?? 'no especificada'}
 - Discapacidades: ${disabilityTypes.length > 0 ? disabilityTypes.join(', ') : 'sin diagnóstico registrado'}
-- Ciudad: ${userRecord?.city ?? 'no especificada'}, ${userRecord?.state ?? ''}
+- Ciudad: ${userData?.city ?? 'no especificada'}, ${userData?.state ?? ''}
 - Nivel de soporte: ${profile.support_level ?? 'no especificado'}
 - Metas actuales: ${profile.current_goals ? (() => { try { return JSON.parse(profile.current_goals).join(', ') } catch { return profile.current_goals } })() : 'no especificadas'}
 - Áreas de soporte: ${profile.support_areas ? (() => { try { return JSON.parse(profile.support_areas).join(', ') } catch { return profile.support_areas } })() : 'no especificadas'}
@@ -138,30 +141,24 @@ Responde SOLO con JSON válido: {"next_steps":["paso1","paso2","paso3"],"reasoni
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 500,
+        model: 'claude-sonnet-4-6', max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
       })
-      const parsed = JSON.parse(response.content[0].text)
-      return { ...parsed, mock: false }
+      return { ...JSON.parse(response.content[0].text), mock: false }
     } catch {
       return {
         next_steps: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
-        reasoning: 'Error al procesar — mostrando sugerencias generales',
-        institution_suggestions: [],
-        mock: true,
+        reasoning: 'Error al procesar — mostrando sugerencias generales', institution_suggestions: [], mock: true,
       }
     }
   }
 
   async recommendForDependent(userId: string, dependentId: string) {
-    const dep = await this.db('u_dependents')
-      .where({ id: dependentId, guardian_id: userId })
-      .first()
-
-    if (!dep) {
+    const depDoc = await this.db.collection('u_dependents').doc(dependentId).get()
+    if (!depDoc.exists || depDoc.data()?.guardian_id !== userId) {
       return { next_steps: ['Perfil no encontrado'], reasoning: 'Error de acceso', mock: true }
     }
+    const dep = depDoc.data()!
 
     let profileData: any = {}
     try { profileData = dep.profile_data ? JSON.parse(dep.profile_data) : {} } catch {}
@@ -177,8 +174,7 @@ Responde SOLO con JSON válido: {"next_steps":["paso1","paso2","paso3"],"reasoni
           `Explorar terapias adecuadas para la etapa de vida: ${lifeStage}`,
           'Revisar grupos de apoyo para familias cuidadoras',
         ],
-        reasoning: `Recomendaciones para ${dep.full_name} (modo demo)`,
-        mock: true,
+        reasoning: `Recomendaciones para ${dep.full_name} (modo demo)`, mock: true,
       }
     }
 
@@ -190,8 +186,7 @@ Responde SOLO con JSON válido: {"next_steps":["paso1","paso2","paso3"],"reasoni
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 400,
+        model: 'claude-sonnet-4-6', max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       })
       return { ...JSON.parse(response.content[0].text), mock: false }
@@ -202,8 +197,7 @@ Responde SOLO con JSON válido: {"next_steps":["paso1","paso2","paso3"],"reasoni
           'Completa el historial de necesidades del familiar',
           'Consulta el grupo de familias cuidadoras en la comunidad',
         ],
-        reasoning: 'Error al procesar — mostrando sugerencias generales',
-        mock: true,
+        reasoning: 'Error al procesar — mostrando sugerencias generales', mock: true,
       }
     }
   }

@@ -1,26 +1,38 @@
 import { Injectable, Inject } from '@nestjs/common'
-import { Knex } from 'knex'
-import { KNEX_CONNECTION } from '../../database/knex.provider'
+import { Firestore } from 'firebase-admin/firestore'
+import { FIRESTORE } from '../../database/firebase.provider'
 
 @Injectable()
 export class DiscoveryService {
-  constructor(@Inject(KNEX_CONNECTION) private readonly db: Knex) {}
+  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
   async discover(userId: string, filters: any = {}) {
-    const profile = await this.db('u_user_profiles').where({ user_id: userId }).first()
+    const profileSnap = await this.db.collection('u_user_profiles')
+      .where('user_id', '==', userId).limit(1).get()
     let userDisabilities: string[] = []
-    try { userDisabilities = JSON.parse(profile?.disability_types ?? '[]') } catch {}
-
-    let q = this.db('p_institutions').where({ is_active: true })
-
-    if (filters.category) q = q.where({ category: filters.category })
-    if (filters.city) q = q.whereILike('city', `%${filters.city}%`)
-    if (filters.search) q = q.whereILike('name', `%${filters.search}%`)
-    if (filters.disability_type) {
-      q = q.whereRaw(`disability_types LIKE ?`, [`%"${filters.disability_type}"%`])
+    if (!profileSnap.empty) {
+      try { userDisabilities = JSON.parse(profileSnap.docs[0].data().disability_types ?? '[]') } catch {}
     }
 
-    const rows = await q.orderBy('rating_avg', 'desc').limit(50)
+    let q = this.db.collection('p_institutions').where('is_active', '==', true)
+    if (filters.category) q = q.where('category', '==', filters.category)
+    const snap = await q.orderBy('rating_avg', 'desc').limit(50).get()
+    let rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+
+    // Post-query filtering for LIKE / text-search patterns
+    if (filters.city) {
+      const term = filters.city.toLowerCase()
+      rows = rows.filter((r: any) => (r.city ?? '').toLowerCase().includes(term))
+    }
+    if (filters.search) {
+      const term = filters.search.toLowerCase()
+      rows = rows.filter((r: any) => (r.name ?? '').toLowerCase().includes(term))
+    }
+    if (filters.disability_type) {
+      rows = rows.filter((r: any) => {
+        try { const arr: string[] = JSON.parse(r.disability_types ?? '[]'); return arr.includes(filters.disability_type) } catch { return false }
+      })
+    }
 
     return rows.map((r: any) => {
       let types: string[] = []

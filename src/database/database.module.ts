@@ -1,10 +1,14 @@
-import { Global, Module } from '@nestjs/common'
-import { knexProvider } from './knex.provider'
+import { Global, Module, OnModuleInit } from '@nestjs/common'
+import { firestoreProvider, firebaseAuthProvider, logSecurityConfig } from './firebase.provider'
 import { TenantService } from '../common/tenant/tenant.service'
 
 @Global()
 @Module({
-  providers: [knexProvider, TenantService],
-  exports: [knexProvider, TenantService],
+  providers: [firestoreProvider, firebaseAuthProvider, TenantService],
+  exports: [firestoreProvider, firebaseAuthProvider, TenantService],
 })
-export class DatabaseModule {}
+export class DatabaseModule implements OnModuleInit {
+  onModuleInit() {
+    logSecurityConfig()
+  }
+}

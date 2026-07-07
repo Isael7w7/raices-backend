@@ -1,17 +1,28 @@
 import { Injectable, Inject } from '@nestjs/common'
-import { Knex } from 'knex'
+import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
-import { KNEX_CONNECTION } from '../../database/knex.provider'
+import { FIRESTORE } from '../../database/firebase.provider'
 
 @Injectable()
 export class FavoritesService {
-  constructor(@Inject(KNEX_CONNECTION) private readonly db: Knex) {}
+  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
   async findByUser(userId: string) {
-    const favs = await this.db('u_favorites').where({ user_id: userId })
-    if (!favs.length) return []
-    const ids = favs.map((f: any) => f.institution_id)
-    const institutions = await this.db('p_institutions').whereIn('id', ids)
+    const favSnap = await this.db.collection('u_favorites')
+      .where('user_id', '==', userId).get()
+    if (favSnap.empty) return []
+    const ids = favSnap.docs.map(f => f.data().institution_id)
+
+    // Firestore `in` query limited to 30 items
+    const chunks: string[][] = []
+    for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30))
+
+    const institutions: any[] = []
+    for (const chunk of chunks) {
+      const snap = await this.db.collection('p_institutions')
+        .where('__name__', 'in', chunk).get()
+      institutions.push(...snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    }
     return institutions.map((i: any) => {
       try { i.disability_types = JSON.parse(i.disability_types ?? '[]') } catch { i.disability_types = [] }
       return i
@@ -19,17 +30,24 @@ export class FavoritesService {
   }
 
   async toggle(userId: string, institutionId: string) {
-    const exists = await this.db('u_favorites').where({ user_id: userId, institution_id: institutionId }).first()
-    if (exists) {
-      await this.db('u_favorites').where({ user_id: userId, institution_id: institutionId }).delete()
+    const snap = await this.db.collection('u_favorites')
+      .where('user_id', '==', userId)
+      .where('institution_id', '==', institutionId)
+      .limit(1).get()
+    if (!snap.empty) {
+      await snap.docs[0].ref.delete()
       return { favorited: false }
     }
-    await this.db('u_favorites').insert({ id: uuid(), user_id: userId, institution_id: institutionId })
+    await this.db.collection('u_favorites').doc(uuid()).set({
+      id: uuid(), user_id: userId, institution_id: institutionId,
+      created_at: new Date().toISOString(),
+    })
     return { favorited: true }
   }
 
   async getFavoriteIds(userId: string): Promise<string[]> {
-    const rows = await this.db('u_favorites').where({ user_id: userId }).select('institution_id')
-    return rows.map((r: any) => r.institution_id)
+    const snap = await this.db.collection('u_favorites')
+      .where('user_id', '==', userId).get()
+    return snap.docs.map(f => f.data().institution_id)
   }
 }

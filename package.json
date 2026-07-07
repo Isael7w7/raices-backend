@@ -6,6 +6,7 @@
     "start:dev": "nodemon --watch src --ext ts --exec ts-node src/main.ts",
     "migrate": "npx knex migrate:latest --knexfile knexfile.ts",
     "seed": "ts-node src/database/seed/seed.ts",
+    "db:scan": "ts-node scripts/read-db-structure.ts",
     "setup": "npm run migrate && npm run seed",
     "dev": "npm run setup && npm run start:dev"
   },
@@ -19,11 +20,11 @@
     "@nestjs/swagger": "^7.4.2",
     "@nestjs/throttler": "^6.5.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^12.11.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.5",
-    "knex": "^3.1.0",
+    "firebase-admin": "^14.1.0",
+    "jwks-rsa": "^4.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.1",
@@ -32,7 +33,6 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.6",
     "@types/node": "^20.12.0",
     "@types/passport-jwt": "^4.0.1",

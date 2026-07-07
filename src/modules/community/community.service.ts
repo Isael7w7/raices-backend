@@ -1,74 +1,114 @@
 import { Injectable, Inject } from '@nestjs/common'
-import { Knex } from 'knex'
+import { Firestore, FieldValue, Query } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
-import { KNEX_CONNECTION } from '../../database/knex.provider'
+import { FIRESTORE } from '../../database/firebase.provider'
 
 @Injectable()
 export class CommunityService {
-  constructor(@Inject(KNEX_CONNECTION) private readonly db: Knex) {}
+  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
   async getGroups() {
-    return this.db('u_groups').where({ is_public: true }).orderBy('member_count', 'desc')
+    const snap = await this.db.collection('u_groups')
+      .where('is_public', '==', true).orderBy('member_count', 'desc').get()
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
   }
 
   async getPosts(groupId?: string, userId?: string, limit = 20) {
-    let q = this.db('u_posts as p')
-      .join('u_profiles as u', 'p.author_id', 'u.id')
-      .select('p.id', 'p.content', 'p.like_count', 'p.created_at', 'p.group_id',
-              'u.full_name', 'u.avatar_url', 'p.author_id')
-      .orderBy('p.created_at', 'desc')
-      .limit(limit)
-    if (groupId) q = q.where({ 'p.group_id': groupId })
+    let q: Query = this.db.collection('u_posts')
+    if (groupId) q = q.where('group_id', '==', groupId)
+    const postSnap = await q.orderBy('created_at', 'desc').limit(limit).get()
+    const posts = postSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
-    const posts = await q
-
-    if (userId) {
-      const likedIds = await this.db('u_post_likes').where({ user_id: userId }).select('post_id')
-      const likedSet = new Set(likedIds.map((r: any) => r.post_id))
-      return posts.map((p: any) => ({ ...p, user_liked: likedSet.has(p.id) }))
+    // Enrich with author profiles
+    const authorIds = [...new Set(posts.map(p => p.author_id))]
+    const authorMap = new Map<string, any>()
+    for (const aid of authorIds) {
+      const doc = await this.db.collection('u_profiles').doc(aid).get()
+      if (doc.exists) authorMap.set(aid, doc.data())
     }
 
-    return posts.map((p: any) => ({ ...p, user_liked: false }))
+    const enriched = posts.map(p => ({
+      ...p,
+      full_name: authorMap.get(p.author_id)?.full_name ?? null,
+      avatar_url: authorMap.get(p.author_id)?.avatar_url ?? null,
+    }))
+
+    if (userId) {
+      const likedSnap = await this.db.collection('u_post_likes')
+        .where('user_id', '==', userId).get()
+      const likedSet = new Set(likedSnap.docs.map(l => l.data().post_id))
+      return enriched.map(p => ({ ...p, user_liked: likedSet.has(p.id) }))
+    }
+
+    return enriched.map(p => ({ ...p, user_liked: false }))
   }
 
   async getComments(postId: string) {
-    return this.db('u_comments as c')
-      .join('u_profiles as u', 'c.author_id', 'u.id')
-      .where({ 'c.post_id': postId })
-      .select('c.*', 'u.full_name', 'u.avatar_url')
-      .orderBy('c.created_at', 'asc')
+    const snap = await this.db.collection('u_comments')
+      .where('post_id', '==', postId).orderBy('created_at', 'asc').get()
+    const comments = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+
+    const authorIds = [...new Set(comments.map(c => c.author_id))]
+    const authorMap = new Map<string, any>()
+    for (const aid of authorIds) {
+      const doc = await this.db.collection('u_profiles').doc(aid).get()
+      if (doc.exists) authorMap.set(aid, doc.data())
+    }
+
+    return comments.map(c => ({
+      ...c,
+      full_name: authorMap.get(c.author_id)?.full_name ?? null,
+      avatar_url: authorMap.get(c.author_id)?.avatar_url ?? null,
+    }))
   }
 
   async createPost(authorId: string, content: string, groupId?: string) {
     const id = uuid()
-    await this.db('u_posts').insert({ id, author_id: authorId, content, group_id: groupId ?? null })
-    const post = await this.db('u_posts as p')
-      .join('u_profiles as u', 'p.author_id', 'u.id')
-      .where({ 'p.id': id })
-      .select('p.*', 'u.full_name', 'u.avatar_url')
-      .first()
-    return { ...post, user_liked: false }
+    await this.db.collection('u_posts').doc(id).set({
+      id, author_id: authorId, content, group_id: groupId ?? null,
+      like_count: 0, created_at: new Date().toISOString(),
+    })
+
+    const authorDoc = await this.db.collection('u_profiles').doc(authorId).get()
+    const author = authorDoc.data()
+    return { id, author_id: authorId, content, group_id: groupId ?? null, like_count: 0,
+      created_at: new Date().toISOString(), full_name: author?.full_name ?? null,
+      avatar_url: author?.avatar_url ?? null, user_liked: false }
   }
 
   async createComment(postId: string, authorId: string, content: string) {
     const id = uuid()
-    await this.db('u_comments').insert({ id, post_id: postId, author_id: authorId, content })
-    return this.db('u_comments as c')
-      .join('u_profiles as u', 'c.author_id', 'u.id')
-      .where({ 'c.id': id })
-      .select('c.*', 'u.full_name', 'u.avatar_url')
-      .first()
+    await this.db.collection('u_comments').doc(id).set({
+      id, post_id: postId, author_id: authorId, content,
+      created_at: new Date().toISOString(),
+    })
+
+    const doc = await this.db.collection('u_comments').doc(id).get()
+    const authorDoc = await this.db.collection('u_profiles').doc(authorId).get()
+    const author = authorDoc.data()
+    return { id: doc.id, ...doc.data()!, full_name: author?.full_name ?? null, avatar_url: author?.avatar_url ?? null }
   }
 
   async toggleLike(userId: string, postId: string) {
-    const exists = await this.db('u_post_likes').where({ user_id: userId, post_id: postId }).first()
-    if (exists) {
-      await this.db('u_post_likes').where({ user_id: userId, post_id: postId }).delete()
-      await this.db('u_posts').where({ id: postId }).decrement('like_count', 1)
+    const snap = await this.db.collection('u_post_likes')
+      .where('user_id', '==', userId)
+      .where('post_id', '==', postId)
+      .limit(1).get()
+
+    if (!snap.empty) {
+      await snap.docs[0].ref.delete()
+      await this.db.collection('u_posts').doc(postId).update({
+        like_count: FieldValue.increment(-1),
+      })
       return { liked: false }
     }
-    await this.db('u_post_likes').insert({ user_id: userId, post_id: postId })
-    await this.db('u_posts').where({ id: postId }).increment('like_count', 1)
+
+    await this.db.collection('u_post_likes').doc(uuid()).set({
+      user_id: userId, post_id: postId,
+    })
+    await this.db.collection('u_posts').doc(postId).update({
+      like_count: FieldValue.increment(1),
+    })
     return { liked: true }
   }
 }

@@ -1,54 +1,62 @@
 import { Injectable, Inject, NotFoundException } from '@nestjs/common'
-import { Knex } from 'knex'
+import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
-import { KNEX_CONNECTION } from '../../database/knex.provider'
+import { FIRESTORE } from '../../database/firebase.provider'
 
 @Injectable()
 export class InstitutionsService {
-  constructor(@Inject(KNEX_CONNECTION) private readonly db: Knex) {}
+  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+
+  private col(name: string) { return this.db.collection(name) }
 
   async findAll(filters: any = {}) {
-    let q = this.db('p_institutions').where({ is_active: true })
+    let q = this.col('p_institutions').where('is_active', '==', true)
+    if (filters.category) q = q.where('category', '==', filters.category)
+    const snap = await q.orderBy('rating_avg', 'desc').get()
+    let rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
-    if (filters.category) q = q.where({ category: filters.category })
-    if (filters.city) q = q.whereILike('city', `%${filters.city}%`)
+    // Post-query filtering for LIKE / text-search patterns
+    if (filters.city) {
+      const term = filters.city.toLowerCase()
+      rows = rows.filter((r: any) => (r.city ?? '').toLowerCase().includes(term))
+    }
     if (filters.search) {
-      const term = `%${filters.search}%`
-      q = q.where(function () {
-        this.whereILike('name', term)
-          .orWhereILike('description', term)
-          .orWhereILike('city', term)
-          .orWhereILike('state', term)
-      })
+      const term = filters.search.toLowerCase()
+      rows = rows.filter((r: any) =>
+        (r.name ?? '').toLowerCase().includes(term) ||
+        (r.description ?? '').toLowerCase().includes(term) ||
+        (r.city ?? '').toLowerCase().includes(term) ||
+        (r.state ?? '').toLowerCase().includes(term)
+      )
     }
     if (filters.disability_type) {
-      q = q.whereRaw(`disability_types LIKE ?`, [`%"${filters.disability_type}"%`])
+      rows = rows.filter((r: any) => {
+        try { const arr: string[] = JSON.parse(r.disability_types ?? '[]'); return arr.includes(filters.disability_type) } catch { return false }
+      })
     }
     if (filters.age) {
       const age = parseInt(filters.age)
-      q = q.where(function () {
-        this.whereNull('age_min').orWhere('age_min', '<=', age)
-      }).where(function () {
-        this.whereNull('age_max').orWhere('age_max', '>=', age)
-      })
+      rows = rows.filter((r: any) =>
+        (r.age_min == null || r.age_min <= age) && (r.age_max == null || r.age_max >= age)
+      )
     }
 
-    const rows = await q.orderBy('rating_avg', 'desc')
     return rows.map(this.parse)
   }
 
   async findOne(id: string) {
-    const row = await this.db('p_institutions').where({ id }).first()
-    if (!row) throw new NotFoundException('Institución no encontrada')
-    return this.parse(row)
+    const doc = await this.col('p_institutions').doc(id).get()
+    if (!doc.exists) throw new NotFoundException('Institución no encontrada')
+    return this.parse({ id: doc.id, ...doc.data()! })
   }
 
   async create(data: any, userId: string) {
     const id = uuid()
-    await this.db('p_institutions').insert({
+    await this.col('p_institutions').doc(id).set({
       id, ...data,
       disability_types: JSON.stringify(data.disability_types ?? []),
       created_by: userId, is_active: true, is_verified: false,
+      created_at: new Date().toISOString(),
     })
     return this.findOne(id)
   }
