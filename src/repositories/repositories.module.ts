@@ -5,12 +5,14 @@ import { PROFILE_REPOSITORY } from './interfaces/profile.repository.interface'
 import { COMMUNITY_REPOSITORY } from './interfaces/community.repository.interface'
 import { FAVORITE_REVIEW_REPOSITORY } from './interfaces/favorite-review.repository.interface'
 import { MESSAGE_REPOSITORY } from './interfaces/message.repository.interface'
+import { NOTIFICATION_REPOSITORY } from './interfaces/notification.repository.interface'
 import { FirestoreInstitutionRepository } from './implementations/firestore-institution.repository'
 import { FirestoreJobRepository } from './implementations/firestore-job.repository'
 import { FirestoreProfileRepository } from './implementations/firestore-profile.repository'
 import { FirestoreCommunityRepository } from './implementations/firestore-community.repository'
 import { FirestoreFavoriteReviewRepository } from './implementations/firestore-favorite-review.repository'
 import { FirestoreMessageRepository } from './implementations/firestore-message.repository'
+import { FirestoreNotificationRepository } from './implementations/firestore-notification.repository'
 
 const providers = [
   { provide: INSTITUTION_REPOSITORY, useClass: FirestoreInstitutionRepository },
@@ -19,6 +21,7 @@ const providers = [
   { provide: COMMUNITY_REPOSITORY, useClass: FirestoreCommunityRepository },
   { provide: FAVORITE_REVIEW_REPOSITORY, useClass: FirestoreFavoriteReviewRepository },
   { provide: MESSAGE_REPOSITORY, useClass: FirestoreMessageRepository },
+  { provide: NOTIFICATION_REPOSITORY, useClass: FirestoreNotificationRepository },
 ]
 
 /**
