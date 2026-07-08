@@ -5,7 +5,7 @@
     "lib": ["ES2020"],
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    "rootDir": "./src",
     "strict": false,
     "esModuleInterop": true,
     "experimentalDecorators": true,
@@ -13,6 +13,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "knexfile.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
