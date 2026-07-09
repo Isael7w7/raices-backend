@@ -1,0 +1,16 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Esta regla atrapa cualquier documento en cualquier colección
+    match /{document=**} {
+      
+      // BLOQUEO TOTAL AL CLIENTE DIRECTO
+      // Todo el tráfico debe pasar obligatoriamente por el backend de NestJS
+      // gracias a que el Firebase Admin SDK ignora estas reglas.
+      allow read, write: if false;
+      
+    }
+  }
+}
