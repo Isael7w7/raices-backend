@@ -10,8 +10,23 @@ import { SpaFallbackFilter } from './spa-fallback.filter'
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule)
 
+  const allowedOrigins = [
+    // Swagger UI (mismo servidor)
+    'http://localhost:7000',
+    // Frontend dev server (Vite)
+    'http://localhost:3000',
+    'http://localhost:5173',
+    // Producción (si está definida)
+    ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : []),
+  ]
+
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      // Permitir peticiones sin origen (curl, Postman, server-to-server)
+      if (!origin) return callback(null, true)
+      if (allowedOrigins.includes(origin)) return callback(null, true)
+      callback(new Error(`Origin ${origin} not allowed by CORS`))
+    },
     credentials: true,
     exposedHeaders: ['Content-Type'],
   })

@@ -32,8 +32,18 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, data: any) {
-    const { full_name, city, state, avatar_url } = data
-    await this.col('u_profiles').doc(userId).update({ full_name, city, state, avatar_url })
+    const safeData = data ?? {}
+    const updatableFields = ['full_name', 'city', 'state', 'avatar_url']
+    const payload: Record<string, any> = {}
+    for (const field of updatableFields) {
+      if (safeData[field] !== undefined) {
+        payload[field] = safeData[field]
+      }
+    }
+    if (Object.keys(payload).length === 0) {
+      return this.getProfile(userId)
+    }
+    await this.col('u_profiles').doc(userId).update(payload)
     return this.getProfile(userId)
   }
 
