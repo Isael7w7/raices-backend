@@ -5,7 +5,9 @@ import { AuthController } from './auth.controller'
 import { AuthService } from './auth.service'
 import { JwtStrategy } from './jwt.strategy'
 import { EmailModule } from '../email/email.module'
+import { FirebaseAnalyticsModule } from '../admin/firebase-analytics.module'
 import * as dotenv from 'dotenv'
+
 dotenv.config()
 
 @Module({
@@ -16,6 +18,7 @@ dotenv.config()
       signOptions: { expiresIn: process.env.JWT_EXPIRES_IN ?? '7d' },
     }),
     EmailModule,
+    FirebaseAnalyticsModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],

@@ -3,9 +3,10 @@ import { AdminController } from './admin.controller'
 import { AdminService } from './admin.service'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { EmailModule } from '../email/email.module'
+import { FirebaseAnalyticsModule } from './firebase-analytics.module'
 
 @Module({
-  imports: [NotificationsModule, EmailModule],
+  imports: [NotificationsModule, EmailModule, FirebaseAnalyticsModule],
   controllers: [AdminController],
   providers: [AdminService],
 })
