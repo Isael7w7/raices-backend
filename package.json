@@ -4,11 +4,11 @@
   "scripts": {
     "build": "tsc",
     "start:dev": "nodemon --watch src --ext ts --exec ts-node src/main.ts",
-    "migrate": "npx knex migrate:latest --knexfile knexfile.ts",
+    "migrate": "pnpm exec knex migrate:latest --knexfile knexfile.ts",
     "seed": "ts-node src/database/seed/seed.ts",
     "db:scan": "ts-node scripts/read-db-structure.ts",
-    "setup": "npm run migrate && npm run seed",
-    "dev": "npm run setup && npm run start:dev"
+    "setup": "pnpm run migrate && pnpm run seed",
+    "dev": "pnpm run setup && pnpm run start:dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
@@ -37,6 +37,7 @@
     "@types/node": "^20.12.0",
     "@types/passport-jwt": "^4.0.1",
     "@types/uuid": "^10.0.0",
+    "knex": "^3.3.0",
     "nodemon": "^3.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
