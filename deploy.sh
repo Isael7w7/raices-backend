@@ -17,7 +17,10 @@ NC='\033[0m' # No Color
 PROJECT_ID="${GCP_PROJECT_ID:-raices-499122}"
 REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="raices-backend"
-IMAGE_NAME="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
+# Use Artifact Registry (recommended) instead of Container Registry
+IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/raices/${SERVICE_NAME}"
+# Firebase service account for Cloud Run
+FIREBASE_SA="firebase-adminsdk-fbsvc@${PROJECT_ID}.iam.gserviceaccount.com"
 
 # ============================================
 # Functions
@@ -61,7 +64,7 @@ check_prerequisites() {
 
 authenticate_gcp() {
     log_info "Authenticating with GCP..."
-    gcloud auth configure-docker --quiet
+    gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
     gcloud config set project "${PROJECT_ID}"
     log_info "GCP authentication configured ✓"
 }
@@ -73,7 +76,7 @@ build_and_push_image() {
     log_info "Building Docker image: ${full_image}..."
     docker build -t "${full_image}" .
     
-    log_info "Pushing image to Google Container Registry..."
+    log_info "Pushing image to Artifact Registry..."
     docker push "${full_image}"
     
     log_info "Image pushed successfully ✓"
@@ -86,6 +89,15 @@ deploy_to_cloud_run() {
     
     log_info "Deploying to Cloud Run..."
     
+    # Check if Artifact Registry repo exists
+    if ! gcloud artifacts repositories describe raices --location="${REGION}" &>/dev/null; then
+        log_warn "Artifact Registry repo 'raices' not found. Creating..."
+        gcloud artifacts repositories create raices \
+            --repository-format=docker \
+            --location="${REGION}" \
+            --description="Raíces Docker images"
+    fi
+
     # Build deployment command
     local deploy_cmd="gcloud run deploy ${SERVICE_NAME}"
     deploy_cmd+=" --image=${full_image}"
@@ -98,6 +110,7 @@ deploy_to_cloud_run() {
     deploy_cmd+=" --min-instances=0"
     deploy_cmd+=" --max-instances=10"
     deploy_cmd+=" --timeout=300"
+    deploy_cmd+=" --service-account=${FIREBASE_SA}"
     
     # Add environment variables from .env file if it exists
     if [ -f "${env_file}" ]; then
@@ -106,6 +119,10 @@ deploy_to_cloud_run() {
         while IFS= read -r line; do
             # Skip comments and empty lines
             if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
+                # Skip PORT (reserved by Cloud Run) and FIREBASE_SERVICE_ACCOUNT (uses ADC)
+                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^FIREBASE_SERVICE_ACCOUNT= ]]; then
+                    continue
+                fi
                 if [ -n "${env_vars}" ]; then
                     env_vars+=","
                 fi
