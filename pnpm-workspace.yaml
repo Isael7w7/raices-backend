@@ -4,5 +4,6 @@ allowBuilds:
   '@scarf/scarf': true
   bcrypt: false
   better-sqlite3: false
+  esbuild: true
   protobufjs: true
   sqlite3: false

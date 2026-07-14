@@ -22,7 +22,6 @@
     "class-validator": "^0.14.1",
     "dotenv": "^16.4.5",
     "firebase-admin": "^14.1.0",
-    "jwks-rsa": "^4.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.1",
@@ -37,6 +36,7 @@
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.0",
     "ts-node": "^10.9.2",
+    "tsx": "^4.23.0",
     "typescript": "^5.4.5"
   }
 }
