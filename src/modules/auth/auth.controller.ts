@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { AuthService } from './auth.service'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
+import { RefreshTokenDto } from './dto/refresh-token.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
@@ -23,6 +24,13 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Login exitoso' })
   @ApiResponse({ status: 401, description: 'Credenciales incorrectas o cuenta desactivada' })
   login(@Body() dto: LoginDto) { return this.authService.login(dto) }
+
+  @Post('refresh')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Renovar access token', description: 'Intercambia un refresh token por un nuevo par de tokens (access + refresh)' })
+  @ApiResponse({ status: 200, description: 'Tokens renovados exitosamente' })
+  @ApiResponse({ status: 401, description: 'Refresh token inválido o expirado' })
+  refresh(@Body() dto: RefreshTokenDto) { return this.authService.refresh(dto.refreshToken) }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)

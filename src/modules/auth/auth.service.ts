@@ -13,6 +13,7 @@ import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger('AuthService')
+  private readonly refreshTokenExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '30d'
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
@@ -21,6 +22,14 @@ export class AuthService {
     private readonly emailService: EmailService,
     @Optional() private readonly analytics?: FirebaseAnalyticsService,
   ) {}
+
+  private generateTokens(payload: { sub: string; email: string; role: string }) {
+    const token = this.jwtService.sign(payload)
+    const refreshToken = this.jwtService.sign(payload, { expiresIn: this.refreshTokenExpiresIn })
+    // expiresIn en segundos (1h = 3600s)
+    const expiresIn = 3600
+    return { token, refreshToken, expiresIn }
+  }
 
   async register(dto: RegisterDto) {
     const snapshot = await this.db.collection('u_profiles')
@@ -50,7 +59,7 @@ export class AuthService {
     })
 
     const user = { id, email: dto.email, role: dto.role, full_name: dto.full_name }
-    const token = this.jwtService.sign({ sub: id, email: dto.email, role: dto.role })
+    const tokens = this.generateTokens({ sub: id, email: dto.email, role: dto.role })
 
     // Actualizar contadores en Firestore (escrituras ciegas, mínimo costo)
     await this.analytics?.increment('total_usuarios')
@@ -58,7 +67,7 @@ export class AuthService {
 
     this.emailService.sendWelcome(dto.email, dto.full_name).catch(() => null)
 
-    return { token, user }
+    return { ...tokens, user }
   }
 
   async login(dto: LoginDto) {
@@ -72,8 +81,28 @@ export class AuthService {
     const valid = await bcrypt.compare(dto.password, user.password_hash)
     if (!valid) throw new UnauthorizedException('Credenciales incorrectas')
 
-    const token = this.jwtService.sign({ sub: user.id, email: user.email, role: user.role })
-    return { token, user: { id: user.id, email: user.email, role: user.role, full_name: user.full_name } }
+    const tokens = this.generateTokens({ sub: user.id, email: user.email, role: user.role })
+    return { ...tokens, user: { id: user.id, email: user.email, role: user.role, full_name: user.full_name } }
+  }
+
+  async refresh(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken)
+      if (!payload?.sub) throw new UnauthorizedException('Refresh token inválido')
+
+      // Verificar que el usuario sigue activo
+      const doc = await this.db.collection('u_profiles').doc(payload.sub).get()
+      if (!doc.exists) throw new UnauthorizedException('Usuario no encontrado')
+      const user = doc.data()!
+      if (!user.is_active) throw new UnauthorizedException('Cuenta desactivada')
+
+      const tokens = this.generateTokens({ sub: user.id, email: user.email, role: user.role })
+      return { ...tokens, user: { id: user.id, email: user.email, role: user.role, full_name: user.full_name } }
+    } catch (e: any) {
+      if (e instanceof UnauthorizedException) throw e
+      this.logger.warn(`Refresh token verification failed: ${e?.message ?? e}`)
+      throw new UnauthorizedException('Refresh token inválido o expirado')
+    }
   }
 
   async me(userId: string) {

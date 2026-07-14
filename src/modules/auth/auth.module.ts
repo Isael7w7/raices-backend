@@ -15,7 +15,7 @@ dotenv.config()
     PassportModule,
     JwtModule.register({
       secret: process.env.JWT_SECRET ?? 'raices_demo_secret_2026',
-      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN ?? '7d' },
+      signOptions: { expiresIn: process.env.JWT_EXPIRES_IN ?? '1h' },
     }),
     EmailModule,
     FirebaseAnalyticsModule,
