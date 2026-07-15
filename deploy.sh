@@ -47,6 +47,12 @@ check_prerequisites() {
         exit 1
     fi
     
+    # Check if Firebase CLI is installed
+    if ! command -v firebase &> /dev/null; then
+        log_warn "Firebase CLI not found. Firestore indexes deployment will be skipped."
+        log_info "Install from: npm install -g firebase-tools"
+    fi
+    
     # Check if Docker is running
     if ! docker info &> /dev/null; then
         log_error "Docker is not running. Please start Docker Desktop."
@@ -67,6 +73,35 @@ authenticate_gcp() {
     gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
     gcloud config set project "${PROJECT_ID}"
     log_info "GCP authentication configured ✓"
+}
+
+deploy_firestore_indexes() {
+    log_info "Deploying Firestore composite indexes..."
+    
+    if ! command -v firebase &> /dev/null; then
+        log_warn "Firebase CLI not installed. Skipping Firestore indexes deployment."
+        log_warn "Install with: npm install -g firebase-tools"
+        return 0
+    fi
+    
+    if [ ! -f "firestore.indexes.json" ]; then
+        log_warn "firestore.indexes.json not found. Skipping indexes deployment."
+        return 0
+    fi
+    
+    # Ensure Firebase is logged in
+    if ! firebase projects:list &>/dev/null; then
+        log_warn "Firebase not authenticated. Run: firebase login"
+        return 0
+    fi
+    
+    if firebase deploy --only firestore:indexes --project "${PROJECT_ID}" 2>&1 | while IFS= read -r line; do
+        log_info "  ${line}"
+    done; then
+        log_info "Firestore indexes deployment completed ✓"
+    else
+        log_warn "Firestore indexes deployment failed (non-blocking — Cloud Run deploy will continue)"
+    fi
 }
 
 build_and_push_image() {
@@ -182,9 +217,13 @@ main() {
         deploy)
             check_prerequisites
             authenticate_gcp
+            deploy_firestore_indexes
             build_and_push_image "${image_tag}"
             deploy_to_cloud_run "${image_tag}" "${env_file}"
             print_summary "${image_tag}"
+            ;;
+        indexes)
+            deploy_firestore_indexes
             ;;
         url)
             get_service_url
@@ -196,11 +235,12 @@ main() {
                 --limit=50
             ;;
         *)
-            echo "Usage: $0 {build|deploy|url|logs} [image_tag] [env_file]"
+            echo "Usage: $0 {build|deploy|indexes|url|logs} [image_tag] [env_file]"
             echo ""
             echo "Commands:"
             echo "  build   - Build and push Docker image"
-            echo "  deploy  - Build, push, and deploy to Cloud Run"
+            echo "  deploy  - Deploy Firestore indexes + build, push, and deploy to Cloud Run"
+            echo "  indexes - Deploy only Firestore composite indexes"
             echo "  url     - Get the service URL"
             echo "  logs    - View recent logs"
             echo ""
