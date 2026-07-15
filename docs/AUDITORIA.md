@@ -1,8 +1,8 @@
 # 🔍 Auditoría y Documentación — Raíces para Florecer (Backend)
 
-> **Fecha:** 6 de julio de 2026
-> **Versión:** 1.0.0
-> **Stack:** NestJS 10 + TypeScript + Knex + SQLite3 + Passport JWT + Anthropic AI
+> **Fecha:** 15 de julio de 2026
+> **Versión:** 1.1.0
+> **Stack:** NestJS 10 + TypeScript + Firebase/Firestore + Passport JWT + Anthropic AI
 
 ---
 
@@ -10,11 +10,11 @@
 
 **Raíces para Florecer** es un ecosistema digital para personas con discapacidad (PCD) en México. El backend es un API RESTful modular que permite a usuarios (PCD, tutores, instituciones) descubrir servicios, interactuar con una comunidad, postularse a empleos y recibir recomendaciones personalizadas vía IA.
 
-### Estado General: 🟡 Funcional con áreas de mejora significativas
+### Estado General: 🟢 Funcional con mejoras pendientes
 
-- **Fortalezas:** Arquitectura modular clara, sistema de multi-rol bien implementado, admin robusto con inteligencia de datos, IA contextual
-- **Debilidades críticas:** Sin tests, sin validación de autorización consistente, sin paginación, servicios mock (email, storage), sin rate limiting, sin validación de DTOs en la mayoría de endpoints
-- **Riesgo:** Base SQLite limita escalabilidad; faltan migraciones para tablas creadas dinámicamente (`s_settings`)
+- **Fortalezas:** Arquitectura modular clara, sistema de multi-rol bien implementado, admin robusto con inteligencia de datos, IA contextual, base de datos Firebase/Firestore optimizada con índices compuestos
+- **Mejoras pendientes:** Sin tests unitarios, sin paginación en listados, servicios mock (email, storage), sin rate limiting, sin validación de DTOs en la mayoría de endpoints
+- **✅ Resuelto:** Índices compuestos creados para consultas críticas (jobs, institutions, community/groups)
 
 ---
 
@@ -58,6 +58,14 @@ src/
 | `u_` | Usuarios / Datos de usuario | `u_profiles`, `u_reviews`, `u_posts` |
 | `p_` | Proveedores / Instituciones | `p_institutions`, `p_jobs` |
 | `s_` | Sistema / Configuración | `s_settings` |
+
+### Índices Compuestos en Producción
+
+| Colección | Campos | Propósito |
+|-----------|--------|-----------|
+| `p_jobs` | `is_active` ASC, `created_at` DESC | Listado de vacantes activas ordenadas por fecha |
+| `p_institutions` | `is_active` ASC, `rating_avg` DESC | Listado de instituciones activas ordenadas por calificación |
+| `u_groups` | `is_public` ASC, `member_count` DESC | Listado de grupos públicos ordenados por popularidad |
 
 ---
 
@@ -366,14 +374,16 @@ src/
 
 ### 🟡 Funcionalidad
 
-| # | Hallazgo | Severidad | Ubicación |
-|---|----------|-----------|-----------|
-| 13 | Notificaciones nunca se generan | Alta | `notifications.service.ts` |
-| 14 | Jobs: sin CRUD completo para instituciones | Alta | `jobs.controller.ts` |
-| 15 | Community: `member_count` nunca se actualiza | Media | `community.service.ts` |
-| 16 | Sin paginación en listados principales | Media | Todos los endpoints de listado |
-| 17 | Mensajes: sin tiempo real, query ineficiente | Media | `messages.service.ts` |
-| 18 | Email y Storage son mocks | Baja (demo) | `email.service.ts`, `storage.service.ts` |
+| # | Hallazgo | Severidad | Ubicación | Estado |
+|---|----------|-----------|-----------|--------|
+| 13 | Notificaciones nunca se generan | Alta | `notifications.service.ts` | Pendiente |
+| 14 | Jobs: sin CRUD completo para instituciones | Alta | `jobs.controller.ts` | Pendiente |
+| 15 | Community: `member_count` nunca se actualiza | Media | `community.service.ts` | Pendiente |
+| 16 | Sin paginación en listados principales | Media | Todos los endpoints de listado | Pendiente |
+| 17 | Mensajes: sin tiempo real, query ineficiente | Media | `messages.service.ts` | Pendiente |
+| 18 | Email y Storage son mocks | Baja (demo) | `email.service.ts`, `storage.service.ts` | Pendiente |
+| 19 | ~~Consultas lentas por falta de índices~~ | ~~Alta~~ | Firebase Console | ✅ **RESUELTO** |
+| 20 | ~~Errores 500 en /api/jobs, /api/institutions, /api/community/groups~~ | ~~Crítica~~ | Endpoints afectados | ✅ **RESUELTO** |
 
 ---
 
