@@ -22,11 +22,16 @@ export class UsersService {
       ...profile,
       profiling: profiling ? {
         ...profiling,
-        disability_types: this.parseJson(profiling.disability_types),
-        communication_modes: this.parseJson(profiling.communication_modes),
-        mobility_needs: this.parseJson(profiling.mobility_needs),
-        tech_access: this.parseJson(profiling.tech_access),
-        preferred_zones: this.parseJson(profiling.preferred_zones),
+        disability_types: this.parseJsonField(profiling.disability_types),
+        needs: this.parseJsonField(profiling.needs),
+        education_history: this.parseJsonField(profiling.education_history),
+        therapy_history: this.parseJsonField(profiling.therapy_history),
+        current_goals: this.parseJsonField(profiling.current_goals),
+        support_areas: this.parseJsonField(profiling.support_areas),
+        communication_modes: this.parseJsonField(profiling.communication_modes),
+        mobility_needs: this.parseJsonField(profiling.mobility_needs),
+        tech_access: this.parseJsonField(profiling.tech_access),
+        preferred_zones: this.parseJsonField(profiling.preferred_zones),
       } : null,
     }
   }
@@ -57,6 +62,14 @@ export class UsersService {
       mobility_needs: JSON.stringify(data.mobility_needs ?? []),
       tech_access: JSON.stringify(data.tech_access ?? []),
       preferred_zones: JSON.stringify(data.preferred_zones ?? []),
+      needs: JSON.stringify(data.needs ?? []),
+      current_goals: JSON.stringify(data.current_goals ?? []),
+      support_areas: JSON.stringify(data.support_areas ?? []),
+      education_history: JSON.stringify(data.education_history ?? []),
+      therapy_history: JSON.stringify(data.therapy_history ?? []),
+      life_stage: data.life_stage ?? null,
+      current_concerns: data.current_concerns ?? null,
+      support_level: data.support_level ?? null,
     }
     if (!exists.empty) {
       await this.col('u_user_profiles').doc(exists.docs[0].id).update(payload)
@@ -132,9 +145,12 @@ export class UsersService {
     }
   }
 
-  private parseJson(val: any) {
-    if (!val) return []
-    try { return JSON.parse(val) } catch { return [] }
+  private parseJsonField(val: any) {
+    if (typeof val === 'string') {
+      try { return JSON.parse(val) }
+      catch { return val }
+    }
+    return val
   }
 
   private parseObj(val: any) {

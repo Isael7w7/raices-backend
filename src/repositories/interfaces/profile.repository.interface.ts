@@ -27,6 +27,8 @@ export interface UserProfiling {
   needs: string[]
   current_goals: string[]
   support_areas: string[]
+  education_history: string[]
+  therapy_history: string[]
   life_stage: string | null
   current_concerns: string | null
   support_level: string | null
@@ -60,6 +62,8 @@ export interface UpsertProfilingData {
   needs?: string[]
   current_goals?: string[]
   support_areas?: string[]
+  education_history?: string[]
+  therapy_history?: string[]
   life_stage?: string
   current_concerns?: string
   support_level?: string
