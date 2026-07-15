@@ -17,8 +17,8 @@ async function bootstrap() {
     // Frontend dev server (Vite)
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://raices.techmaleon.com.mx/",
-    "http://raices.techmaleon.com.mx/",
+    "https://raices.techmaleon.com.mx",
+    "http://raices.techmaleon.com.mx",
 
     // Producción (si está definida)
     ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",") : []),
@@ -93,10 +93,12 @@ async function bootstrap() {
 
   app.useStaticAssets(join(process.cwd(), "uploads"), { prefix: "/uploads" });
 
-  if (process.env.NODE_ENV === "production") {
-    app.useStaticAssets(join(process.cwd(), "public"));
-    app.useGlobalFilters(new SpaFallbackFilter());
-  }
+  // SPA fallback disabled: frontend is deployed separately on FileZilla
+  // The backend is API-only and should not serve index.html
+  // if (process.env.NODE_ENV === "production") {
+  //   app.useStaticAssets(join(process.cwd(), "public"));
+  //   app.useGlobalFilters(new SpaFallbackFilter());
+  // }
 
   const port = process.env.PORT ?? 7000;
   await app.listen(port);
