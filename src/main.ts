@@ -5,7 +5,6 @@ import { NestExpressApplication } from "@nestjs/platform-express";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { join } from "path";
 import { AppModule } from "./app.module";
-import { SpaFallbackFilter } from "./spa-fallback.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -92,13 +91,6 @@ async function bootstrap() {
   });
 
   app.useStaticAssets(join(process.cwd(), "uploads"), { prefix: "/uploads" });
-
-  // SPA fallback disabled: frontend is deployed separately on FileZilla
-  // The backend is API-only and should not serve index.html
-  // if (process.env.NODE_ENV === "production") {
-  //   app.useStaticAssets(join(process.cwd(), "public"));
-  //   app.useGlobalFilters(new SpaFallbackFilter());
-  // }
 
   const port = process.env.PORT ?? 7000;
   await app.listen(port);
