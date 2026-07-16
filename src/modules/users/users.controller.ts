@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@ne
 import { UsersService } from './users.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Users')
 @ApiBearerAuth('jwt-auth')
@@ -12,6 +13,7 @@ export class UsersController {
   constructor(private readonly svc: UsersService) {}
 
   @Get('profile')
+  @UseETag()
   @ApiOperation({ summary: 'Obtener perfil completo del usuario', description: 'Retorna perfil + datos de profiling (discapacidad, necesidades, etc.)' })
   @ApiResponse({ status: 200, description: 'Perfil completo' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
@@ -32,6 +34,7 @@ export class UsersController {
   }
 
   @Get('dependents')
+  @UseETag()
   @ApiOperation({ summary: 'Listar dependientes', description: 'Retorna personas bajo cuidado del usuario (hijos, pacientes)' })
   @ApiResponse({ status: 200, description: 'Lista de dependientes' })
   dependents(@CurrentUser() user: any) { return this.svc.getDependents(user.id) }

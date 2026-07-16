@@ -6,6 +6,7 @@ import { LoginDto } from './dto/login.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -34,6 +35,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @UseETag()
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Perfil del usuario' })

@@ -37,7 +37,7 @@ async function bootstrap() {
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
     credentials: true,
-    exposedHeaders: ["Content-Type"],
+    exposedHeaders: ["Content-Type", "ETag"],
   });
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
