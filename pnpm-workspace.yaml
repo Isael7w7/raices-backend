@@ -2,10 +2,10 @@ allowBuilds:
   '@firebase/util': true
   '@nestjs/core': true
   '@scarf/scarf': true
-  '@swc/core': set this to true or false
+  '@swc/core': true
   bcrypt: false
   better-sqlite3: false
   esbuild: true
   protobufjs: true
   sqlite3: false
-  unrs-resolver: set this to true or false
+  unrs-resolver: true
