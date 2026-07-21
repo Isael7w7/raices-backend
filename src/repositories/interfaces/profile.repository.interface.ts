@@ -38,7 +38,6 @@ export interface UserProfiling {
 export interface CreateUserProfileData {
   id: string
   email: string
-  password_hash: string
   full_name: string
   role: string
   city?: string
@@ -79,8 +78,8 @@ export interface IProfileRepository {
   /** Busca un perfil por ID */
   findById(id: string): Promise<UserProfile | null>
 
-  /** Busca un perfil por email (para autenticación) */
-  findByEmail(email: string): Promise<(UserProfile & { password_hash: string }) | null>
+  /** Busca un perfil por email */
+  findByEmail(email: string): Promise<UserProfile | null>
 
   /** Crea un nuevo perfil de usuario */
   create(data: CreateUserProfileData): Promise<UserProfile>

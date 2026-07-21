@@ -29,17 +29,11 @@ export class FirestoreProfileRepository implements IProfileRepository {
     return this.profileToDomain(doc.id, doc.data()!)
   }
 
-  async findByEmail(
-    email: string,
-  ): Promise<(UserProfile & { password_hash: string }) | null> {
+  async findByEmail(email: string): Promise<UserProfile | null> {
     const snap = await this.profilesCol.where('email', '==', email).limit(1).get()
     if (snap.empty) return null
     const doc = snap.docs[0]
-    const data = doc.data()
-    return {
-      ...this.profileToDomain(doc.id, data),
-      password_hash: data.password_hash ?? '',
-    }
+    return this.profileToDomain(doc.id, doc.data())
   }
 
   async create(data: CreateUserProfileData): Promise<UserProfile> {
@@ -47,7 +41,6 @@ export class FirestoreProfileRepository implements IProfileRepository {
     await this.profilesCol.doc(data.id).set({
       id: data.id,
       email: data.email,
-      password_hash: data.password_hash,
       full_name: data.full_name,
       role: data.role,
       city: data.city ?? null,

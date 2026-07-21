@@ -10,7 +10,7 @@ dotenv.config()
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import * as bcrypt from 'bcryptjs'
+import { getAuth } from 'firebase-admin/auth'
 import { v4 as uuid } from 'uuid'
 
 // ── Firebase Admin initialization ──────────────────────────────
@@ -27,6 +27,7 @@ if (getApps().length === 0) {
 }
 
 const db = getFirestore()
+const auth = getAuth()
 
 // ── Usuarios demo a insertar ──────────────────────────────────
 const demoUsers = [
@@ -78,15 +79,34 @@ async function seedUsersOnly() {
         continue
       }
 
-      // Crear el usuario
-      const id = uuid()
-      const password_hash = await bcrypt.hash(userData.password, 10)
+      // Crear el usuario en Firebase Auth
+      let uid: string
+      try {
+        const userRecord = await auth.createUser({
+          email: userData.email,
+          password: userData.password,
+          displayName: userData.full_name,
+        })
+        uid = userRecord.uid
+      } catch (e: any) {
+        if (e?.code === 'auth/email-already-exists') {
+          const existingUser = await auth.getUserByEmail(userData.email).catch(() => null)
+          if (existingUser) {
+            uid = existingUser.uid
+          } else {
+            throw e
+          }
+        } else {
+          throw e
+        }
+      }
+
+      // Crear el perfil en Firestore (sin password_hash — Firebase Auth maneja la autenticación)
       const now = new Date().toISOString()
 
-      await db.collection('u_profiles').doc(id).set({
-        id,
+      await db.collection('u_profiles').doc(uid).set({
+        id: uid,
         email: userData.email,
-        password_hash,
         role: userData.role,
         full_name: userData.full_name,
         city: userData.city,
@@ -96,7 +116,7 @@ async function seedUsersOnly() {
         created_at: now,
       })
 
-      console.log(`✅ ${userData.email} creado (id: ${id}, role: ${userData.role})`)
+      console.log(`✅ ${userData.email} creado (id: ${uid}, role: ${userData.role})`)
       created++
     } catch (err: any) {
       console.error(`❌ Error creando ${userData.email}:`, err.message)
