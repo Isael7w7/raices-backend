@@ -49,7 +49,7 @@ async function bootstrap() {
     .setDescription(
       "API del ecosistema digital para personas con discapacidad en México.\n\n" +
         "## Autenticación\n" +
-        "Todos los endpoints protegidos requieren un Firebase ID Token en el header `Authorization: Bearer <token>`.\n\n" +
+        "Todos los endpoints protegidos requieren un token JWT en el header `Authorization: Bearer <token>`.\n\n" +
         "## Roles\n" +
         "- **pcd**: Persona con discapacidad\n" +
         "- **tutor**: Tutor o cuidador\n" +
@@ -61,8 +61,8 @@ async function bootstrap() {
       {
         type: "http",
         scheme: "bearer",
-        bearerFormat: "Firebase ID Token",
-        description: "Ingresa tu Firebase ID Token"
+        bearerFormat: "JWT",
+        description: "Ingresa tu token JWT",
       },
       "jwt-auth",
     )

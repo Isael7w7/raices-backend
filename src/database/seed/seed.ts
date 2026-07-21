@@ -3,7 +3,7 @@ dotenv.config()
 
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
-import { getAuth } from 'firebase-admin/auth'
+import * as bcrypt from 'bcryptjs'
 import { v4 as uuid } from 'uuid'
 
 // ── Firebase Admin initialization ──────────────────────────────
@@ -19,7 +19,6 @@ if (getApps().length === 0) {
 }
 
 const db = getFirestore()
-const auth = getAuth()
 
 // ── Helper: limpiar colección completa ─────────────────────────
 async function clearCollection(name: string) {
@@ -60,83 +59,50 @@ async function seed() {
   for (const col of collectionsToClean) await clearCollection(col)
   console.log(`✨ ${collectionsToClean.length} colecciones limpiadas\n`)
 
-  // ──────────────────── 2. Usuarios demo (via Firebase Auth) ──────
+  // ──────────────────── 2. Usuarios demo ──────────────────────────
+  const adminId = uuid()
+  const demoId = uuid()
+  const tutorId = uuid()
   const now = new Date().toISOString()
 
-  const demoUsersData = [
+  await insertBatch('u_profiles', [
     {
+      id: adminId,
       email: 'admin@raices.mx',
-      password: 'Admin1234',
+      password_hash: await bcrypt.hash('Admin1234', 10),
       role: 'admin',
       full_name: 'Admin Raíces',
       city: 'Mérida',
       state: 'Yucatán',
+      is_active: true,
+      is_verified: true,
+      created_at: now,
     },
     {
+      id: demoId,
       email: 'demo@raices.mx',
-      password: 'Demo1234',
+      password_hash: await bcrypt.hash('Demo1234', 10),
       role: 'user',
       full_name: 'Luis Hernández',
       city: 'Mérida',
       state: 'Yucatán',
+      is_active: true,
+      is_verified: true,
+      created_at: now,
     },
     {
+      id: tutorId,
       email: 'tutor@raices.mx',
-      password: 'Tutor1234',
+      password_hash: await bcrypt.hash('Tutor1234', 10),
       role: 'tutor',
       full_name: 'Ana García',
       city: 'Mérida',
       state: 'Yucatán',
+      is_active: true,
+      is_verified: true,
+      created_at: now,
     },
-  ]
-
-  const userIds: string[] = []
-
-  for (const userData of demoUsersData) {
-    try {
-      // Create user in Firebase Auth (password managed entirely by Firebase)
-      const userRecord = await auth.createUser({
-        email: userData.email,
-        password: userData.password,
-        displayName: userData.full_name,
-      })
-      userIds.push(userRecord.uid)
-
-      // Store profile in Firestore (no password_hash)
-      await db.collection('u_profiles').doc(userRecord.uid).set({
-        id: userRecord.uid,
-        email: userData.email,
-        role: userData.role,
-        full_name: userData.full_name,
-        city: userData.city,
-        state: userData.state,
-        is_active: true,
-        is_verified: true,
-        created_at: now,
-      })
-    } catch (e: any) {
-      if (e?.code === 'auth/email-already-exists') {
-        const existing = await auth.getUserByEmail(userData.email)
-        userIds.push(existing.uid)
-        // Still create/update the Firestore profile
-        await db.collection('u_profiles').doc(existing.uid).set({
-          id: existing.uid,
-          email: userData.email,
-          role: userData.role,
-          full_name: userData.full_name,
-          city: userData.city,
-          state: userData.state,
-          is_active: true,
-          is_verified: true,
-          created_at: now,
-        })
-      } else {
-        throw e
-      }
-    }
-  }
-
-  const [adminId, demoId, tutorId] = userIds
+  ])
   console.log('👤 3 usuarios demo creados')
 
   // ──────────────────── 3. Perfiles de necesidades ────────────────

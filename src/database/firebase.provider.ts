@@ -106,7 +106,8 @@ export function logSecurityConfig(): void {
   logger.log('🔒 Security config:')
   logger.log(`   FIREBASE_PROJECT_ID: ${process.env.FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing'}`)
   logger.log(`   FIREBASE_SERVICE_ACCOUNT: ${process.env.FIREBASE_SERVICE_ACCOUNT ? '✅ Set' : '⚠️  Not set (using ADC)'}`)
-  logger.log(`   FIREBASE_API_KEY: ${process.env.FIREBASE_API_KEY ? '✅ Set' : '❌ Missing'}`)
+  logger.log(`   JWT_SECRET: ${process.env.JWT_SECRET ? '✅ Set' : '⚠️  Using fallback'}`)
+  logger.log(`   JWKS_URI: ${process.env.JWKS_URI ? '✅ Set (RS256)' : '⚠️  Not set (HS256)'}`)
 }
 
 export const firestoreProvider: Provider = {

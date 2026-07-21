@@ -15,13 +15,13 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({ summary: 'Registrar nuevo usuario', description: 'Crea una cuenta con rol pcd, tutor o institution' })
-  @ApiResponse({ status: 201, description: 'Registro exitoso, retorna Firebase ID Token y datos del usuario' })
+  @ApiResponse({ status: 201, description: 'Registro exitoso, retorna token JWT y datos del usuario' })
   @ApiResponse({ status: 409, description: 'Email ya registrado' })
   register(@Body() dto: RegisterDto) { return this.authService.register(dto) }
 
   @Post('login')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Iniciar sesión', description: 'Autentica usuario y retorna Firebase ID Token' })
+  @ApiOperation({ summary: 'Iniciar sesión', description: 'Autentica usuario y retorna token JWT' })
   @ApiResponse({ status: 200, description: 'Login exitoso' })
   @ApiResponse({ status: 401, description: 'Credenciales incorrectas o cuenta desactivada' })
   login(@Body() dto: LoginDto) { return this.authService.login(dto) }

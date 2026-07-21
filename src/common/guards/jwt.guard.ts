@@ -1,45 +1,37 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
+import { AuthGuard } from '@nestjs/passport'
 import { getAuth } from 'firebase-admin/auth'
 
-/**
- * Guard that validates Firebase ID Tokens from the Authorization header.
- *
- * The frontend sends: `Authorization: Bearer <firebase-id-token>`
- * This guard verifies the token with Firebase Admin SDK and attaches
- * the decoded user (uid, email, role) to `request.user`.
- *
- * No local JWT or passport-jwt is used.
- */
 @Injectable()
-export class JwtAuthGuard implements CanActivate {
+export class JwtAuthGuard extends AuthGuard('jwt') {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest()
     const authHeader = request.headers['authorization']
 
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token de autenticación requerido')
-    }
-
-    const token = authHeader.split(' ')[1]
-    if (!token) {
-      throw new UnauthorizedException('Token de autenticación requerido')
-    }
-
-    try {
-      const decodedToken = await getAuth().verifyIdToken(token)
-
-      // Attach the decoded user to the request so @CurrentUser() can access it
-      request.user = {
-        id: decodedToken.uid,
-        email: decodedToken.email,
-        role: (decodedToken as any).role ?? null,
+    // Try Firebase Auth verification first (works with emulator & production)
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1]
+      try {
+        const decodedToken = await getAuth().verifyIdToken(token)
+        request.user = {
+          id: decodedToken.uid,
+          email: decodedToken.email,
+          role: (decodedToken as any).role,
+        }
+        return true
+      } catch {
+        // Firebase token invalid, fall back to passport-jwt
       }
-
-      return true
-    } catch (error: any) {
-      // Common Firebase error codes: auth/id-token-expired, auth/id-token-revoked, auth/invalid-id-token
-      const code: string = error?.errorInfo?.code ?? error?.message ?? 'unknown'
-      throw new UnauthorizedException(`Token inválido: ${code}`)
     }
+
+    // Fall back to passport-jwt (for backend-generated HS256 tokens)
+    return super.canActivate(context) as Promise<boolean>
+  }
+
+  handleRequest(err: any, user: any, info: any) {
+    if (err || !user) {
+      throw err || new UnauthorizedException('No autenticado')
+    }
+    return user
   }
 }
