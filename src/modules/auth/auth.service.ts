@@ -1,8 +1,7 @@
 import { Injectable, ConflictException, UnauthorizedException, Inject, Logger, Optional } from '@nestjs/common'
-import { JwtService } from '@nestjs/jwt'
-import * as bcrypt from 'bcryptjs'
-import { v4 as uuid } from 'uuid'
 import { Firestore } from 'firebase-admin/firestore'
+import { v4 as uuid } from 'uuid'
+import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
@@ -13,22 +12,23 @@ import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger('AuthService')
-  private readonly refreshTokenExpiresIn = process.env.JWT_REFRESH_EXPIRES_IN ?? '30d'
+  private readonly firebaseApiKey: string
+  private readonly identityToolkitUrl: string
+  private readonly secureTokenUrl: string
+  private readonly defaultExpiresIn = 3600
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
     @Inject(FIREBASE_AUTH) private readonly auth: FirebaseAuth,
-    private readonly jwtService: JwtService,
     private readonly emailService: EmailService,
     @Optional() private readonly analytics?: FirebaseAnalyticsService,
-  ) {}
-
-  private generateTokens(payload: { sub: string; email: string; role: string }) {
-    const token = this.jwtService.sign(payload)
-    const refreshToken = this.jwtService.sign(payload, { expiresIn: this.refreshTokenExpiresIn })
-    // expiresIn en segundos (1h = 3600s)
-    const expiresIn = 3600
-    return { token, refreshToken, expiresIn }
+  ) {
+    this.firebaseApiKey = process.env.FIREBASE_API_KEY ?? ''
+    if (!this.firebaseApiKey) {
+      this.logger.warn('FIREBASE_API_KEY is not set. Auth REST API calls will fail.')
+    }
+    this.identityToolkitUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${this.firebaseApiKey}`
+    this.secureTokenUrl = `https://securetoken.googleapis.com/v1/token?key=${this.firebaseApiKey}`
   }
 
   async register(dto: RegisterDto) {
@@ -36,68 +36,153 @@ export class AuthService {
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
 
-    const id = uuid()
-    const password_hash = await bcrypt.hash(dto.password, 10)
-
-    // Create in Firebase Auth for frontend compatibility
+    let firebaseUser
     try {
-      await this.auth.createUser({
-        uid: id,
+      firebaseUser = await this.auth.createUser({
         email: dto.email,
         password: dto.password,
         displayName: dto.full_name,
       })
     } catch (e: any) {
-      this.logger.warn(`Firebase Auth user creation skipped: ${e?.message ?? e}`)
+      this.logger.error(`Firebase Auth user creation failed: ${e?.message ?? e}`)
+      if (e?.code === 'auth/email-already-exists') {
+        throw new ConflictException('Email ya registrado en Firebase Auth')
+      }
+      throw new UnauthorizedException('Error al crear usuario')
     }
 
-    // Store profile in Firestore
-    await this.db.collection('u_profiles').doc(id).set({
-      id, email: dto.email, password_hash, full_name: dto.full_name,
-      role: dto.role, city: dto.city ?? null, state: dto.state ?? null,
-      is_active: true, is_verified: false, created_at: new Date().toISOString(),
+    const uid = firebaseUser.uid
+
+    await this.db.collection('u_profiles').doc(uid).set({
+      id: uid,
+      email: dto.email,
+      full_name: dto.full_name,
+      role: dto.role,
+      city: dto.city ?? null,
+      state: dto.state ?? null,
+      is_active: true,
+      is_verified: false,
+      created_at: new Date().toISOString(),
     })
 
-    const user = { id, email: dto.email, role: dto.role, full_name: dto.full_name }
-    const tokens = this.generateTokens({ sub: id, email: dto.email, role: dto.role })
+    let idToken: string
+    let refreshToken: string
+    try {
+      const signInResponse = await axios.post(this.identityToolkitUrl, {
+        email: dto.email,
+        password: dto.password,
+        returnSecureToken: true,
+      })
+      idToken = signInResponse.data.idToken
+      refreshToken = signInResponse.data.refreshToken
+    } catch (e: any) {
+      this.logger.warn(`Sign-in after register failed: ${e?.message ?? e}. Generating custom token.`)
+      const customToken = await this.auth.createCustomToken(uid)
+      idToken = customToken
+      refreshToken = ''
+    }
 
-    // Actualizar contadores en Firestore (escrituras ciegas, mínimo costo)
+    const user = {
+      id: uid,
+      email: dto.email,
+      role: dto.role,
+      full_name: dto.full_name,
+    }
+
     await this.analytics?.increment('total_usuarios')
     await this.analytics?.increment('usuarios_activos')
 
     this.emailService.sendWelcome(dto.email, dto.full_name).catch(() => null)
 
-    return { ...tokens, user }
+    return {
+      token: idToken,
+      refreshToken,
+      expiresIn: this.defaultExpiresIn,
+      user,
+    }
   }
 
   async login(dto: LoginDto) {
-    const snapshot = await this.db.collection('u_profiles')
-      .where('email', '==', dto.email).limit(1).get()
-    if (snapshot.empty) throw new UnauthorizedException('Credenciales incorrectas')
+    let signInResponse
+    try {
+      signInResponse = await axios.post(this.identityToolkitUrl, {
+        email: dto.email,
+        password: dto.password,
+        returnSecureToken: true,
+      })
+    } catch (e: any) {
+      if (e instanceof UnauthorizedException) throw e
+      const status = e?.response?.status
+      if (status === 400) {
+        const errorMsg = e?.response?.data?.error?.message
+        if (errorMsg === 'EMAIL_NOT_FOUND' || errorMsg === 'INVALID_PASSWORD') {
+          throw new UnauthorizedException('Credenciales incorrectas')
+        }
+        if (errorMsg === 'USER_DISABLED') {
+          throw new UnauthorizedException('Cuenta desactivada')
+        }
+      }
+      this.logger.error(`Login failed: ${e?.message ?? e}`)
+      throw new UnauthorizedException('Credenciales incorrectas')
+    }
 
-    const user = snapshot.docs[0].data()
-    if (!user.is_active) throw new UnauthorizedException('Cuenta desactivada')
+    const { idToken, refreshToken } = signInResponse.data
 
-    const valid = await bcrypt.compare(dto.password, user.password_hash)
-    if (!valid) throw new UnauthorizedException('Credenciales incorrectas')
+    const decodedToken = await this.auth.verifyIdToken(idToken)
 
-    const tokens = this.generateTokens({ sub: user.id, email: user.email, role: user.role })
-    return { ...tokens, user: { id: user.id, email: user.email, role: user.role, full_name: user.full_name } }
+    const doc = await this.db.collection('u_profiles').doc(decodedToken.uid).get()
+    if (!doc.exists) {
+      throw new UnauthorizedException('Usuario no encontrado')
+    }
+
+    const user = doc.data()!
+    if (!user.is_active) {
+      throw new UnauthorizedException('Cuenta desactivada')
+    }
+
+    return {
+      token: idToken,
+      refreshToken,
+      expiresIn: this.defaultExpiresIn,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        full_name: user.full_name,
+      },
+    }
   }
 
   async refresh(refreshToken: string) {
     try {
-      const payload = this.jwtService.verify(refreshToken)
-      if (!payload?.sub) throw new UnauthorizedException('Refresh token inválido')
+      const response = await axios.post(this.secureTokenUrl, {
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      })
 
-      // Verificar que el usuario sigue activo
-      const doc = await this.db.collection('u_profiles').doc(payload.sub).get()
-      if (!doc.exists) throw new UnauthorizedException('Usuario no encontrado')
+      const { id_token, refresh_token, user_id } = response.data
+
+      const doc = await this.db.collection('u_profiles').doc(user_id).get()
+      if (!doc.exists) {
+        throw new UnauthorizedException('Usuario no encontrado')
+      }
+
       const user = doc.data()!
-      if (!user.is_active) throw new UnauthorizedException('Cuenta desactivada')
+      if (!user.is_active) {
+        throw new UnauthorizedException('Cuenta desactivada')
+      }
 
-      const tokens = this.generateTokens({ sub: user.id, email: user.email, role: user.role })
-      return { ...tokens, user: { id: user.id, email: user.email, role: user.role, full_name: user.full_name } }
+      return {
+        token: id_token,
+        refreshToken: refresh_token,
+        expiresIn: this.defaultExpiresIn,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          full_name: user.full_name,
+        },
+      }
     } catch (e: any) {
       if (e instanceof UnauthorizedException) throw e
       this.logger.warn(`Refresh token verification failed: ${e?.message ?? e}`)
@@ -110,8 +195,14 @@ export class AuthService {
     if (!doc.exists) return null
     const d = doc.data()!
     return {
-      id: d.id, email: d.email, role: d.role, full_name: d.full_name,
-      city: d.city, state: d.state, avatar_url: d.avatar_url, is_verified: d.is_verified,
+      id: d.id,
+      email: d.email,
+      role: d.role,
+      full_name: d.full_name,
+      city: d.city,
+      state: d.state,
+      avatar_url: d.avatar_url,
+      is_verified: d.is_verified,
     }
   }
 }

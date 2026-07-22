@@ -11,10 +11,9 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=7000
-      - JWT_SECRET=${JWT_SECRET:-your-secret-key}
+      - FIREBASE_API_KEY=${FIREBASE_API_KEY}
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-      - FIREBASE_CLIENT_EMAIL=${FIREBASE_CLIENT_EMAIL}
-      - FIREBASE_PRIVATE_KEY=${FIREBASE_PRIVATE_KEY}
+      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     volumes:
