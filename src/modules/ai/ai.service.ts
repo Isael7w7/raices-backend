@@ -42,7 +42,7 @@ export class AiService {
     if (!this.client) {
       await new Promise((r) => setTimeout(r, 600))
       const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
-      return { respuesta, mock: true }
+      return { respuesta, simulado: true }
     }
 
     const tiposDiscapacidad = perfil?.tiposDiscapacidad
@@ -60,7 +60,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
       messages: [...historial.slice(-6), { role: 'user', content: mensaje }],
     })
 
-    return { respuesta: response.content[0].text, mock: false }
+    return { respuesta: response.content[0].text, simulado: false }
   }
 
   private async getUserHistory(usuarioId: string) {
@@ -109,7 +109,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
         proximosPasos: pasos,
         razonamiento: sinDiagnostico ? 'Sin diagnóstico registrado — prioridad: evaluación (modo demo)' : 'Recomendaciones generales (modo demo)',
         sugerenciasInstitucion: sinDiagnostico ? [{ categoria: 'Terapia', razon: 'Evaluación diagnóstica' }] : [],
-        mock: true,
+        simulado: true,
       }
     }
 
@@ -144,11 +144,11 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
         model: 'claude-sonnet-4-6', max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
       })
-      return { ...JSON.parse(response.content[0].text), mock: false }
+      return { ...JSON.parse(response.content[0].text), simulado: false }
     } catch {
       return {
         proximosPasos: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
-        razonamiento: 'Error al procesar — mostrando sugerencias generales', sugerenciasInstitucion: [], mock: true,
+        razonamiento: 'Error al procesar — mostrando sugerencias generales', sugerenciasInstitucion: [], simulado: true,
       }
     }
   }
@@ -156,7 +156,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
   async recommendForDependent(usuarioId: string, dependienteId: string) {
     const depDoc = await this.db.collection(COLECCIONES.dependientes).doc(dependienteId).get()
     if (!depDoc.exists || depDoc.data()?.tutorId !== usuarioId) {
-      return { proximosPasos: ['Perfil no encontrado'], razonamiento: 'Error de acceso', mock: true }
+      return { proximosPasos: ['Perfil no encontrado'], razonamiento: 'Error de acceso', simulado: true }
     }
     const dep = depDoc.data()!
 
@@ -174,7 +174,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
           `Explorar terapias adecuadas para la etapa de vida: ${etapaVida}`,
           'Revisar grupos de apoyo para familias cuidadoras',
         ],
-        razonamiento: `Recomendaciones para ${dep.nombreCompleto} (modo demo)`, mock: true,
+        razonamiento: `Recomendaciones para ${dep.nombreCompleto} (modo demo)`, simulado: true,
       }
     }
 
@@ -189,7 +189,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
         model: 'claude-sonnet-4-6', max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       })
-      return { ...JSON.parse(response.content[0].text), mock: false }
+      return { ...JSON.parse(response.content[0].text), simulado: false }
     } catch {
       return {
         proximosPasos: [
@@ -197,7 +197,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
           'Completa el historial de necesidades del familiar',
           'Consulta el grupo de familias cuidadoras en la comunidad',
         ],
-        razonamiento: 'Error al procesar — mostrando sugerencias generales', mock: true,
+        razonamiento: 'Error al procesar — mostrando sugerencias generales', simulado: true,
       }
     }
   }

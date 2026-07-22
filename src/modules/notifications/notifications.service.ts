@@ -43,7 +43,7 @@ export class NotificationsService {
     if (doc.exists && doc.data()?.usuarioId === usuarioId) {
       await doc.ref.update({ leida: true })
     }
-    return { ok: true }
+    return { exito: true }
   }
 
   async markAllRead(usuarioId: string) {
@@ -55,6 +55,6 @@ export class NotificationsService {
       lote.update(doc.ref, { leida: true })
     }
     await lote.commit()
-    return { ok: true }
+    return { exito: true }
   }
 }

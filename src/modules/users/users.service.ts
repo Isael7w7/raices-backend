@@ -78,7 +78,7 @@ export class UsersService {
       const id = uuid()
       await this.col(COLECCIONES.perfilesExtendidos).doc(id).set({ id, usuarioId, ...carga })
     }
-    return { ok: true }
+    return { exito: true }
   }
 
   async getDependents(usuarioId: string) {
@@ -128,7 +128,7 @@ export class UsersService {
     const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
     if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
     await this.col(COLECCIONES.dependientes).doc(id).delete()
-    return { ok: true }
+    return { exito: true }
   }
 
   private formatearDependiente(d: any) {

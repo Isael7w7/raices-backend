@@ -100,7 +100,7 @@ export class CommunityService {
       await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
         cantidadMeGustas: FieldValue.increment(-1),
       })
-      return { liked: false }
+      return { meGusta: false }
     }
 
     await this.db.collection(COLECCIONES.meGustas).doc(uuid()).set({
@@ -109,6 +109,6 @@ export class CommunityService {
     await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
       cantidadMeGustas: FieldValue.increment(1),
     })
-    return { liked: true }
+    return { meGusta: true }
   }
 }

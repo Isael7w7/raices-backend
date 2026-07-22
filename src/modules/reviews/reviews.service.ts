@@ -36,8 +36,9 @@ export class ReviewsService {
     if (!snap.empty) {
       await snap.docs[0].ref.update({ calificacion, comentario })
     } else {
-      await this.db.collection(COLECCIONES.resenas).doc(uuid()).set({
-        id: uuid(), usuarioId, institucionId,
+      const resenaId = uuid()
+      await this.db.collection(COLECCIONES.resenas).doc(resenaId).set({
+        id: resenaId, usuarioId, institucionId,
         calificacion, comentario, fechaCreacion: new Date().toISOString(),
       })
     }
@@ -51,7 +52,7 @@ export class ReviewsService {
       cantidadCalificaciones: calificaciones.length,
     })
 
-    return { ok: true }
+    return { exito: true }
   }
 
   async myReviews(usuarioId: string) {

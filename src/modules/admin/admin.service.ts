@@ -260,12 +260,12 @@ export class AdminService {
       const inst = doc.data()!
       await this.email.sendInstitutionApproved(inst.emailContacto ?? inst.email ?? '', inst.nombre)
     }
-    return { ok: true }
+    return { exito: true }
   }
 
   async rejectInstitution(id: string) {
     await this.col(COLECCIONES.instituciones).doc(id).delete()
-    return { ok: true }
+    return { exito: true }
   }
 
   async toggleVerifyInstitution(id: string) {
@@ -273,7 +273,7 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Institución no encontrada')
     const nuevoVerificado = !doc.data()!.verificada
     await doc.ref.update({ verificada: nuevoVerificado })
-    return { ok: true, verificada: nuevoVerificado }
+    return { exito: true, verificada: nuevoVerificado }
   }
 
   /* ───────────────────────── Usuarios ───────────────────────── */
@@ -293,7 +293,7 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     const nuevoActivo = !doc.data()!.activo
     await doc.ref.update({ activo: nuevoActivo })
-    return { ok: true, activo: nuevoActivo }
+    return { exito: true, activo: nuevoActivo }
   }
 
   async changeUserRole(id: string, rol: string, adminId: string) {
@@ -303,7 +303,7 @@ export class AdminService {
     const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     await doc.ref.update({ rol })
-    return { ok: true, rol }
+    return { exito: true, rol }
   }
 
   /* ───────────────────────── Reseñas (moderación) ───────────────────────── */
@@ -351,7 +351,7 @@ export class AdminService {
         cantidadCalificaciones: todasRev.size,
       })
     }
-    return { ok: true }
+    return { exito: true }
   }
 
   /* ───────────────────────── Configuración ───────────────────────── */

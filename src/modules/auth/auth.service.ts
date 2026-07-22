@@ -68,7 +68,7 @@ export class AuthService {
     })
 
     let idToken: string
-    let refreshToken: string
+    let tokenRefresco: string
     try {
       const signInResponse = await axios.post(this.identityToolkitUrl, {
         email: dto.email,
@@ -76,12 +76,12 @@ export class AuthService {
         returnSecureToken: true,
       })
       idToken = signInResponse.data.idToken
-      refreshToken = signInResponse.data.refreshToken
+      tokenRefresco = signInResponse.data.refreshToken
     } catch (e: any) {
       this.logger.warn(`Sign-in after register failed: ${e?.message ?? e}. Generating custom token.`)
       const customToken = await this.auth.createCustomToken(uid)
       idToken = customToken
-      refreshToken = ''
+      tokenRefresco = ''
     }
 
     const usuario = {
@@ -97,9 +97,9 @@ export class AuthService {
     this.emailService.sendWelcome(dto.email, dto.fullName).catch(() => null)
 
     return {
-      token: idToken,
-      refreshToken,
-      expiresIn: this.defaultExpiresIn,
+      tokenAcceso: idToken,
+      tokenRefresco,
+      expiraEn: this.defaultExpiresIn,
       usuario,
     }
   }
@@ -128,7 +128,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales incorrectas')
     }
 
-    const { idToken, refreshToken } = signInResponse.data
+    const { idToken, refreshToken: tokenRefresco } = signInResponse.data
 
     const decodedToken = await this.auth.verifyIdToken(idToken)
 
@@ -143,9 +143,9 @@ export class AuthService {
     }
 
     return {
-      token: idToken,
-      refreshToken,
-      expiresIn: this.defaultExpiresIn,
+      tokenAcceso: idToken,
+      tokenRefresco,
+      expiraEn: this.defaultExpiresIn,
       usuario: {
         id: datosUsuario.id,
         email: datosUsuario.email,
@@ -155,11 +155,11 @@ export class AuthService {
     }
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(tokenRefresco: string) {
     try {
       const response = await axios.post(this.secureTokenUrl, {
         grant_type: 'refresh_token',
-        refresh_token: refreshToken,
+        refresh_token: tokenRefresco,
       })
 
       const { id_token, refresh_token, user_id } = response.data
@@ -175,9 +175,9 @@ export class AuthService {
       }
 
       return {
-        token: id_token,
-        refreshToken: refresh_token,
-        expiresIn: this.defaultExpiresIn,
+        tokenAcceso: id_token,
+        tokenRefresco: refresh_token,
+        expiraEn: this.defaultExpiresIn,
         usuario: {
           id: datosUsuario.id,
           email: datosUsuario.email,

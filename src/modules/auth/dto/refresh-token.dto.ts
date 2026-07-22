@@ -3,9 +3,9 @@ import { ApiProperty } from '@nestjs/swagger'
 
 export class RefreshTokenDto {
   @ApiProperty({
-    description: 'Refresh token obtenido en login o registro',
+    description: 'Token de refresco obtenido en inicio de sesión o registro',
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   })
   @IsString()
-  refreshToken: string
+  tokenRefresco: string
 }

@@ -36,13 +36,14 @@ export class FavoritesService {
       .limit(1).get()
     if (!snap.empty) {
       await snap.docs[0].ref.delete()
-      return { favorited: false }
+      return { favorito: false }
     }
-    await this.db.collection(COLECCIONES.favoritos).doc(uuid()).set({
-      id: uuid(), usuarioId, institucionId,
+    const favoritoId = uuid()
+    await this.db.collection(COLECCIONES.favoritos).doc(favoritoId).set({
+      id: favoritoId, usuarioId, institucionId,
       fechaCreacion: new Date().toISOString(),
     })
-    return { favorited: true }
+    return { favorito: true }
   }
 
   async getFavoriteIds(usuarioId: string): Promise<string[]> {
