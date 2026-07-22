@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
 import { EmailService } from '../email/email.service'
@@ -32,7 +33,7 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
-    const snapshot = await this.db.collection('u_profiles')
+    const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
 
@@ -53,16 +54,17 @@ export class AuthService {
 
     const uid = firebaseUser.uid
 
-    await this.db.collection('u_profiles').doc(uid).set({
+    await this.db.collection(COLECCIONES.perfiles).doc(uid).set({
       id: uid,
       email: dto.email,
-      full_name: dto.fullName,
-      role: dto.role,
-      city: dto.city ?? null,
-      state: dto.state ?? null,
-      is_active: true,
-      is_verified: false,
-      created_at: new Date().toISOString(),
+      nombreCompleto: dto.fullName,
+      rol: dto.role,
+      ciudad: dto.city ?? null,
+      estado: dto.state ?? null,
+      urlAvatar: null,
+      activo: true,
+      verificado: false,
+      fechaCreacion: new Date().toISOString(),
     })
 
     let idToken: string
@@ -82,15 +84,15 @@ export class AuthService {
       refreshToken = ''
     }
 
-    const user = {
+    const usuario = {
       id: uid,
       email: dto.email,
-      role: dto.role,
-      full_name: dto.fullName,
+      rol: dto.role,
+      nombreCompleto: dto.fullName,
     }
 
-    await this.analytics?.incrementar('total_usuarios')
-    await this.analytics?.incrementar('usuarios_activos')
+    await this.analytics?.incrementar('totalUsuarios')
+    await this.analytics?.incrementar('usuariosActivos')
 
     this.emailService.sendWelcome(dto.email, dto.fullName).catch(() => null)
 
@@ -98,7 +100,7 @@ export class AuthService {
       token: idToken,
       refreshToken,
       expiresIn: this.defaultExpiresIn,
-      user,
+      usuario,
     }
   }
 
@@ -130,13 +132,13 @@ export class AuthService {
 
     const decodedToken = await this.auth.verifyIdToken(idToken)
 
-    const doc = await this.db.collection('u_profiles').doc(decodedToken.uid).get()
+    const doc = await this.db.collection(COLECCIONES.perfiles).doc(decodedToken.uid).get()
     if (!doc.exists) {
       throw new UnauthorizedException('Usuario no encontrado')
     }
 
-    const user = doc.data()!
-    if (!user.is_active) {
+    const datosUsuario = doc.data()!
+    if (!datosUsuario.activo) {
       throw new UnauthorizedException('Cuenta desactivada')
     }
 
@@ -144,11 +146,11 @@ export class AuthService {
       token: idToken,
       refreshToken,
       expiresIn: this.defaultExpiresIn,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        full_name: user.full_name,
+      usuario: {
+        id: datosUsuario.id,
+        email: datosUsuario.email,
+        rol: datosUsuario.rol,
+        nombreCompleto: datosUsuario.nombreCompleto,
       },
     }
   }
@@ -162,13 +164,13 @@ export class AuthService {
 
       const { id_token, refresh_token, user_id } = response.data
 
-      const doc = await this.db.collection('u_profiles').doc(user_id).get()
+      const doc = await this.db.collection(COLECCIONES.perfiles).doc(user_id).get()
       if (!doc.exists) {
         throw new UnauthorizedException('Usuario no encontrado')
       }
 
-      const user = doc.data()!
-      if (!user.is_active) {
+      const datosUsuario = doc.data()!
+      if (!datosUsuario.activo) {
         throw new UnauthorizedException('Cuenta desactivada')
       }
 
@@ -176,11 +178,11 @@ export class AuthService {
         token: id_token,
         refreshToken: refresh_token,
         expiresIn: this.defaultExpiresIn,
-        user: {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          full_name: user.full_name,
+        usuario: {
+          id: datosUsuario.id,
+          email: datosUsuario.email,
+          rol: datosUsuario.rol,
+          nombreCompleto: datosUsuario.nombreCompleto,
         },
       }
     } catch (e: any) {
@@ -191,18 +193,18 @@ export class AuthService {
   }
 
   async me(userId: string) {
-    const doc = await this.db.collection('u_profiles').doc(userId).get()
+    const doc = await this.db.collection(COLECCIONES.perfiles).doc(userId).get()
     if (!doc.exists) return null
     const d = doc.data()!
     return {
       id: d.id,
       email: d.email,
-      role: d.role,
-      full_name: d.full_name,
-      city: d.city,
-      state: d.state,
-      avatar_url: d.avatar_url,
-      is_verified: d.is_verified,
+      rol: d.rol,
+      nombreCompleto: d.nombreCompleto,
+      ciudad: d.ciudad,
+      estado: d.estado,
+      urlAvatar: d.urlAvatar,
+      verificado: d.verificado,
     }
   }
 }

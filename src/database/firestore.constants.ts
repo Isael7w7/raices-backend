@@ -9,6 +9,7 @@ export const COLECCIONES = {
   comentarios: 'comentarios',
   meGustas: 'meGustas',
   grupos: 'grupos',
+  miembrosGrupo: 'miembrosGrupo',
   mensajesDirectos: 'mensajesDirectos',
   notificaciones: 'notificaciones',
   postulaciones: 'postulaciones',
