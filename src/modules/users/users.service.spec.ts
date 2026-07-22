@@ -54,22 +54,22 @@ describe('UsersService', () => {
 
   describe('parseJsonField behavior (tested through getProfile)', () => {
     it('should parse valid JSON strings into arrays', async () => {
-      const profileData = { id: 'user1', full_name: 'Test User', email: 'test@test.com' };
+      const profileData = { id: 'user1', nombreCompleto: 'Test User', email: 'test@test.com' };
       const profilingData = {
-        disability_types: '["autismo","discapacidad_visual"]',
-        needs: '["comunicacion","movilidad"]',
-        education_history: '["escuela_regular","educacion_especial"]',
-        therapy_history: '["terapia_ocupacional","fonoaudiologia"]',
-        current_goals: '["mejorar_comunicacion"]',
-        support_areas: '["familia","terapeutas"]',
-        communication_modes: '["lenguaje_señas","aac"]',
-        mobility_needs: '["silla_ruedas"]',
-        tech_access: '["tablet","computadora"]',
-        preferred_zones: '["centro","norte"]',
-        disability_severity: 'moderada',
-        life_stage: 'adulthood',
-        current_concerns: 'some concerns',
-        support_level: 'medio',
+        tiposDiscapacidad: '["autismo","discapacidad_visual"]',
+        necesidades: '["comunicacion","movilidad"]',
+        historialEducacion: '["escuela_regular","educacion_especial"]',
+        historialTerapia: '["terapia_ocupacional","fonoaudiologia"]',
+        metasActuales: '["mejorar_comunicacion"]',
+        areasApoyo: '["familia","terapeutas"]',
+        modosComunicacion: '["lenguaje_señas","aac"]',
+        necesidadesMovilidad: '["silla_ruedas"]',
+        accesoTecnologia: '["tablet","computadora"]',
+        zonasPreferidas: '["centro","norte"]',
+        severidadDiscapacidad: 'moderada',
+        etapaVida: 'adulto',
+        preocupacionesActuales: 'some concerns',
+        nivelApoyo: 'medio',
       };
 
       firestoreMock.collection
@@ -79,31 +79,31 @@ describe('UsersService', () => {
       const result: any = await service.getProfile('user1');
 
       // All array fields should be parsed from JSON strings to actual arrays
-      expect(result.profiling.disability_types).toEqual(['autismo', 'discapacidad_visual']);
-      expect(result.profiling.needs).toEqual(['comunicacion', 'movilidad']);
-      expect(result.profiling.education_history).toEqual(['escuela_regular', 'educacion_especial']);
-      expect(result.profiling.therapy_history).toEqual(['terapia_ocupacional', 'fonoaudiologia']);
-      expect(result.profiling.current_goals).toEqual(['mejorar_comunicacion']);
-      expect(result.profiling.support_areas).toEqual(['familia', 'terapeutas']);
-      expect(result.profiling.communication_modes).toEqual(['lenguaje_señas', 'aac']);
-      expect(result.profiling.mobility_needs).toEqual(['silla_ruedas']);
-      expect(result.profiling.tech_access).toEqual(['tablet', 'computadora']);
-      expect(result.profiling.preferred_zones).toEqual(['centro', 'norte']);
+      expect(result.perfilNecesidades.tiposDiscapacidad).toEqual(['autismo', 'discapacidad_visual']);
+      expect(result.perfilNecesidades.necesidades).toEqual(['comunicacion', 'movilidad']);
+      expect(result.perfilNecesidades.historialEducacion).toEqual(['escuela_regular', 'educacion_especial']);
+      expect(result.perfilNecesidades.historialTerapia).toEqual(['terapia_ocupacional', 'fonoaudiologia']);
+      expect(result.perfilNecesidades.metasActuales).toEqual(['mejorar_comunicacion']);
+      expect(result.perfilNecesidades.areasApoyo).toEqual(['familia', 'terapeutas']);
+      expect(result.perfilNecesidades.modosComunicacion).toEqual(['lenguaje_señas', 'aac']);
+      expect(result.perfilNecesidades.necesidadesMovilidad).toEqual(['silla_ruedas']);
+      expect(result.perfilNecesidades.accesoTecnologia).toEqual(['tablet', 'computadora']);
+      expect(result.perfilNecesidades.zonasPreferidas).toEqual(['centro', 'norte']);
     });
 
     it('should return original string if JSON is malformed (not crash)', async () => {
-      const profileData = { id: 'user2', full_name: 'Bad Data User' };
+      const profileData = { id: 'user2', nombreCompleto: 'Bad Data User' };
       const profilingData = {
-        disability_types: 'not-valid-json[[',
-        needs: '{broken',
-        education_history: undefined,
-        therapy_history: null,
-        current_goals: '[]',
-        support_areas: '',
-        communication_modes: undefined,
-        mobility_needs: null,
-        tech_access: '[]',
-        preferred_zones: undefined,
+        tiposDiscapacidad: 'not-valid-json[[',
+        necesidades: '{broken',
+        historialEducacion: undefined,
+        historialTerapia: null,
+        metasActuales: '[]',
+        areasApoyo: '',
+        modosComunicacion: undefined,
+        necesidadesMovilidad: null,
+        accesoTecnologia: '[]',
+        zonasPreferidas: undefined,
       };
 
       firestoreMock.collection
@@ -113,36 +113,36 @@ describe('UsersService', () => {
       const result: any = await service.getProfile('user2');
 
       // Malformed JSON strings should be returned as-is (not crash)
-      expect(result.profiling.disability_types).toBe('not-valid-json[[');
-      expect(result.profiling.needs).toBe('{broken');
+      expect(result.perfilNecesidades.tiposDiscapacidad).toBe('not-valid-json[[');
+      expect(result.perfilNecesidades.necesidades).toBe('{broken');
 
       // Already-parsed values (undefined, null) should pass through
-      expect(result.profiling.education_history).toBeUndefined();
-      expect(result.profiling.therapy_history).toBeNull();
-      expect(result.profiling.communication_modes).toBeUndefined();
-      expect(result.profiling.preferred_zones).toBeUndefined();
+      expect(result.perfilNecesidades.historialEducacion).toBeUndefined();
+      expect(result.perfilNecesidades.historialTerapia).toBeNull();
+      expect(result.perfilNecesidades.modosComunicacion).toBeUndefined();
+      expect(result.perfilNecesidades.zonasPreferidas).toBeUndefined();
 
       // Valid JSON strings should still be parsed
-      expect(result.profiling.current_goals).toEqual([]);
-      expect(result.profiling.tech_access).toEqual([]);
+      expect(result.perfilNecesidades.metasActuales).toEqual([]);
+      expect(result.perfilNecesidades.accesoTecnologia).toEqual([]);
 
       // Empty string is not valid JSON, should be returned as-is
-      expect(result.profiling.support_areas).toBe('');
+      expect(result.perfilNecesidades.areasApoyo).toBe('');
     });
 
     it('should handle already-parsed arrays (not strings) gracefully', async () => {
-      const profileData = { id: 'user3', full_name: 'Array User' };
+      const profileData = { id: 'user3', nombreCompleto: 'Array User' };
       const profilingData = {
-        disability_types: ['autismo', 'discapacidad_visual'], // already array
-        needs: ['comunicacion'], // already array
-        education_history: ['escuela'], // already array
-        therapy_history: [], // empty array
-        current_goals: ['meta1'],
-        support_areas: ['area1'],
-        communication_modes: ['señas'],
-        mobility_needs: ['silla'],
-        tech_access: ['tablet'],
-        preferred_zones: ['centro'],
+        tiposDiscapacidad: ['autismo', 'discapacidad_visual'], // already array
+        necesidades: ['comunicacion'], // already array
+        historialEducacion: ['escuela'], // already array
+        historialTerapia: [], // empty array
+        metasActuales: ['meta1'],
+        areasApoyo: ['area1'],
+        modosComunicacion: ['señas'],
+        necesidadesMovilidad: ['silla'],
+        accesoTecnologia: ['tablet'],
+        zonasPreferidas: ['centro'],
       };
 
       firestoreMock.collection
@@ -152,16 +152,16 @@ describe('UsersService', () => {
       const result: any = await service.getProfile('user3');
 
       // Already arrays should pass through unchanged
-      expect(result.profiling.disability_types).toEqual(['autismo', 'discapacidad_visual']);
-      expect(result.profiling.needs).toEqual(['comunicacion']);
-      expect(result.profiling.education_history).toEqual(['escuela']);
-      expect(result.profiling.therapy_history).toEqual([]);
-      expect(result.profiling.current_goals).toEqual(['meta1']);
-      expect(result.profiling.support_areas).toEqual(['area1']);
-      expect(result.profiling.communication_modes).toEqual(['señas']);
-      expect(result.profiling.mobility_needs).toEqual(['silla']);
-      expect(result.profiling.tech_access).toEqual(['tablet']);
-      expect(result.profiling.preferred_zones).toEqual(['centro']);
+      expect(result.perfilNecesidades.tiposDiscapacidad).toEqual(['autismo', 'discapacidad_visual']);
+      expect(result.perfilNecesidades.necesidades).toEqual(['comunicacion']);
+      expect(result.perfilNecesidades.historialEducacion).toEqual(['escuela']);
+      expect(result.perfilNecesidades.historialTerapia).toEqual([]);
+      expect(result.perfilNecesidades.metasActuales).toEqual(['meta1']);
+      expect(result.perfilNecesidades.areasApoyo).toEqual(['area1']);
+      expect(result.perfilNecesidades.modosComunicacion).toEqual(['señas']);
+      expect(result.perfilNecesidades.necesidadesMovilidad).toEqual(['silla']);
+      expect(result.perfilNecesidades.accesoTecnologia).toEqual(['tablet']);
+      expect(result.perfilNecesidades.zonasPreferidas).toEqual(['centro']);
     });
   });
 
@@ -176,7 +176,7 @@ describe('UsersService', () => {
     });
 
     it('should return profiling as null if no profiling data exists', async () => {
-      const profileData = { id: 'user4', full_name: 'No Profiling' };
+      const profileData = { id: 'user4', nombreCompleto: 'No Profiling' };
 
       firestoreMock.collection
         .mockReturnValueOnce(mockCollection(mockDoc(profileData)))
@@ -186,30 +186,30 @@ describe('UsersService', () => {
 
       // Note: profileData.id ('user4') overwrites doc.id via spread
       expect(result.id).toBe('user4');
-      expect(result.full_name).toBe('No Profiling');
-      expect(result.profiling).toBeNull();
+      expect(result.nombreCompleto).toBe('No Profiling');
+      expect(result.perfilNecesidades).toBeNull();
     });
 
     it('should return full profile with parsed profiling data', async () => {
       const profileData = {
-        id: 'user5', full_name: 'Full User', email: 'full@test.com',
-        city: 'CDMX', state: 'Mexico', role: 'user',
+        id: 'user5', nombreCompleto: 'Full User', email: 'full@test.com',
+        ciudad: 'CDMX', estado: 'Mexico', rol: 'user',
       };
       const profilingData = {
-        disability_types: '["autismo"]',
-        disability_severity: 'leve',
-        communication_modes: '["verbal"]',
-        mobility_needs: '[]',
-        tech_access: '["celular"]',
-        preferred_zones: '["sur"]',
-        needs: '["apoyo_emocional"]',
-        current_goals: '["integracion_social"]',
-        support_areas: '["trabajo"]',
-        education_history: '["preescolar"]',
-        therapy_history: '["psicologia"]',
-        life_stage: 'adult',
-        current_concerns: 'ansiedad',
-        support_level: 'alto',
+        tiposDiscapacidad: '["autismo"]',
+        severidadDiscapacidad: 'leve',
+        modosComunicacion: '["verbal"]',
+        necesidadesMovilidad: '[]',
+        accesoTecnologia: '["celular"]',
+        zonasPreferidas: '["sur"]',
+        necesidades: '["apoyo_emocional"]',
+        metasActuales: '["integracion_social"]',
+        areasApoyo: '["trabajo"]',
+        historialEducacion: '["preescolar"]',
+        historialTerapia: '["psicologia"]',
+        etapaVida: 'adulto',
+        preocupacionesActuales: 'ansiedad',
+        nivelApoyo: 'alto',
       };
 
       firestoreMock.collection
@@ -219,29 +219,29 @@ describe('UsersService', () => {
       const result: any = await service.getProfile('user5');
 
       // Profile fields
-      expect(result.full_name).toBe('Full User');
+      expect(result.nombreCompleto).toBe('Full User');
       expect(result.email).toBe('full@test.com');
-      expect(result.city).toBe('CDMX');
+      expect(result.ciudad).toBe('CDMX');
 
       // Profiling fields parsed correctly
-      expect(result.profiling.disability_types).toEqual(['autismo']);
-      expect(result.profiling.disability_severity).toBe('leve');
-      expect(result.profiling.communication_modes).toEqual(['verbal']);
-      expect(result.profiling.needs).toEqual(['apoyo_emocional']);
-      expect(result.profiling.current_goals).toEqual(['integracion_social']);
-      expect(result.profiling.support_areas).toEqual(['trabajo']);
-      expect(result.profiling.education_history).toEqual(['preescolar']);
-      expect(result.profiling.therapy_history).toEqual(['psicologia']);
-      expect(result.profiling.life_stage).toBe('adult');
-      expect(result.profiling.current_concerns).toBe('ansiedad');
-      expect(result.profiling.support_level).toBe('alto');
+      expect(result.perfilNecesidades.tiposDiscapacidad).toEqual(['autismo']);
+      expect(result.perfilNecesidades.severidadDiscapacidad).toBe('leve');
+      expect(result.perfilNecesidades.modosComunicacion).toEqual(['verbal']);
+      expect(result.perfilNecesidades.necesidades).toEqual(['apoyo_emocional']);
+      expect(result.perfilNecesidades.metasActuales).toEqual(['integracion_social']);
+      expect(result.perfilNecesidades.areasApoyo).toEqual(['trabajo']);
+      expect(result.perfilNecesidades.historialEducacion).toEqual(['preescolar']);
+      expect(result.perfilNecesidades.historialTerapia).toEqual(['psicologia']);
+      expect(result.perfilNecesidades.etapaVida).toBe('adulto');
+      expect(result.perfilNecesidades.preocupacionesActuales).toBe('ansiedad');
+      expect(result.perfilNecesidades.nivelApoyo).toBe('alto');
     });
   });
 
   // ── saveProfilingData ──────────────────────────────────────────────────
 
   describe('saveProfilingData', () => {
-    it('should save all fields including new ones (education_history, therapy_history)', async () => {
+    it('should save all fields including new ones (historialEducacion, historialTerapia)', async () => {
       const mockDocRef = {
         set: jest.fn().mockResolvedValue(undefined),
         update: jest.fn().mockResolvedValue(undefined),
@@ -255,19 +255,19 @@ describe('UsersService', () => {
       });
 
       const data = {
-        disability_types: ['autismo'],
-        communication_modes: ['señas'],
-        mobility_needs: ['silla'],
-        tech_access: ['tablet'],
-        preferred_zones: ['centro'],
-        needs: ['comunicacion'],
-        current_goals: ['integracion'],
-        support_areas: ['familia'],
-        education_history: ['escuela_regular'],
-        therapy_history: ['terapia_ocupacional'],
-        life_stage: 'adulthood',
-        current_concerns: 'ansiedad',
-        support_level: 'medio',
+        tiposDiscapacidad: ['autismo'],
+        modosComunicacion: ['señas'],
+        necesidadesMovilidad: ['silla'],
+        accesoTecnologia: ['tablet'],
+        zonasPreferidas: ['centro'],
+        necesidades: ['comunicacion'],
+        metasActuales: ['integracion'],
+        areasApoyo: ['familia'],
+        historialEducacion: ['escuela_regular'],
+        historialTerapia: ['terapia_ocupacional'],
+        etapaVida: 'adulto',
+        preocupacionesActuales: 'ansiedad',
+        nivelApoyo: 'medio',
       };
 
       await service.saveProfilingData('user1', data);
@@ -277,21 +277,21 @@ describe('UsersService', () => {
       const payload = mockDocRef.set.mock.calls[0][0];
 
       // Verify all array fields are JSON stringified
-      expect(JSON.parse(payload.disability_types)).toEqual(['autismo']);
-      expect(JSON.parse(payload.needs)).toEqual(['comunicacion']);
-      expect(JSON.parse(payload.education_history)).toEqual(['escuela_regular']);
-      expect(JSON.parse(payload.therapy_history)).toEqual(['terapia_ocupacional']);
-      expect(JSON.parse(payload.current_goals)).toEqual(['integracion']);
-      expect(JSON.parse(payload.support_areas)).toEqual(['familia']);
+      expect(JSON.parse(payload.tiposDiscapacidad)).toEqual(['autismo']);
+      expect(JSON.parse(payload.necesidades)).toEqual(['comunicacion']);
+      expect(JSON.parse(payload.historialEducacion)).toEqual(['escuela_regular']);
+      expect(JSON.parse(payload.historialTerapia)).toEqual(['terapia_ocupacional']);
+      expect(JSON.parse(payload.metasActuales)).toEqual(['integracion']);
+      expect(JSON.parse(payload.areasApoyo)).toEqual(['familia']);
 
       // Verify string fields are passed as-is
-      expect(payload.life_stage).toBe('adulthood');
-      expect(payload.current_concerns).toBe('ansiedad');
-      expect(payload.support_level).toBe('medio');
+      expect(payload.etapaVida).toBe('adulto');
+      expect(payload.preocupacionesActuales).toBe('ansiedad');
+      expect(payload.nivelApoyo).toBe('medio');
     });
 
     it('should update existing profiling record', async () => {
-      const existingDoc = { id: 'existing-id', data: () => ({ user_id: 'user1' }) };
+      const existingDoc = { id: 'existing-id', data: () => ({ usuarioId: 'user1' }) };
       const mockDocRef = {
         set: jest.fn().mockResolvedValue(undefined),
         update: jest.fn().mockResolvedValue(undefined),
@@ -305,9 +305,9 @@ describe('UsersService', () => {
       });
 
       const data = {
-        disability_types: ['nuevo_tipo'],
-        education_history: ['universidad'],
-        therapy_history: ['nueva_terapia'],
+        tiposDiscapacidad: ['nuevo_tipo'],
+        historialEducacion: ['universidad'],
+        historialTerapia: ['nueva_terapia'],
       };
 
       await service.saveProfilingData('user1', data);
@@ -317,8 +317,8 @@ describe('UsersService', () => {
       expect(mockDocRef.set).not.toHaveBeenCalled();
 
       const payload = mockDocRef.update.mock.calls[0][0];
-      expect(JSON.parse(payload.education_history)).toEqual(['universidad']);
-      expect(JSON.parse(payload.therapy_history)).toEqual(['nueva_terapia']);
+      expect(JSON.parse(payload.historialEducacion)).toEqual(['universidad']);
+      expect(JSON.parse(payload.historialTerapia)).toEqual(['nueva_terapia']);
     });
   });
 });
