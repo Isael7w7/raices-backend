@@ -4,6 +4,7 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { NotificationsService } from '../notifications/notifications.service'
 import { EmailService } from '../email/email.service'
+import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 
 const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
   tea: 'TEA / Autismo', motriz: 'Motriz', intelectual: 'Intelectual',
@@ -138,10 +139,7 @@ export class AdminService {
     const perfiles = perfilesSnap.docs.map(d => d.data())
     const instituciones = institucionesSnap.docs.map(d => d.data())
 
-    const parsear = (v: any): any[] => {
-      if (!v) return []
-      try { const p = JSON.parse(v); return Array.isArray(p) ? p : [] } catch { return [] }
-    }
+    const parsear = (v: any): any[] => parsearTiposDiscapacidad(v)
 
     const demandaPorDiscapacidad: Record<string, number> = {}
     const necesidadesCount: Record<string, number> = {}
@@ -249,8 +247,11 @@ export class AdminService {
   }
 
   async getPendingInstitutions() {
-    const snap = await this.col(COLECCIONES.instituciones).where('activa', '==', false).orderBy('fechaCreacion', 'asc').get()
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const snap = await this.col(COLECCIONES.instituciones).where('activa', '==', false).get()
+    const instituciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    instituciones.sort((a: any, b: any) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
+    return instituciones
   }
 
   async approveInstitution(id: string) {
@@ -446,7 +447,7 @@ export class AdminService {
 
     const cubiertas = new Set<string>()
     for (const inst of instsActivas) {
-      try { (JSON.parse(inst.tiposDiscapacidad ?? '[]') as string[]).forEach(t => cubiertas.add(t.toLowerCase().trim())) } catch {}
+      parsearTiposDiscapacidad(inst.tiposDiscapacidad).forEach(t => cubiertas.add(t.toLowerCase().trim()))
     }
     const TODOS_TIPOS = ['motriz', 'visual', 'auditiva', 'intelectual', 'psicosocial', 'tea', 'múltiple', 'lenguaje']
     const sinCubrir = TODOS_TIPOS.filter(t => !cubiertas.has(t))

@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { randomUUID } from 'crypto'
+import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class JobsService {
@@ -11,8 +12,13 @@ export class JobsService {
   async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string } = {}) {
     let q = this.db.collection(COLECCIONES.vacantes).where('activa', '==', true)
     if (filtros.modalidad) q = q.where('modalidad', '==', filtros.modalidad)
-    const snap = await q.orderBy('fechaCreacion', 'desc').get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const snap = await q.get()
     let vacantes = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+
+    // Ordenar en memoria por fecha de creación descendente
+    vacantes.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     const instIds = [...new Set(vacantes.map(v => v.institucionId))]
     const mapaInst = new Map<string, any>()
@@ -30,7 +36,7 @@ export class JobsService {
       const inst = mapaInst.get(v.institucionId) ?? {}
       return {
         ...v,
-        tiposDiscapacidad: (() => { try { return JSON.parse(v.tiposDiscapacidad) } catch { return [] } })(),
+        tiposDiscapacidad: parsearTiposDiscapacidad(v.tiposDiscapacidad),
         nombreInstitucion: inst.nombre ?? null,
         ciudadInstitucion: inst.ciudad ?? null,
         institucionVerificada: inst.verificada ?? false,
@@ -46,7 +52,7 @@ export class JobsService {
     const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(vacante.institucionId).get()
     const inst = instDoc.data() ?? {}
 
-    vacante.tiposDiscapacidad = (() => { try { return JSON.parse(vacante.tiposDiscapacidad) } catch { return [] } })()
+    vacante.tiposDiscapacidad = parsearTiposDiscapacidad(vacante.tiposDiscapacidad)
     return {
       ...vacante,
       nombreInstitucion: inst.nombre ?? null,
@@ -77,8 +83,11 @@ export class JobsService {
 
   async myApplications(usuarioId: string) {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
-      .where('usuarioId', '==', usuarioId).orderBy('fechaCreacion', 'desc').get()
+      .where('usuarioId', '==', usuarioId).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     const vacanteIds = [...new Set(postulaciones.map(p => p.vacanteId))]
     const mapaVacantes = new Map<string, any>()
@@ -115,7 +124,9 @@ export class JobsService {
       horario: dto.horario ?? '', rangoSalario: dto.rangoSalario ?? '',
       ciudad: dto.ciudad ?? '', estado: dto.estado ?? '',
       inclusivaDiscapacidad: dto.inclusivaDiscapacidad !== false,
-      tiposDiscapacidad: JSON.stringify(dto.tiposDiscapacidad ?? []),
+      tiposDiscapacidad: Array.isArray(dto.tiposDiscapacidad)
+        ? dto.tiposDiscapacidad
+        : parsearTiposDiscapacidad(dto.tiposDiscapacidad),
       activa: true, fechaCreacion: new Date().toISOString(),
     })
     return this.findOne(id)

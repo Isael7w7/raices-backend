@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class FavoritesService {
@@ -23,10 +24,10 @@ export class FavoritesService {
         .where('__name__', 'in', lote).get()
       instituciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() })))
     }
-    return instituciones.map((i: any) => {
-      try { i.tiposDiscapacidad = JSON.parse(i.tiposDiscapacidad ?? '[]') } catch { i.tiposDiscapacidad = [] }
-      return i
-    })
+    return instituciones.map((i: any) => ({
+      ...i,
+      tiposDiscapacidad: parsearTiposDiscapacidad(i.tiposDiscapacidad),
+    }))
   }
 
   async toggle(usuarioId: string, institucionId: string) {

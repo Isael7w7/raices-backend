@@ -2,6 +2,7 @@ import { Injectable, Inject, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
 
 const RESPUESTAS_MOCK = [
   'Entiendo tu consulta. Basándome en tu perfil, te recomiendo explorar las instituciones de la categoría funcional en tu ciudad. ¿Quieres que te muestre opciones específicas?',
@@ -46,7 +47,7 @@ export class AiService {
     }
 
     const tiposDiscapacidad = perfil?.tiposDiscapacidad
-      ? JSON.parse(perfil.tiposDiscapacidad).join(', ')
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad).join(', ')
       : 'no especificadas'
 
     const sistema = `Eres el asistente de Raíces para Florecer, ecosistema digital para personas con discapacidad en México.
@@ -90,7 +91,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
     ])
 
     const tiposDiscapacidad = perfil?.tiposDiscapacidad
-      ? (() => { try { return JSON.parse(perfil.tiposDiscapacidad) } catch { return [] } })()
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
       : []
     const sinDiagnostico = tiposDiscapacidad.length === 0
     const datosUsuario = registroUsuario.data()
@@ -124,8 +125,8 @@ PERFIL DEL USUARIO:
 - Discapacidades: ${tiposDiscapacidad.length > 0 ? tiposDiscapacidad.join(', ') : 'sin diagnóstico registrado'}
 - Ciudad: ${datosUsuario?.ciudad ?? 'no especificada'}, ${datosUsuario?.estado ?? ''}
 - Nivel de soporte: ${perfil.nivelApoyo ?? 'no especificado'}
-- Metas actuales: ${perfil.metasActuales ? (() => { try { return JSON.parse(perfil.metasActuales).join(', ') } catch { return perfil.metasActuales } })() : 'no especificadas'}
-- Áreas de soporte: ${perfil.areasApoyo ? (() => { try { return JSON.parse(perfil.areasApoyo).join(', ') } catch { return perfil.areasApoyo } })() : 'no especificadas'}
+- Metas actuales: ${perfil.metasActuales ? (parsearCampoJson(perfil.metasActuales) as string[]).join(', ') : 'no especificadas'}
+- Áreas de soporte: ${perfil.areasApoyo ? (parsearCampoJson(perfil.areasApoyo) as string[]).join(', ') : 'no especificadas'}
 - Preocupaciones actuales: ${perfil.preocupacionesActuales ?? 'ninguna'}
 
 HISTORIAL DE ACTIVIDAD:

@@ -10,15 +10,25 @@ export class CommunityService {
 
   async getGroups() {
     const snap = await this.db.collection(COLECCIONES.grupos)
-      .where('esPublico', '==', true).orderBy('cantidadMiembros', 'desc').get()
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .where('esPublico', '==', true).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
+    return grupos
   }
 
   async getPosts(grupoId?: string, usuarioId?: string, limite = 20) {
     let q: Query = this.db.collection(COLECCIONES.publicaciones)
     if (grupoId) q = q.where('grupoId', '==', grupoId)
-    const publicacionSnap = await q.orderBy('fechaCreacion', 'desc').limit(limite).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const publicacionSnap = await q.get()
     const publicaciones = publicacionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+
+    // Ordenar en memoria y limitar
+    publicaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+    publicaciones.splice(limite)
 
     const autoresIds = [...new Set(publicaciones.map(p => p.autorId))]
     const mapaAutores = new Map<string, any>()
@@ -45,8 +55,11 @@ export class CommunityService {
 
   async getComments(publicacionId: string) {
     const snap = await this.db.collection(COLECCIONES.comentarios)
-      .where('publicacionId', '==', publicacionId).orderBy('fechaCreacion', 'asc').get()
+      .where('publicacionId', '==', publicacionId).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const comentarios = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
 
     const autoresIds = [...new Set(comentarios.map(c => c.autorId))]
     const mapaAutores = new Map<string, any>()

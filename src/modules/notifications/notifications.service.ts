@@ -32,10 +32,14 @@ export class NotificationsService {
 
   async findByUser(usuarioId: string) {
     const snap = await this.db.collection(COLECCIONES.notificaciones)
-      .where('usuarioId', '==', usuarioId)
-      .orderBy('fechaCreacion', 'desc')
-      .limit(50).get()
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .where('usuarioId', '==', usuarioId).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const notificaciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    notificaciones.sort((a: any, b: any) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+
+    // Limitar a 50 después de ordenar
+    return notificaciones.slice(0, 50)
   }
 
   async markRead(usuarioId: string, notificacionId: string) {

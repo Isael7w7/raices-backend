@@ -83,8 +83,12 @@ export class UsersService {
 
   async getDependents(usuarioId: string) {
     const snap = await this.col(COLECCIONES.dependientes)
-      .where('tutorId', '==', usuarioId).orderBy('fechaCreacion', 'asc').get()
-    return snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
+      .where('tutorId', '==', usuarioId).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
+    dependientes.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
+    return dependientes
   }
 
   async addDependent(usuarioId: string, datos: any) {

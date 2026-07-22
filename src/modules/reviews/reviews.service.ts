@@ -10,8 +10,11 @@ export class ReviewsService {
 
   async findByInstitution(institucionId: string) {
     const revSnap = await this.db.collection(COLECCIONES.resenas)
-      .where('institucionId', '==', institucionId).orderBy('fechaCreacion', 'desc').get()
+      .where('institucionId', '==', institucionId).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    resenas.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     const usuariosIds = [...new Set(resenas.map(r => r.usuarioId))]
     const mapaUsuarios = new Map<string, any>()
@@ -57,8 +60,11 @@ export class ReviewsService {
 
   async myReviews(usuarioId: string) {
     const revSnap = await this.db.collection(COLECCIONES.resenas)
-      .where('usuarioId', '==', usuarioId).orderBy('fechaCreacion', 'desc').get()
+      .where('usuarioId', '==', usuarioId).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    resenas.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     const instIds = [...new Set(resenas.map(r => r.institucionId))]
     const mapaInst = new Map<string, any>()
