@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ConflictException } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -114,6 +114,29 @@ export class JobsService {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('usuarioId', '==', usuarioId).get()
     return snap.docs.map(d => d.data().vacanteId)
+  }
+
+  async createForUser(user: any, dto: any) {
+    // Validar rol
+    if (user.rol !== 'institucion' && user.rol !== 'admin') {
+      throw new ForbiddenException('Solo instituciones y administradores pueden crear vacantes')
+    }
+
+    let institucionId = dto.institucionId
+
+    if (user.rol === 'institucion') {
+      // Buscar la institución del usuario por creadoPor
+      const snap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (snap.empty) {
+        throw new NotFoundException('No tienes una institución registrada. Crea una institución primero.')
+      }
+      institucionId = snap.docs[0].id
+    } else if (user.rol === 'admin' && !institucionId) {
+      throw new BadRequestException('Como administrador, debes proporcionar el ID de la institución (institucionId).')
+    }
+
+    return this.createJob(institucionId, dto)
   }
 
   async createJob(institucionId: string, dto: any) {
