@@ -2,93 +2,94 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, CollectionReference } from 'firebase-admin/firestore'
 import { randomUUID } from 'crypto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import type {
-  Notification,
-  CreateNotificationData,
-  INotificationRepository,
+  Notificacion,
+  CrearNotificacionDatos,
+  IRepositorioNotificacion,
 } from '../interfaces/notification.repository.interface'
 
 @Injectable()
-export class FirestoreNotificationRepository implements INotificationRepository {
+export class RepositorioNotificacionFirestore implements IRepositorioNotificacion {
   private readonly col: CollectionReference
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    this.col = this.db.collection('u_notifications')
+    this.col = this.db.collection(COLECCIONES.notificaciones)
   }
 
-  async create(data: CreateNotificationData): Promise<Notification> {
+  async crear(datos: CrearNotificacionDatos): Promise<Notificacion> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    const notification: Notification = {
+    const ahora = new Date().toISOString()
+    const notificacion: Notificacion = {
       id,
-      user_id: data.user_id,
-      type: data.type,
-      title: data.title,
-      body: data.body,
-      ref_id: data.ref_id ?? null,
-      is_read: false,
-      created_at: now,
+      usuarioId: datos.usuarioId,
+      tipo: datos.tipo,
+      titulo: datos.titulo,
+      cuerpo: datos.cuerpo,
+      referenciaId: datos.referenciaId ?? null,
+      leida: false,
+      fechaCreacion: ahora,
     }
-    await this.col.doc(id).set(notification)
-    return notification
+    await this.col.doc(id).set(notificacion)
+    return notificacion
   }
 
-  async findByUser(userId: string): Promise<Notification[]> {
+  async listarPorUsuario(usuarioId: string): Promise<Notificacion[]> {
     const snap = await this.col
-      .where('user_id', '==', userId)
-      .orderBy('created_at', 'desc')
+      .where('usuarioId', '==', usuarioId)
+      .orderBy('fechaCreacion', 'desc')
       .limit(50)
       .get()
-    return snap.docs.map((d) => this.toDomain(d.id, d.data()))
+    return snap.docs.map((d) => this.aDominio(d.id, d.data()))
   }
 
-  async getUnreadCount(userId: string): Promise<number> {
+  async contarNoLeidas(usuarioId: string): Promise<number> {
     const snap = await this.col
-      .where('user_id', '==', userId)
-      .where('is_read', '==', false)
+      .where('usuarioId', '==', usuarioId)
+      .where('leida', '==', false)
       .get()
     return snap.size
   }
 
-  async markAsRead(userId: string, notifId: string): Promise<void> {
-    const doc = await this.col.doc(notifId).get()
-    if (doc.exists && doc.data()?.user_id === userId) {
-      await doc.ref.update({ is_read: true })
+  async marcarComoLeida(usuarioId: string, notificacionId: string): Promise<void> {
+    const doc = await this.col.doc(notificacionId).get()
+    if (doc.exists && doc.data()?.usuarioId === usuarioId) {
+      await doc.ref.update({ leida: true })
     }
   }
 
-  async markAllAsRead(userId: string): Promise<void> {
+  async marcarTodasComoLeidas(usuarioId: string): Promise<void> {
     const snap = await this.col
-      .where('user_id', '==', userId)
-      .where('is_read', '==', false)
+      .where('usuarioId', '==', usuarioId)
+      .where('leida', '==', false)
       .get()
     if (snap.empty) return
-    const batch = this.db.batch()
+    const lote = this.db.batch()
     for (const doc of snap.docs) {
-      batch.update(doc.ref, { is_read: true })
+      lote.update(doc.ref, { leida: true })
     }
-    await batch.commit()
+    await lote.commit()
   }
 
-  async delete(notifId: string): Promise<void> {
-    await this.col.doc(notifId).delete()
+  async eliminar(notificacionId: string): Promise<void> {
+    await this.col.doc(notificacionId).delete()
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private toDomain(
+  private aDominio(
     id: string,
     data: FirebaseFirestore.DocumentData,
-  ): Notification {
+  ): Notificacion {
     return {
       id,
-      user_id: data.user_id ?? '',
-      type: data.type ?? '',
-      title: data.title ?? '',
-      body: data.body ?? '',
-      ref_id: data.ref_id ?? null,
-      is_read: data.is_read ?? false,
-      created_at: data.created_at ?? '',
+      usuarioId: data.usuarioId ?? '',
+      tipo: data.tipo ?? '',
+      titulo: data.titulo ?? '',
+      cuerpo: data.cuerpo ?? '',
+      referenciaId: data.referenciaId ?? null,
+      leida: data.leida ?? false,
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 }

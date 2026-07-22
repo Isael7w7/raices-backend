@@ -2,138 +2,139 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, CollectionReference } from 'firebase-admin/firestore'
 import { randomUUID } from 'crypto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import type {
-  Review,
-  Favorite,
-  CreateReviewData,
-  IFavoriteReviewRepository,
+  Resena,
+  Favorito,
+  CrearResenaDatos,
+  IRepositorioFavoritoResena,
 } from '../interfaces/favorite-review.repository.interface'
 
 @Injectable()
-export class FirestoreFavoriteReviewRepository implements IFavoriteReviewRepository {
-  private readonly favCol: CollectionReference
-  private readonly revCol: CollectionReference
+export class RepositorioFavoritoResenaFirestore implements IRepositorioFavoritoResena {
+  private readonly colFavoritos: CollectionReference
+  private readonly colResenas: CollectionReference
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    this.favCol = this.db.collection('u_favorites')
-    this.revCol = this.db.collection('u_reviews')
+    this.colFavoritos = this.db.collection(COLECCIONES.favoritos)
+    this.colResenas = this.db.collection(COLECCIONES.resenas)
   }
 
   // ── Favoritos ──────────────────────────────────────────────────────────
 
-  async findFavoritesByUser(userId: string): Promise<Favorite[]> {
-    const snap = await this.favCol.where('user_id', '==', userId).get()
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Favorite))
+  async listarFavoritosPorUsuario(usuarioId: string): Promise<Favorito[]> {
+    const snap = await this.colFavoritos.where('usuarioId', '==', usuarioId).get()
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Favorito))
   }
 
-  async findFavoriteByUserAndInstitution(
-    userId: string,
-    institutionId: string,
-  ): Promise<Favorite | null> {
-    const snap = await this.favCol
-      .where('user_id', '==', userId)
-      .where('institution_id', '==', institutionId)
+  async buscarFavoritoPorUsuarioEInstitucion(
+    usuarioId: string,
+    institucionId: string,
+  ): Promise<Favorito | null> {
+    const snap = await this.colFavoritos
+      .where('usuarioId', '==', usuarioId)
+      .where('institucionId', '==', institucionId)
       .limit(1)
       .get()
     if (snap.empty) return null
-    return { id: snap.docs[0].id, ...snap.docs[0].data() } as Favorite
+    return { id: snap.docs[0].id, ...snap.docs[0].data() } as Favorito
   }
 
-  async createFavorite(userId: string, institutionId: string): Promise<void> {
-    await this.favCol.doc(randomUUID()).set({
-      user_id: userId,
-      institution_id: institutionId,
-      created_at: new Date().toISOString(),
+  async crearFavorito(usuarioId: string, institucionId: string): Promise<void> {
+    await this.colFavoritos.doc(randomUUID()).set({
+      usuarioId,
+      institucionId,
+      fechaCreacion: new Date().toISOString(),
     })
   }
 
-  async deleteFavorite(favId: string): Promise<void> {
-    await this.favCol.doc(favId).delete()
+  async eliminarFavorito(favoritoId: string): Promise<void> {
+    await this.colFavoritos.doc(favoritoId).delete()
   }
 
-  async getFavoriteInstitutionIds(userId: string): Promise<string[]> {
-    const snap = await this.favCol.where('user_id', '==', userId).get()
-    return snap.docs.map((d) => d.data().institution_id as string)
+  async obtenerIdsInstitucionesFavoritas(usuarioId: string): Promise<string[]> {
+    const snap = await this.colFavoritos.where('usuarioId', '==', usuarioId).get()
+    return snap.docs.map((d) => d.data().institucionId as string)
   }
 
   // ── Reseñas ────────────────────────────────────────────────────────────
 
-  async findReviewsByInstitution(institutionId: string): Promise<Review[]> {
-    const snap = await this.revCol
-      .where('institution_id', '==', institutionId)
-      .orderBy('created_at', 'desc')
+  async listarResenasPorInstitucion(institucionId: string): Promise<Resena[]> {
+    const snap = await this.colResenas
+      .where('institucionId', '==', institucionId)
+      .orderBy('fechaCreacion', 'desc')
       .get()
-    return snap.docs.map((d) => this.reviewToDomain(d.id, d.data()))
+    return snap.docs.map((d) => this.resenaADominio(d.id, d.data()))
   }
 
-  async findReviewByUserAndInstitution(
-    userId: string,
-    institutionId: string,
-  ): Promise<Review | null> {
-    const snap = await this.revCol
-      .where('user_id', '==', userId)
-      .where('institution_id', '==', institutionId)
+  async buscarResenaPorUsuarioEInstitucion(
+    usuarioId: string,
+    institucionId: string,
+  ): Promise<Resena | null> {
+    const snap = await this.colResenas
+      .where('usuarioId', '==', usuarioId)
+      .where('institucionId', '==', institucionId)
       .limit(1)
       .get()
     if (snap.empty) return null
-    return this.reviewToDomain(snap.docs[0].id, snap.docs[0].data())
+    return this.resenaADominio(snap.docs[0].id, snap.docs[0].data())
   }
 
-  async findReviewById(id: string): Promise<Review | null> {
-    const doc = await this.revCol.doc(id).get()
+  async buscarResenaPorId(id: string): Promise<Resena | null> {
+    const doc = await this.colResenas.doc(id).get()
     if (!doc.exists) return null
-    return this.reviewToDomain(doc.id, doc.data()!)
+    return this.resenaADominio(doc.id, doc.data()!)
   }
 
-  async createReview(data: CreateReviewData): Promise<Review> {
+  async crearResena(datos: CrearResenaDatos): Promise<Resena> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    const review: Review = {
+    const ahora = new Date().toISOString()
+    const resena: Resena = {
       id,
-      user_id: data.user_id,
-      institution_id: data.institution_id,
-      rating: data.rating,
-      comment: data.comment,
-      created_at: now,
+      usuarioId: datos.usuarioId,
+      institucionId: datos.institucionId,
+      calificacion: datos.calificacion,
+      comentario: datos.comentario,
+      fechaCreacion: ahora,
     }
-    await this.revCol.doc(id).set(review)
-    return review
+    await this.colResenas.doc(id).set(resena)
+    return resena
   }
 
-  async updateReview(id: string, rating: number, comment: string): Promise<void> {
-    await this.revCol.doc(id).update({ rating, comment })
+  async actualizarResena(id: string, calificacion: number, comentario: string): Promise<void> {
+    await this.colResenas.doc(id).update({ calificacion, comentario })
   }
 
-  async findReviewsByUser(userId: string): Promise<Review[]> {
-    const snap = await this.revCol
-      .where('user_id', '==', userId)
-      .orderBy('created_at', 'desc')
+  async listarResenasPorUsuario(usuarioId: string): Promise<Resena[]> {
+    const snap = await this.colResenas
+      .where('usuarioId', '==', usuarioId)
+      .orderBy('fechaCreacion', 'desc')
       .get()
-    return snap.docs.map((d) => this.reviewToDomain(d.id, d.data()))
+    return snap.docs.map((d) => this.resenaADominio(d.id, d.data()))
   }
 
-  async findAllReviews(limit = 100): Promise<Review[]> {
-    const snap = await this.revCol.orderBy('created_at', 'desc').limit(limit).get()
-    return snap.docs.map((d) => this.reviewToDomain(d.id, d.data()))
+  async listarTodasResenas(limite = 100): Promise<Resena[]> {
+    const snap = await this.colResenas.orderBy('fechaCreacion', 'desc').limit(limite).get()
+    return snap.docs.map((d) => this.resenaADominio(d.id, d.data()))
   }
 
-  async deleteReview(id: string): Promise<void> {
-    await this.revCol.doc(id).delete()
+  async eliminarResena(id: string): Promise<void> {
+    await this.colResenas.doc(id).delete()
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private reviewToDomain(
+  private resenaADominio(
     id: string,
     data: FirebaseFirestore.DocumentData,
-  ): Review {
+  ): Resena {
     return {
       id,
-      user_id: data.user_id ?? '',
-      institution_id: data.institution_id ?? '',
-      rating: data.rating ?? 0,
-      comment: data.comment ?? '',
-      created_at: data.created_at ?? '',
+      usuarioId: data.usuarioId ?? '',
+      institucionId: data.institucionId ?? '',
+      calificacion: data.calificacion ?? 0,
+      comentario: data.comentario ?? '',
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 }

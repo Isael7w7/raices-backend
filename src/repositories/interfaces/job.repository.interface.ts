@@ -1,101 +1,75 @@
-// ─── Vacante (dominio) ────────────────────────────────────────────────────
-// Representa un documento de la colección Firestore 'p_jobs',
-// con disability_types ya parseado de JSON string → string[].
-export interface Job {
+// ─── Vacante (dominio) ────────────────────────────────────────────────
+export interface Vacante {
   id: string
-  institution_id: string
-  title: string
-  description: string
-  requirements: string
-  modality: string
-  schedule: string
-  salary_range: string
-  city: string
-  state: string
-  disability_inclusive: boolean
-  /** Tipos de discapacidad a los que está dirigida (ya parseados) */
-  disability_types: string[]
-  is_active: boolean
-  created_at: string
+  institucionId: string
+  titulo: string
+  descripcion: string
+  requisitos: string
+  modalidad: string
+  horario: string
+  rangoSalario: string
+  ciudad: string
+  estado: string
+  inclusivaDiscapacidad: boolean
+  tiposDiscapacidad: string[]
+  activa: boolean
+  fechaCreacion: string
 }
 
-// ─── Postulación (dominio) ────────────────────────────────────────────────
-export interface JobApplication {
+// ─── Postulación (dominio) ────────────────────────────────────────────
+export interface Postulacion {
   id: string
-  job_id: string
-  user_id: string
-  cover_letter: string
-  status: string
-  created_at: string
+  vacanteId: string
+  usuarioId: string
+  cartaPresentacion: string
+  estado: string
+  fechaCreacion: string
 }
 
-// ─── Filtros de búsqueda ──────────────────────────────────────────────────
-export interface JobFilters {
-  city?: string
-  modality?: string
-  disability_type?: string
+// ─── Filtros de búsqueda ──────────────────────────────────────────────
+export interface FiltrosVacante {
+  ciudad?: string
+  modalidad?: string
+  tipoDiscapacidad?: string
 }
 
-// ─── DTOs de creación ─────────────────────────────────────────────────────
-export interface CreateJobData {
-  institution_id: string
-  title: string
-  description?: string
-  requirements?: string
-  modality?: string
-  schedule?: string
-  salary_range?: string
-  city?: string
-  state?: string
-  disability_inclusive?: boolean
-  disability_types?: string[]
+// ─── DTOs de creación ─────────────────────────────────────────────────
+export interface CrearVacanteDatos {
+  institucionId: string
+  titulo: string
+  descripcion?: string
+  requisitos?: string
+  modalidad?: string
+  horario?: string
+  rangoSalario?: string
+  ciudad?: string
+  estado?: string
+  inclusivaDiscapacidad?: boolean
+  tiposDiscapacidad?: string[]
 }
 
-export interface CreateJobApplicationData {
-  job_id: string
-  user_id: string
-  cover_letter: string
+export interface CrearPostulacionDatos {
+  vacanteId: string
+  usuarioId: string
+  cartaPresentacion: string
 }
 
-// ─── Tokens de inyección ──────────────────────────────────────────────────
-export const JOB_REPOSITORY = 'JOB_REPOSITORY'
+// ─── Tokens de inyección ──────────────────────────────────────────────
+export const REPOSITORIO_VACANTE = 'REPOSITORIO_VACANTE'
 
-// ─── Interfaz del repositorio ────────────────────────────────────────────
-export interface IJobRepository {
-  // ── Vacantes ──────────────────────────────────────────────────────────
+// ─── Interfaz del repositorio ────────────────────────────────────────
+export interface IRepositorioVacante {
+  listar(filtros?: FiltrosVacante): Promise<Vacante[]>
+  buscarPorId(id: string): Promise<Vacante | null>
+  buscarPorIds(ids: string[]): Promise<Vacante[]>
+  crear(datos: CrearVacanteDatos): Promise<Vacante>
+  actualizar(id: string, datos: Partial<Vacante>): Promise<void>
+  eliminarSuave(id: string): Promise<void>
+  contarActivas(): Promise<number>
 
-  /** Lista vacantes activas con filtros opcionales */
-  findAll(filters?: JobFilters): Promise<Job[]>
-
-  /** Busca una vacante por su ID */
-  findById(id: string): Promise<Job | null>
-
-  /** Batch lookup por IDs */
-  findByIds(ids: string[]): Promise<Job[]>
-
-  /** Crea una nueva vacante */
-  create(data: CreateJobData): Promise<Job>
-
-  /** Actualiza campos de una vacante */
-  update(id: string, data: Partial<Job>): Promise<void>
-
-  /** Desactiva una vacante (soft delete) */
-  softDelete(id: string): Promise<void>
-
-  /** Cuenta vacantes activas */
-  countActive(): Promise<number>
-
-  // ── Postulaciones ─────────────────────────────────────────────────────
-
-  /** Crea una postulación */
-  createApplication(data: CreateJobApplicationData): Promise<JobApplication>
-
-  /** Postulaciones de un usuario, ordenadas por fecha descendente */
-  findApplicationsByUser(userId: string): Promise<JobApplication[]>
-
-  /** Busca una postulación específica (para evitar duplicados) */
-  findApplicationByUserAndJob(userId: string, jobId: string): Promise<JobApplication | null>
-
-  /** IDs de vacantes a las que un usuario ya se postuló */
-  getAppliedJobIds(userId: string): Promise<string[]>
+  // ── Postulaciones ──
+  crearPostulacion(datos: CrearPostulacionDatos): Promise<Postulacion>
+  listarPostulacionesPorUsuario(usuarioId: string): Promise<Postulacion[]>
+  buscarPostulacionPorUsuarioYVacante(usuarioId: string, vacanteId: string): Promise<Postulacion | null>
+  obtenerIdsVacantesPostuladas(usuarioId: string): Promise<string[]>
 }

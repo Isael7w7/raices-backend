@@ -1,44 +1,33 @@
-// ─── Notificación (u_notifications) ──────────────────────────────────────
-export interface Notification {
+// ─── Notificación (notificaciones) ──────────────────────────────────────
+export interface Notificacion {
   id: string
-  user_id: string
-  type: string
-  title: string
-  body: string
-  ref_id: string | null
-  is_read: boolean
-  created_at: string
+  usuarioId: string
+  tipo: string
+  titulo: string
+  cuerpo: string
+  referenciaId: string | null
+  leida: boolean
+  fechaCreacion: string
 }
 
-// ─── DTOs ────────────────────────────────────────────────────────────────
-export interface CreateNotificationData {
-  user_id: string
-  type: string
-  title: string
-  body: string
-  ref_id?: string | null
+// ─── DTOs ────────────────────────────────────────────────────────────
+export interface CrearNotificacionDatos {
+  usuarioId: string
+  tipo: string
+  titulo: string
+  cuerpo: string
+  referenciaId?: string | null
 }
 
-// ─── Token de inyección ──────────────────────────────────────────────────
-export const NOTIFICATION_REPOSITORY = 'NOTIFICATION_REPOSITORY'
+// ─── Token de inyección ──────────────────────────────────────────────
+export const REPOSITORIO_NOTIFICACION = 'REPOSITORIO_NOTIFICACION'
 
-// ─── Interfaz del repositorio ────────────────────────────────────────────
-export interface INotificationRepository {
-  /** Crea una nueva notificación */
-  create(data: CreateNotificationData): Promise<Notification>
-
-  /** Lista las últimas notificaciones de un usuario (máx. 50) */
-  findByUser(userId: string): Promise<Notification[]>
-
-  /** Cuenta notificaciones no leídas de un usuario */
-  getUnreadCount(userId: string): Promise<number>
-
-  /** Marca una notificación como leída (verifica que pertenezca al usuario) */
-  markAsRead(userId: string, notifId: string): Promise<void>
-
-  /** Marca todas las notificaciones no leídas de un usuario como leídas */
-  markAllAsRead(userId: string): Promise<void>
-
-  /** Elimina una notificación por ID */
-  delete(notifId: string): Promise<void>
+// ─── Interfaz del repositorio ────────────────────────────────────────
+export interface IRepositorioNotificacion {
+  crear(datos: CrearNotificacionDatos): Promise<Notificacion>
+  listarPorUsuario(usuarioId: string): Promise<Notificacion[]>
+  contarNoLeidas(usuarioId: string): Promise<number>
+  marcarComoLeida(usuarioId: string, notificacionId: string): Promise<void>
+  marcarTodasComoLeidas(usuarioId: string): Promise<void>
+  eliminar(notificacionId: string): Promise<void>
 }

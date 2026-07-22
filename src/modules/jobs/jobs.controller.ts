@@ -5,9 +5,9 @@ import { JobsService } from './jobs.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-export class ApplyDto {
+export class PostulacionDto {
   @ApiProperty({ description: 'Carta de presentación', required: false, example: 'Me interesa esta vacante porque...' })
-  @IsOptional() @IsString() cover_letter?: string
+  @IsOptional() @IsString() cartaPresentacion?: string
 }
 
 @ApiTags('Jobs')
@@ -17,11 +17,11 @@ export class JobsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar vacantes', description: 'Retorna vacantes activas de instituciones activas' })
-  @ApiQuery({ name: 'city', required: false, description: 'Filtrar por ciudad' })
-  @ApiQuery({ name: 'modality', required: false, description: 'Filtrar por modalidad: presencial, remoto, hibrido' })
+  @ApiQuery({ name: 'ciudad', required: false, description: 'Filtrar por ciudad' })
+  @ApiQuery({ name: 'modalidad', required: false, description: 'Filtrar por modalidad: presencial, remoto, hibrido' })
   @ApiResponse({ status: 200, description: 'Lista de vacantes con info de institución' })
-  findAll(@Query('city') city?: string, @Query('modality') modality?: string) {
-    return this.svc.findAll({ city, modality })
+  findAll(@Query('ciudad') ciudad?: string, @Query('modalidad') modalidad?: string) {
+    return this.svc.findAll({ ciudad, modalidad })
   }
 
   @Get('applied')
@@ -59,7 +59,7 @@ export class JobsController {
   @ApiResponse({ status: 201, description: 'Postulación enviada con éxito' })
   @ApiResponse({ status: 409, description: 'Ya enviaste una solicitud para esta vacante' })
   @ApiResponse({ status: 404, description: 'Vacante no encontrada o inactiva' })
-  apply(@Param('id') id: string, @Body() dto: ApplyDto, @CurrentUser() user: any) {
-    return this.svc.apply(user.id, id, dto.cover_letter ?? '')
+  apply(@Param('id') id: string, @Body() dto: PostulacionDto, @CurrentUser() user: any) {
+    return this.svc.apply(user.id, id, dto.cartaPresentacion ?? '')
   }
 }

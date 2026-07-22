@@ -5,9 +5,9 @@ import { MessagesService } from './messages.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-export class SendDto {
-  @ApiProperty({ description: 'Contenido del mensaje', example: 'Hola, me gustaría información sobre...' })
-  @IsString() @IsNotEmpty() content: string
+export class EnviarDto {
+  @ApiProperty({ description: 'Contenido del mensaje', example: 'Hola, me gustaria informacion sobre...' })
+  @IsString() @IsNotEmpty() contenido: string
 }
 
 @ApiTags('Messages')
@@ -18,33 +18,33 @@ export class MessagesController {
   constructor(private readonly svc: MessagesService) {}
 
   @Get('conversations')
-  @ApiOperation({ summary: 'Lista de conversaciones', description: 'Retorna conversaciones ordenadas por último mensaje, con conteo de no leídos' })
-  @ApiResponse({ status: 200, description: 'Lista de conversaciones con partner, último mensaje y unread count' })
+  @ApiOperation({ summary: 'Lista de conversaciones' })
+  @ApiResponse({ status: 200, description: 'Lista de conversaciones con socio, ultimo mensaje y conteo no leidos' })
   conversations(@CurrentUser() user: any) {
     return this.svc.getConversations(user.id)
   }
 
   @Get('unread-count')
-  @ApiOperation({ summary: 'Conteo de mensajes no leídos', description: 'Retorna el total de mensajes sin leer de todas las conversaciones' })
-  @ApiResponse({ status: 200, description: 'Número total de no leídos' })
+  @ApiOperation({ summary: 'Conteo de mensajes no leidos' })
+  @ApiResponse({ status: 200, description: 'Numero total de no leidos' })
   unreadCount(@CurrentUser() user: any) {
     return this.svc.getUnreadCount(user.id)
   }
 
   @Get('with/:userId')
-  @ApiOperation({ summary: 'Mensajes con un usuario', description: 'Retorna el historial de mensajes y marca como leídos los no leídos del destinatario' })
+  @ApiOperation({ summary: 'Mensajes con un usuario' })
   @ApiParam({ name: 'userId', description: 'ID del usuario con quien se conversa' })
-  @ApiResponse({ status: 200, description: 'Lista de mensajes ordenados cronológicamente' })
-  getMessages(@Param('userId') partnerId: string, @CurrentUser() user: any) {
-    return this.svc.getMessages(user.id, partnerId)
+  @ApiResponse({ status: 200, description: 'Lista de mensajes ordenados cronologicamente' })
+  getMessages(@Param('userId') socioId: string, @CurrentUser() user: any) {
+    return this.svc.getMessages(user.id, socioId)
   }
 
   @Post('send/:userId')
-  @ApiOperation({ summary: 'Enviar mensaje', description: 'Envía un mensaje directo a otro usuario. No puedes enviarte mensajes a ti mismo.' })
+  @ApiOperation({ summary: 'Enviar mensaje' })
   @ApiParam({ name: 'userId', description: 'ID del usuario destinatario' })
-  @ApiResponse({ status: 201, description: 'Mensaje enviado con éxito' })
+  @ApiResponse({ status: 201, description: 'Mensaje enviado con exito' })
   @ApiResponse({ status: 403, description: 'No puedes enviarte mensajes a ti mismo o usuario no existe' })
-  send(@Param('userId') toId: string, @Body() dto: SendDto, @CurrentUser() user: any) {
-    return this.svc.sendMessage(user.id, toId, dto.content)
+  send(@Param('userId') destinatarioId: string, @Body() dto: EnviarDto, @CurrentUser() user: any) {
+    return this.svc.sendMessage(user.id, destinatarioId, dto.contenido)
   }
 }

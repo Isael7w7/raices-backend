@@ -2,194 +2,192 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, CollectionReference, Query } from 'firebase-admin/firestore'
 import { randomUUID } from 'crypto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import type {
-  Job,
-  JobApplication,
-  JobFilters,
-  CreateJobData,
-  CreateJobApplicationData,
-  IJobRepository,
+  Vacante,
+  Postulacion,
+  FiltrosVacante,
+  CrearVacanteDatos,
+  CrearPostulacionDatos,
+  IRepositorioVacante,
 } from '../interfaces/job.repository.interface'
 
 @Injectable()
-export class FirestoreJobRepository implements IJobRepository {
-  private readonly jobsCol: CollectionReference
-  private readonly appsCol: CollectionReference
+export class RepositorioVacanteFirestore implements IRepositorioVacante {
+  private readonly colVacantes: CollectionReference
+  private readonly colPostulaciones: CollectionReference
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    this.jobsCol = this.db.collection('p_jobs')
-    this.appsCol = this.db.collection('u_job_applications')
+    this.colVacantes = this.db.collection(COLECCIONES.vacantes)
+    this.colPostulaciones = this.db.collection(COLECCIONES.postulaciones)
   }
 
   // ── Vacantes ──────────────────────────────────────────────────────────
 
-  async findAll(filters: JobFilters = {}): Promise<Job[]> {
-    let q: Query = this.jobsCol.where('is_active', '==', true)
-    if (filters.modality) {
-      q = q.where('modality', '==', filters.modality)
+  async listar(filtros: FiltrosVacante = {}): Promise<Vacante[]> {
+    let q: Query = this.colVacantes.where('activa', '==', true)
+    if (filtros.modalidad) {
+      q = q.where('modalidad', '==', filtros.modalidad)
     }
-    const snap = await q.orderBy('created_at', 'desc').get()
-    let rows = snap.docs.map((d) => this.jobToDomain(d.id, d.data()))
+    const snap = await q.orderBy('fechaCreacion', 'desc').get()
+    let filas = snap.docs.map((d) => this.vacanteADominio(d.id, d.data()))
 
-    // Post-filtering por ciudad (Firestore no soporta LIKE)
-    if (filters.city) {
-      const term = filters.city.toLowerCase()
-      rows = rows.filter((r) => r.city.toLowerCase().includes(term))
-    }
-
-    // Post-filtering por tipo de discapacidad
-    if (filters.disability_type) {
-      const dt = filters.disability_type.toLowerCase()
-      rows = rows.filter((r) => r.disability_types.some((d) => d.toLowerCase() === dt))
+    if (filtros.ciudad) {
+      const termino = filtros.ciudad.toLowerCase()
+      filas = filas.filter((f) => f.ciudad.toLowerCase().includes(termino))
     }
 
-    return rows
+    if (filtros.tipoDiscapacidad) {
+      const dt = filtros.tipoDiscapacidad.toLowerCase()
+      filas = filas.filter((f) => f.tiposDiscapacidad.some((d) => d.toLowerCase() === dt))
+    }
+
+    return filas
   }
 
-  async findById(id: string): Promise<Job | null> {
-    const doc = await this.jobsCol.doc(id).get()
+  async buscarPorId(id: string): Promise<Vacante | null> {
+    const doc = await this.colVacantes.doc(id).get()
     if (!doc.exists) return null
-    return this.jobToDomain(doc.id, doc.data()!)
+    return this.vacanteADominio(doc.id, doc.data()!)
   }
 
-  async findByIds(ids: string[]): Promise<Job[]> {
+  async buscarPorIds(ids: string[]): Promise<Vacante[]> {
     if (ids.length === 0) return []
-    // Firestore `in` query limitado a 30 valores por lote
-    const chunks: string[][] = []
+    const lotes: string[][] = []
     for (let i = 0; i < ids.length; i += 30) {
-      chunks.push(ids.slice(i, i + 30))
+      lotes.push(ids.slice(i, i + 30))
     }
-    const results: Job[] = []
-    for (const chunk of chunks) {
-      const snap = await this.jobsCol.where('__name__', 'in', chunk).get()
+    const resultados: Vacante[] = []
+    for (const lote of lotes) {
+      const snap = await this.colVacantes.where('__name__', 'in', lote).get()
       for (const doc of snap.docs) {
-        results.push(this.jobToDomain(doc.id, doc.data()))
+        resultados.push(this.vacanteADominio(doc.id, doc.data()))
       }
     }
-    return results
+    return resultados
   }
 
-  async create(data: CreateJobData): Promise<Job> {
+  async crear(datos: CrearVacanteDatos): Promise<Vacante> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    await this.jobsCol.doc(id).set({
+    const ahora = new Date().toISOString()
+    await this.colVacantes.doc(id).set({
       id,
-      institution_id: data.institution_id,
-      title: data.title,
-      description: data.description ?? '',
-      requirements: data.requirements ?? '',
-      modality: data.modality ?? 'presencial',
-      schedule: data.schedule ?? '',
-      salary_range: data.salary_range ?? '',
-      city: data.city ?? '',
-      state: data.state ?? '',
-      disability_inclusive: data.disability_inclusive !== false,
-      disability_types: JSON.stringify(data.disability_types ?? []),
-      is_active: true,
-      created_at: now,
+      institucionId: datos.institucionId,
+      titulo: datos.titulo,
+      descripcion: datos.descripcion ?? '',
+      requisitos: datos.requisitos ?? '',
+      modalidad: datos.modalidad ?? 'presencial',
+      horario: datos.horario ?? '',
+      rangoSalario: datos.rangoSalario ?? '',
+      ciudad: datos.ciudad ?? '',
+      estado: datos.estado ?? '',
+      inclusivaDiscapacidad: datos.inclusivaDiscapacidad !== false,
+      tiposDiscapacidad: JSON.stringify(datos.tiposDiscapacidad ?? []),
+      activa: true,
+      fechaCreacion: ahora,
     })
-    return (await this.findById(id))!
+    return (await this.buscarPorId(id))!
   }
 
-  async update(id: string, data: Partial<Job>): Promise<void> {
-    const updateData: Record<string, any> = { ...data }
-    if (Array.isArray(updateData.disability_types)) {
-      updateData.disability_types = JSON.stringify(updateData.disability_types)
+  async actualizar(id: string, datos: Partial<Vacante>): Promise<void> {
+    const datosActualizados: Record<string, any> = { ...datos }
+    if (Array.isArray(datosActualizados.tiposDiscapacidad)) {
+      datosActualizados.tiposDiscapacidad = JSON.stringify(datosActualizados.tiposDiscapacidad)
     }
-    delete (updateData as any).id
-    updateData.updated_at = new Date().toISOString()
-    await this.jobsCol.doc(id).update(updateData)
+    delete (datosActualizados as any).id
+    datosActualizados.fechaActualizacion = new Date().toISOString()
+    await this.colVacantes.doc(id).update(datosActualizados)
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.jobsCol.doc(id).update({ is_active: false, updated_at: new Date().toISOString() })
+  async eliminarSuave(id: string): Promise<void> {
+    await this.colVacantes.doc(id).update({ activa: false, fechaActualizacion: new Date().toISOString() })
   }
 
-  async countActive(): Promise<number> {
-    const snap = await this.jobsCol.where('is_active', '==', true).get()
+  async contarActivas(): Promise<number> {
+    const snap = await this.colVacantes.where('activa', '==', true).get()
     return snap.size
   }
 
   // ── Postulaciones ────────────────────────────────────────────────────
 
-  async createApplication(data: CreateJobApplicationData): Promise<JobApplication> {
+  async crearPostulacion(datos: CrearPostulacionDatos): Promise<Postulacion> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    const app: JobApplication = {
+    const ahora = new Date().toISOString()
+    const postulacion: Postulacion = {
       id,
-      job_id: data.job_id,
-      user_id: data.user_id,
-      cover_letter: data.cover_letter,
-      status: 'pending',
-      created_at: now,
+      vacanteId: datos.vacanteId,
+      usuarioId: datos.usuarioId,
+      cartaPresentacion: datos.cartaPresentacion,
+      estado: 'pendiente',
+      fechaCreacion: ahora,
     }
-    await this.appsCol.doc(id).set(app)
-    return app
+    await this.colPostulaciones.doc(id).set(postulacion)
+    return postulacion
   }
 
-  async findApplicationsByUser(userId: string): Promise<JobApplication[]> {
-    const snap = await this.appsCol
-      .where('user_id', '==', userId)
-      .orderBy('created_at', 'desc')
+  async listarPostulacionesPorUsuario(usuarioId: string): Promise<Postulacion[]> {
+    const snap = await this.colPostulaciones
+      .where('usuarioId', '==', usuarioId)
+      .orderBy('fechaCreacion', 'desc')
       .get()
-    return snap.docs.map((d) => this.appToDomain(d.id, d.data()))
+    return snap.docs.map((d) => this.postulacionADominio(d.id, d.data()))
   }
 
-  async findApplicationByUserAndJob(
-    userId: string,
-    jobId: string,
-  ): Promise<JobApplication | null> {
-    const snap = await this.appsCol
-      .where('user_id', '==', userId)
-      .where('job_id', '==', jobId)
+  async buscarPostulacionPorUsuarioYVacante(
+    usuarioId: string,
+    vacanteId: string,
+  ): Promise<Postulacion | null> {
+    const snap = await this.colPostulaciones
+      .where('usuarioId', '==', usuarioId)
+      .where('vacanteId', '==', vacanteId)
       .limit(1)
       .get()
     if (snap.empty) return null
     const doc = snap.docs[0]
-    return this.appToDomain(doc.id, doc.data())
+    return this.postulacionADominio(doc.id, doc.data())
   }
 
-  async getAppliedJobIds(userId: string): Promise<string[]> {
-    const snap = await this.appsCol.where('user_id', '==', userId).get()
-    return snap.docs.map((d) => d.data().job_id as string)
+  async obtenerIdsVacantesPostuladas(usuarioId: string): Promise<string[]> {
+    const snap = await this.colPostulaciones.where('usuarioId', '==', usuarioId).get()
+    return snap.docs.map((d) => d.data().vacanteId as string)
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private jobToDomain(id: string, data: FirebaseFirestore.DocumentData): Job {
-    let types: string[] = []
+  private vacanteADominio(id: string, data: FirebaseFirestore.DocumentData): Vacante {
+    let tipos: string[] = []
     try {
-      types = JSON.parse(data.disability_types ?? '[]')
-      if (!Array.isArray(types)) types = []
+      tipos = JSON.parse(data.tiposDiscapacidad ?? '[]')
+      if (!Array.isArray(tipos)) tipos = []
     } catch {
-      types = []
+      tipos = []
     }
     return {
       id,
-      institution_id: data.institution_id ?? '',
-      title: data.title ?? '',
-      description: data.description ?? '',
-      requirements: data.requirements ?? '',
-      modality: data.modality ?? '',
-      schedule: data.schedule ?? '',
-      salary_range: data.salary_range ?? '',
-      city: data.city ?? '',
-      state: data.state ?? '',
-      disability_inclusive: data.disability_inclusive ?? true,
-      disability_types: types,
-      is_active: data.is_active ?? false,
-      created_at: data.created_at ?? '',
+      institucionId: data.institucionId ?? '',
+      titulo: data.titulo ?? '',
+      descripcion: data.descripcion ?? '',
+      requisitos: data.requisitos ?? '',
+      modalidad: data.modalidad ?? '',
+      horario: data.horario ?? '',
+      rangoSalario: data.rangoSalario ?? '',
+      ciudad: data.ciudad ?? '',
+      estado: data.estado ?? '',
+      inclusivaDiscapacidad: data.inclusivaDiscapacidad ?? true,
+      tiposDiscapacidad: tipos,
+      activa: data.activa ?? false,
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 
-  private appToDomain(id: string, data: FirebaseFirestore.DocumentData): JobApplication {
+  private postulacionADominio(id: string, data: FirebaseFirestore.DocumentData): Postulacion {
     return {
       id,
-      job_id: data.job_id ?? '',
-      user_id: data.user_id ?? '',
-      cover_letter: data.cover_letter ?? '',
-      status: data.status ?? 'pending',
-      created_at: data.created_at ?? '',
+      vacanteId: data.vacanteId ?? '',
+      usuarioId: data.usuarioId ?? '',
+      cartaPresentacion: data.cartaPresentacion ?? '',
+      estado: data.estado ?? 'pendiente',
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 }

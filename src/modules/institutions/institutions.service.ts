@@ -2,68 +2,68 @@ import { Injectable, Inject, NotFoundException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 
 @Injectable()
 export class InstitutionsService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  private col(name: string) { return this.db.collection(name) }
+  private col(nombre: string) { return this.db.collection(nombre) }
 
-  async findAll(filters: any = {}) {
-    let q = this.col('p_institutions').where('is_active', '==', true)
-    if (filters.category) q = q.where('category', '==', filters.category)
-    const snap = await q.orderBy('rating_avg', 'desc').get()
-    let rows = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+  async findAll(filtros: any = {}) {
+    let q = this.col(COLECCIONES.instituciones).where('activa', '==', true)
+    if (filtros.categoria) q = q.where('categoria', '==', filtros.categoria)
+    const snap = await q.orderBy('calificacionPromedio', 'desc').get()
+    let filas = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
-    // Post-query filtering for LIKE / text-search patterns
-    if (filters.city) {
-      const term = filters.city.toLowerCase()
-      rows = rows.filter((r: any) => (r.city ?? '').toLowerCase().includes(term))
+    if (filtros.ciudad) {
+      const termino = filtros.ciudad.toLowerCase()
+      filas = filas.filter((f: any) => (f.ciudad ?? '').toLowerCase().includes(termino))
     }
-    if (filters.search) {
-      const term = filters.search.toLowerCase()
-      rows = rows.filter((r: any) =>
-        (r.name ?? '').toLowerCase().includes(term) ||
-        (r.description ?? '').toLowerCase().includes(term) ||
-        (r.city ?? '').toLowerCase().includes(term) ||
-        (r.state ?? '').toLowerCase().includes(term)
+    if (filtros.busqueda) {
+      const termino = filtros.busqueda.toLowerCase()
+      filas = filas.filter((f: any) =>
+        (f.nombre ?? '').toLowerCase().includes(termino) ||
+        (f.descripcion ?? '').toLowerCase().includes(termino) ||
+        (f.ciudad ?? '').toLowerCase().includes(termino) ||
+        (f.estado ?? '').toLowerCase().includes(termino)
       )
     }
-    if (filters.disability_type) {
-      rows = rows.filter((r: any) => {
-        try { const arr: string[] = JSON.parse(r.disability_types ?? '[]'); return arr.includes(filters.disability_type) } catch { return false }
+    if (filtros.tipoDiscapacidad) {
+      filas = filas.filter((f: any) => {
+        try { const arr: string[] = JSON.parse(f.tiposDiscapacidad ?? '[]'); return arr.includes(filtros.tipoDiscapacidad) } catch { return false }
       })
     }
-    if (filters.age) {
-      const age = parseInt(filters.age)
-      rows = rows.filter((r: any) =>
-        (r.age_min == null || r.age_min <= age) && (r.age_max == null || r.age_max >= age)
+    if (filtros.edad) {
+      const edad = parseInt(filtros.edad)
+      filas = filas.filter((f: any) =>
+        (f.edadMinima == null || f.edadMinima <= edad) && (f.edadMaxima == null || f.edadMaxima >= edad)
       )
     }
 
-    return rows.map(this.parse)
+    return filas.map(this.parsear)
   }
 
   async findOne(id: string) {
-    const doc = await this.col('p_institutions').doc(id).get()
+    const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Institución no encontrada')
-    return this.parse({ id: doc.id, ...doc.data()! })
+    return this.parsear({ id: doc.id, ...doc.data()! })
   }
 
-  async create(data: any, userId: string) {
+  async create(datos: any, usuarioId: string) {
     const id = uuid()
-    await this.col('p_institutions').doc(id).set({
-      id, ...data,
-      disability_types: JSON.stringify(data.disability_types ?? []),
-      created_by: userId, is_active: true, is_verified: false,
-      created_at: new Date().toISOString(),
+    await this.col(COLECCIONES.instituciones).doc(id).set({
+      id, ...datos,
+      tiposDiscapacidad: JSON.stringify(datos.tiposDiscapacidad ?? []),
+      creadoPor: usuarioId, activa: true, verificada: false,
+      fechaCreacion: new Date().toISOString(),
     })
     return this.findOne(id)
   }
 
-  private parse(row: any) {
-    if (!row) return row
-    try { row.disability_types = JSON.parse(row.disability_types ?? '[]') } catch { row.disability_types = [] }
-    return row
+  private parsear(fila: any) {
+    if (!fila) return fila
+    try { fila.tiposDiscapacidad = JSON.parse(fila.tiposDiscapacidad ?? '[]') } catch { fila.tiposDiscapacidad = [] }
+    return fila
   }
 }

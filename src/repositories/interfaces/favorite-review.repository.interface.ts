@@ -1,74 +1,48 @@
-// ─── Reseña (u_reviews) ──────────────────────────────────────────────────
-export interface Review {
+// ─── Reseña (resenas) ──────────────────────────────────────────────────
+export interface Resena {
   id: string
-  user_id: string
-  institution_id: string
-  rating: number
-  comment: string
-  created_at: string
+  usuarioId: string
+  institucionId: string
+  calificacion: number
+  comentario: string
+  fechaCreacion: string
 }
 
-// ─── Favorito (u_favorites) ──────────────────────────────────────────────
-export interface Favorite {
+// ─── Favorito (favoritos) ──────────────────────────────────────────────
+export interface Favorito {
   id: string
-  user_id: string
-  institution_id: string
-  created_at: string
+  usuarioId: string
+  institucionId: string
+  fechaCreacion: string
 }
 
-// ─── DTOs ────────────────────────────────────────────────────────────────
-export interface CreateReviewData {
-  user_id: string
-  institution_id: string
-  rating: number
-  comment: string
+// ─── DTOs ────────────────────────────────────────────────────────────
+export interface CrearResenaDatos {
+  usuarioId: string
+  institucionId: string
+  calificacion: number
+  comentario: string
 }
 
-// ─── Token de inyección ──────────────────────────────────────────────────
-export const FAVORITE_REVIEW_REPOSITORY = 'FAVORITE_REVIEW_REPOSITORY'
+// ─── Token de inyección ──────────────────────────────────────────────
+export const REPOSITORIO_FAVORITO_RESENA = 'REPOSITORIO_FAVORITO_RESENA'
 
-// ─── Interfaz del repositorio ────────────────────────────────────────────
-export interface IFavoriteReviewRepository {
-  // ── Favoritos ──────────────────────────────────────────────────────────
+// ─── Interfaz del repositorio ────────────────────────────────────────
+export interface IRepositorioFavoritoResena {
+  // ── Favoritos ──
+  listarFavoritosPorUsuario(usuarioId: string): Promise<Favorito[]>
+  buscarFavoritoPorUsuarioEInstitucion(usuarioId: string, institucionId: string): Promise<Favorito | null>
+  crearFavorito(usuarioId: string, institucionId: string): Promise<void>
+  eliminarFavorito(favoritoId: string): Promise<void>
+  obtenerIdsInstitucionesFavoritas(usuarioId: string): Promise<string[]>
 
-  /** Obtiene todos los favoritos de un usuario */
-  findFavoritesByUser(userId: string): Promise<Favorite[]>
-
-  /** Busca un favorito específico (para toggle) */
-  findFavoriteByUserAndInstitution(userId: string, institutionId: string): Promise<Favorite | null>
-
-  /** Agrega un favorito */
-  createFavorite(userId: string, institutionId: string): Promise<void>
-
-  /** Elimina un favorito por ID de documento */
-  deleteFavorite(favId: string): Promise<void>
-
-  /** Obtiene solo los IDs de instituciones favoritas de un usuario */
-  getFavoriteInstitutionIds(userId: string): Promise<string[]>
-
-  // ── Reseñas ────────────────────────────────────────────────────────────
-
-  /** Reseñas de una institución, ordenadas por fecha descendente */
-  findReviewsByInstitution(institutionId: string): Promise<Review[]>
-
-  /** Busca reseña de un usuario sobre una institución (para evitar duplicados) */
-  findReviewByUserAndInstitution(userId: string, institutionId: string): Promise<Review | null>
-
-  /** Busca una reseña por su ID */
-  findReviewById(id: string): Promise<Review | null>
-
-  /** Crea una nueva reseña */
-  createReview(data: CreateReviewData): Promise<Review>
-
-  /** Actualiza rating y comment de una reseña existente */
-  updateReview(id: string, rating: number, comment: string): Promise<void>
-
-  /** Reseñas escritas por un usuario */
-  findReviewsByUser(userId: string): Promise<Review[]>
-
-  /** Todas las reseñas (admin/moderación) con límite opcional */
-  findAllReviews(limit?: number): Promise<Review[]>
-
-  /** Elimina una reseña */
-  deleteReview(id: string): Promise<void>
+  // ── Reseñas ──
+  listarResenasPorInstitucion(institucionId: string): Promise<Resena[]>
+  buscarResenaPorUsuarioEInstitucion(usuarioId: string, institucionId: string): Promise<Resena | null>
+  buscarResenaPorId(id: string): Promise<Resena | null>
+  crearResena(datos: CrearResenaDatos): Promise<Resena>
+  actualizarResena(id: string, calificacion: number, comentario: string): Promise<void>
+  listarResenasPorUsuario(usuarioId: string): Promise<Resena[]>
+  listarTodasResenas(limite?: number): Promise<Resena[]>
+  eliminarResena(id: string): Promise<void>
 }

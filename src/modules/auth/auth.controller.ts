@@ -21,14 +21,14 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Iniciar sesión', description: 'Autentica usuario y retorna token JWT' })
+  @ApiOperation({ summary: 'Iniciar sesión', description: 'Autentica usuario con Firebase Auth y retorna token' })
   @ApiResponse({ status: 200, description: 'Login exitoso' })
   @ApiResponse({ status: 401, description: 'Credenciales incorrectas o cuenta desactivada' })
   login(@Body() dto: LoginDto) { return this.authService.login(dto) }
 
   @Post('refresh')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Renovar access token', description: 'Intercambia un refresh token por un nuevo par de tokens (access + refresh)' })
+  @ApiOperation({ summary: 'Renovar access token', description: 'Intercambia un refresh token de Firebase por un nuevo par de tokens (access + refresh)' })
   @ApiResponse({ status: 200, description: 'Tokens renovados exitosamente' })
   @ApiResponse({ status: 401, description: 'Refresh token inválido o expirado' })
   refresh(@Body() dto: RefreshTokenDto) { return this.authService.refresh(dto.refreshToken) }

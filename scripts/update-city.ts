@@ -18,17 +18,17 @@ const db = getFirestore()
 const uid = 'wNuOEV715KXPaZuCSTmIBivTloh2'
 
 async function main() {
-  await db.collection('u_profiles').doc(uid).update({
-    city: 'Mérida',
-    state: 'Yucatán',
+  await db.collection('perfiles').doc(uid).update({
+    ciudad: 'Merida',
+    estado: 'Yucatan',
   })
-  console.log('✅ city y state actualizados')
+  console.log('ciudad y estado actualizados')
 
-  const doc = await db.collection('u_profiles').doc(uid).get()
-  console.log('📄 Perfil:', JSON.stringify(doc.data(), null, 2))
+  const doc = await db.collection('perfiles').doc(uid).get()
+  console.log('Perfil:', JSON.stringify(doc.data(), null, 2))
 }
 
 main().catch((err) => {
-  console.error('❌ Error:', err)
+  console.error('Error:', err)
   process.exit(1)
 })

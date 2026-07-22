@@ -1,83 +1,80 @@
 import { Injectable, Inject, ForbiddenException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import { randomUUID } from 'crypto'
 
 @Injectable()
 export class MessagesService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async getConversations(userId: string) {
-    const [sentSnap, receivedSnap] = await Promise.all([
-      this.db.collection('u_direct_messages').where('from_id', '==', userId).get(),
-      this.db.collection('u_direct_messages').where('to_id', '==', userId).get(),
+  async getConversations(usuarioId: string) {
+    const [enviadosSnap, recibidosSnap] = await Promise.all([
+      this.db.collection(COLECCIONES.mensajesDirectos).where('remitenteId', '==', usuarioId).get(),
+      this.db.collection(COLECCIONES.mensajesDirectos).where('destinatarioId', '==', usuarioId).get(),
     ])
-    const sent = [...sentSnap.docs, ...receivedSnap.docs].map(d => ({ id: d.id, ...d.data() } as any))
+    const mensajes = [...enviadosSnap.docs, ...recibidosSnap.docs].map(d => ({ id: d.id, ...d.data() } as any))
 
-    // Group by partner, keep latest
-    const partners = new Map<string, any>()
-    for (const msg of sent) {
-      const partnerId = msg.from_id === userId ? msg.to_id : msg.from_id
-      if (!partners.has(partnerId)) partners.set(partnerId, msg)
+    const socios = new Map<string, any>()
+    for (const msg of mensajes) {
+      const socioId = msg.remitenteId === usuarioId ? msg.destinatarioId : msg.remitenteId
+      if (!socios.has(socioId)) socios.set(socioId, msg)
     }
-    if (partners.size === 0) return []
+    if (socios.size === 0) return []
 
-    const partnerIds = Array.from(partners.keys())
-    // Firestore `in` query limited to 30
-    const chunks: string[][] = []
-    for (let i = 0; i < partnerIds.length; i += 30) chunks.push(partnerIds.slice(i, i + 30))
+    const sociosIds = Array.from(socios.keys())
+    const lotes: string[][] = []
+    for (let i = 0; i < sociosIds.length; i += 30) lotes.push(sociosIds.slice(i, i + 30))
 
-    const profiles = new Map<string, any>()
-    for (const chunk of chunks) {
-      const snap = await this.db.collection('u_profiles').where('__name__', 'in', chunk).get()
-      snap.docs.forEach(d => profiles.set(d.id, d.data()))
+    const perfiles = new Map<string, any>()
+    for (const lote of lotes) {
+      const snap = await this.db.collection(COLECCIONES.perfiles).where('__name__', 'in', lote).get()
+      snap.docs.forEach(d => perfiles.set(d.id, d.data()))
     }
 
-    return partnerIds.map(pid => ({
-      partner: profiles.get(pid) ?? { id: pid },
-      last_message: partners.get(pid)?.content ?? '',
-      last_at: partners.get(pid)?.created_at,
-      unread: sent.filter(m => m.from_id === pid && m.to_id === userId && !m.is_read).length,
-    })).sort((a: any, b: any) => new Date(b.last_at ?? 0).getTime() - new Date(a.last_at ?? 0).getTime())
+    return sociosIds.map(sid => ({
+      socio: perfiles.get(sid) ?? { id: sid },
+      ultimoMensaje: socios.get(sid)?.contenido ?? '',
+      ultimoEn: socios.get(sid)?.fechaCreacion,
+      noLeidos: mensajes.filter(m => m.remitenteId === sid && m.destinatarioId === usuarioId && !m.leido).length,
+    })).sort((a: any, b: any) => new Date(b.ultimoEn ?? 0).getTime() - new Date(a.ultimoEn ?? 0).getTime())
   }
 
-  async getMessages(userId: string, partnerId: string) {
-    // Mark as read
-    const unreadSnap = await this.db.collection('u_direct_messages')
-      .where('from_id', '==', partnerId)
-      .where('to_id', '==', userId)
-      .where('is_read', '==', false).get()
-    const batch = this.db.batch()
-    for (const doc of unreadSnap.docs) batch.update(doc.ref, { is_read: true })
-    if (!unreadSnap.empty) await batch.commit()
+  async getMessages(usuarioId: string, socioId: string) {
+    const noLeidosSnap = await this.db.collection(COLECCIONES.mensajesDirectos)
+      .where('remitenteId', '==', socioId)
+      .where('destinatarioId', '==', usuarioId)
+      .where('leido', '==', false).get()
+    const lote = this.db.batch()
+    for (const doc of noLeidosSnap.docs) lote.update(doc.ref, { leido: true })
+    if (!noLeidosSnap.empty) await lote.commit()
 
-    // Get messages between the two users (two queries, Firestore has no OR)
-    const [sentSnap, receivedSnap] = await Promise.all([
-      this.db.collection('u_direct_messages')
-        .where('from_id', '==', userId).where('to_id', '==', partnerId).get(),
-      this.db.collection('u_direct_messages')
-        .where('from_id', '==', partnerId).where('to_id', '==', userId).get(),
+    const [enviadosSnap, recibidosSnap] = await Promise.all([
+      this.db.collection(COLECCIONES.mensajesDirectos)
+        .where('remitenteId', '==', usuarioId).where('destinatarioId', '==', socioId).get(),
+      this.db.collection(COLECCIONES.mensajesDirectos)
+        .where('remitenteId', '==', socioId).where('destinatarioId', '==', usuarioId).get(),
     ])
 
-    return [...sentSnap.docs, ...receivedSnap.docs]
+    return [...enviadosSnap.docs, ...recibidosSnap.docs]
       .map(d => ({ id: d.id, ...d.data() }))
-      .sort((a: any, b: any) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime())
+      .sort((a: any, b: any) => new Date(a.fechaCreacion ?? 0).getTime() - new Date(b.fechaCreacion ?? 0).getTime())
   }
 
-  async sendMessage(fromId: string, toId: string, content: string) {
-    if (fromId === toId) throw new ForbiddenException('No puedes enviarte mensajes a ti mismo')
-    const target = await this.db.collection('u_profiles').doc(toId).get()
-    if (!target.exists || !target.data()?.is_active) throw new ForbiddenException('Usuario destinatario no existe')
+  async sendMessage(remitenteId: string, destinatarioId: string, contenido: string) {
+    if (remitenteId === destinatarioId) throw new ForbiddenException('No puedes enviarte mensajes a ti mismo')
+    const destinatario = await this.db.collection(COLECCIONES.perfiles).doc(destinatarioId).get()
+    if (!destinatario.exists || !destinatario.data()?.activo) throw new ForbiddenException('Usuario destinatario no existe')
 
     const id = randomUUID()
-    const msg = { id, from_id: fromId, to_id: toId, content, is_read: false, created_at: new Date().toISOString() }
-    await this.db.collection('u_direct_messages').doc(id).set(msg)
+    const msg = { id, remitenteId, destinatarioId, contenido, leido: false, fechaCreacion: new Date().toISOString() }
+    await this.db.collection(COLECCIONES.mensajesDirectos).doc(id).set(msg)
     return msg
   }
 
-  async getUnreadCount(userId: string): Promise<number> {
-    const snap = await this.db.collection('u_direct_messages')
-      .where('to_id', '==', userId).where('is_read', '==', false).get()
+  async getUnreadCount(usuarioId: string): Promise<number> {
+    const snap = await this.db.collection(COLECCIONES.mensajesDirectos)
+      .where('destinatarioId', '==', usuarioId).where('leido', '==', false).get()
     return snap.size
   }
 }

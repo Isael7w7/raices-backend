@@ -2,52 +2,52 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 
 @Injectable()
 export class FavoritesService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async findByUser(userId: string) {
-    const favSnap = await this.db.collection('u_favorites')
-      .where('user_id', '==', userId).get()
+  async findByUser(usuarioId: string) {
+    const favSnap = await this.db.collection(COLECCIONES.favoritos)
+      .where('usuarioId', '==', usuarioId).get()
     if (favSnap.empty) return []
-    const ids = favSnap.docs.map(f => f.data().institution_id)
+    const ids = favSnap.docs.map(f => f.data().institucionId)
 
-    // Firestore `in` query limited to 30 items
-    const chunks: string[][] = []
-    for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30))
+    const lotes: string[][] = []
+    for (let i = 0; i < ids.length; i += 30) lotes.push(ids.slice(i, i + 30))
 
-    const institutions: any[] = []
-    for (const chunk of chunks) {
-      const snap = await this.db.collection('p_institutions')
-        .where('__name__', 'in', chunk).get()
-      institutions.push(...snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    const instituciones: any[] = []
+    for (const lote of lotes) {
+      const snap = await this.db.collection(COLECCIONES.instituciones)
+        .where('__name__', 'in', lote).get()
+      instituciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() })))
     }
-    return institutions.map((i: any) => {
-      try { i.disability_types = JSON.parse(i.disability_types ?? '[]') } catch { i.disability_types = [] }
+    return instituciones.map((i: any) => {
+      try { i.tiposDiscapacidad = JSON.parse(i.tiposDiscapacidad ?? '[]') } catch { i.tiposDiscapacidad = [] }
       return i
     })
   }
 
-  async toggle(userId: string, institutionId: string) {
-    const snap = await this.db.collection('u_favorites')
-      .where('user_id', '==', userId)
-      .where('institution_id', '==', institutionId)
+  async toggle(usuarioId: string, institucionId: string) {
+    const snap = await this.db.collection(COLECCIONES.favoritos)
+      .where('usuarioId', '==', usuarioId)
+      .where('institucionId', '==', institucionId)
       .limit(1).get()
     if (!snap.empty) {
       await snap.docs[0].ref.delete()
       return { favorited: false }
     }
-    await this.db.collection('u_favorites').doc(uuid()).set({
-      id: uuid(), user_id: userId, institution_id: institutionId,
-      created_at: new Date().toISOString(),
+    await this.db.collection(COLECCIONES.favoritos).doc(uuid()).set({
+      id: uuid(), usuarioId, institucionId,
+      fechaCreacion: new Date().toISOString(),
     })
     return { favorited: true }
   }
 
-  async getFavoriteIds(userId: string): Promise<string[]> {
-    const snap = await this.db.collection('u_favorites')
-      .where('user_id', '==', userId).get()
-    return snap.docs.map(f => f.data().institution_id)
+  async getFavoriteIds(usuarioId: string): Promise<string[]> {
+    const snap = await this.db.collection(COLECCIONES.favoritos)
+      .where('usuarioId', '==', usuarioId).get()
+    return snap.docs.map(f => f.data().institucionId)
   }
 }

@@ -2,159 +2,160 @@ import { Injectable, Inject, NotFoundException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 
 @Injectable()
 export class UsersService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  private col(name: string) { return this.db.collection(name) }
+  private col(nombre: string) { return this.db.collection(nombre) }
 
-  async getProfile(userId: string) {
-    const doc = await this.col('u_profiles').doc(userId).get()
+  async getProfile(usuarioId: string) {
+    const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
     if (!doc.exists) throw new NotFoundException('User not found')
-    const profile = { id: doc.id, ...doc.data()! }
+    const perfil = { id: doc.id, ...doc.data()! }
 
-    const profilingSnap = await this.col('u_user_profiles')
-      .where('user_id', '==', userId).limit(1).get()
-    const profiling = profilingSnap.empty ? null : profilingSnap.docs[0].data()
+    const perfilExtendidoSnap = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+    const perfilExtendido = perfilExtendidoSnap.empty ? null : perfilExtendidoSnap.docs[0].data()
 
     return {
-      ...profile,
-      profiling: profiling ? {
-        ...profiling,
-        disability_types: this.parseJsonField(profiling.disability_types),
-        needs: this.parseJsonField(profiling.needs),
-        education_history: this.parseJsonField(profiling.education_history),
-        therapy_history: this.parseJsonField(profiling.therapy_history),
-        current_goals: this.parseJsonField(profiling.current_goals),
-        support_areas: this.parseJsonField(profiling.support_areas),
-        communication_modes: this.parseJsonField(profiling.communication_modes),
-        mobility_needs: this.parseJsonField(profiling.mobility_needs),
-        tech_access: this.parseJsonField(profiling.tech_access),
-        preferred_zones: this.parseJsonField(profiling.preferred_zones),
+      ...perfil,
+      perfilNecesidades: perfilExtendido ? {
+        ...perfilExtendido,
+        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
+        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
+        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
+        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
+        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
+        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
+        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
+        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
+        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
+        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
       } : null,
     }
   }
 
-  async updateProfile(userId: string, data: any) {
-    const safeData = data ?? {}
-    const updatableFields = ['full_name', 'city', 'state', 'avatar_url']
-    const payload: Record<string, any> = {}
-    for (const field of updatableFields) {
-      if (safeData[field] !== undefined) {
-        payload[field] = safeData[field]
+  async updateProfile(usuarioId: string, datos: any) {
+    const datosSeguros = datos ?? {}
+    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar']
+    const carga: Record<string, any> = {}
+    for (const campo of camposActualizables) {
+      if (datosSeguros[campo] !== undefined) {
+        carga[campo] = datosSeguros[campo]
       }
     }
-    if (Object.keys(payload).length === 0) {
-      return this.getProfile(userId)
+    if (Object.keys(carga).length === 0) {
+      return this.getProfile(usuarioId)
     }
-    await this.col('u_profiles').doc(userId).update(payload)
-    return this.getProfile(userId)
+    await this.col(COLECCIONES.perfiles).doc(usuarioId).update(carga)
+    return this.getProfile(usuarioId)
   }
 
-  async saveProfilingData(userId: string, data: any) {
-    const exists = await this.col('u_user_profiles')
-      .where('user_id', '==', userId).limit(1).get()
-    const payload: Record<string, any> = {
-      disability_types: JSON.stringify(data.disability_types ?? []),
-      disability_severity: data.disability_severity ?? null,
-      communication_modes: JSON.stringify(data.communication_modes ?? []),
-      mobility_needs: JSON.stringify(data.mobility_needs ?? []),
-      tech_access: JSON.stringify(data.tech_access ?? []),
-      preferred_zones: JSON.stringify(data.preferred_zones ?? []),
-      needs: JSON.stringify(data.needs ?? []),
-      current_goals: JSON.stringify(data.current_goals ?? []),
-      support_areas: JSON.stringify(data.support_areas ?? []),
-      education_history: JSON.stringify(data.education_history ?? []),
-      therapy_history: JSON.stringify(data.therapy_history ?? []),
-      life_stage: data.life_stage ?? null,
-      current_concerns: data.current_concerns ?? null,
-      support_level: data.support_level ?? null,
+  async saveProfilingData(usuarioId: string, datos: any) {
+    const existe = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+    const carga: Record<string, any> = {
+      tiposDiscapacidad: JSON.stringify(datos.tiposDiscapacidad ?? []),
+      severidadDiscapacidad: datos.severidadDiscapacidad ?? null,
+      modosComunicacion: JSON.stringify(datos.modosComunicacion ?? []),
+      necesidadesMovilidad: JSON.stringify(datos.necesidadesMovilidad ?? []),
+      accesoTecnologia: JSON.stringify(datos.accesoTecnologia ?? []),
+      zonasPreferidas: JSON.stringify(datos.zonasPreferidas ?? []),
+      necesidades: JSON.stringify(datos.necesidades ?? []),
+      metasActuales: JSON.stringify(datos.metasActuales ?? []),
+      areasApoyo: JSON.stringify(datos.areasApoyo ?? []),
+      historialEducacion: JSON.stringify(datos.historialEducacion ?? []),
+      historialTerapia: JSON.stringify(datos.historialTerapia ?? []),
+      etapaVida: datos.etapaVida ?? null,
+      preocupacionesActuales: datos.preocupacionesActuales ?? null,
+      nivelApoyo: datos.nivelApoyo ?? null,
     }
-    if (!exists.empty) {
-      await this.col('u_user_profiles').doc(exists.docs[0].id).update(payload)
+    if (!existe.empty) {
+      await this.col(COLECCIONES.perfilesExtendidos).doc(existe.docs[0].id).update(carga)
     } else {
       const id = uuid()
-      await this.col('u_user_profiles').doc(id).set({ id, user_id: userId, ...payload })
+      await this.col(COLECCIONES.perfilesExtendidos).doc(id).set({ id, usuarioId, ...carga })
     }
     return { ok: true }
   }
 
-  async getDependents(userId: string) {
-    const snap = await this.col('u_dependents')
-      .where('guardian_id', '==', userId).orderBy('created_at', 'asc').get()
-    return snap.docs.map(d => this.shapeDependent({ id: d.id, ...d.data() }))
+  async getDependents(usuarioId: string) {
+    const snap = await this.col(COLECCIONES.dependientes)
+      .where('tutorId', '==', usuarioId).orderBy('fechaCreacion', 'asc').get()
+    return snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
   }
 
-  async addDependent(userId: string, data: any) {
+  async addDependent(usuarioId: string, datos: any) {
     const id = uuid()
-    await this.col('u_dependents').doc(id).set({
-      id, guardian_id: userId,
-      full_name: data.full_name ?? 'Sin nombre',
-      relationship: data.relationship ?? 'familiar',
-      profile_data: JSON.stringify({
-        disability_types: data.disability_types ?? [],
-        age_range: data.age_range ?? null,
-        life_stage: data.life_stage ?? null,
-        notes: data.notes ?? '',
+    await this.col(COLECCIONES.dependientes).doc(id).set({
+      id, tutorId: usuarioId,
+      nombreCompleto: datos.nombreCompleto ?? 'Sin nombre',
+      parentesco: datos.parentesco ?? 'familiar',
+      datosPerfil: JSON.stringify({
+        tiposDiscapacidad: datos.tiposDiscapacidad ?? [],
+        rangoEdad: datos.rangoEdad ?? null,
+        etapaVida: datos.etapaVida ?? null,
+        notas: datos.notas ?? '',
       }),
-      created_at: new Date().toISOString(),
+      fechaCreacion: new Date().toISOString(),
     })
-    const row = await this.col('u_dependents').doc(id).get()
-    return this.shapeDependent({ id: row.id, ...row.data()! })
+    const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
+    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
   }
 
-  async updateDependent(userId: string, id: string, data: any) {
-    const existing = await this.col('u_dependents').doc(id).get()
-    if (!existing.exists || existing.data()?.guardian_id !== userId) throw new NotFoundException('Dependiente no encontrado')
-    const prevProfile = this.parseObj(existing.data()?.profile_data)
-    await this.col('u_dependents').doc(id).update({
-      full_name: data.full_name ?? existing.data()?.full_name,
-      relationship: data.relationship ?? existing.data()?.relationship,
-      profile_data: JSON.stringify({
-        disability_types: data.disability_types ?? prevProfile.disability_types ?? [],
-        age_range: data.age_range ?? prevProfile.age_range ?? null,
-        life_stage: data.life_stage ?? prevProfile.life_stage ?? null,
-        notes: data.notes ?? prevProfile.notes ?? '',
+  async updateDependent(usuarioId: string, id: string, datos: any) {
+    const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
+    if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
+    const perfilPrevio = this.parsearObjeto(existente.data()?.datosPerfil)
+    await this.col(COLECCIONES.dependientes).doc(id).update({
+      nombreCompleto: datos.nombreCompleto ?? existente.data()?.nombreCompleto,
+      parentesco: datos.parentesco ?? existente.data()?.parentesco,
+      datosPerfil: JSON.stringify({
+        tiposDiscapacidad: datos.tiposDiscapacidad ?? perfilPrevio.tiposDiscapacidad ?? [],
+        rangoEdad: datos.rangoEdad ?? perfilPrevio.rangoEdad ?? null,
+        etapaVida: datos.etapaVida ?? perfilPrevio.etapaVida ?? null,
+        notas: datos.notas ?? perfilPrevio.notas ?? '',
       }),
-      updated_at: new Date().toISOString(),
+      fechaActualizacion: new Date().toISOString(),
     })
-    const row = await this.col('u_dependents').doc(id).get()
-    return this.shapeDependent({ id: row.id, ...row.data()! })
+    const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
+    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
   }
 
-  async deleteDependent(userId: string, id: string) {
-    const existing = await this.col('u_dependents').doc(id).get()
-    if (!existing.exists || existing.data()?.guardian_id !== userId) throw new NotFoundException('Dependiente no encontrado')
-    await this.col('u_dependents').doc(id).delete()
+  async deleteDependent(usuarioId: string, id: string) {
+    const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
+    if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
+    await this.col(COLECCIONES.dependientes).doc(id).delete()
     return { ok: true }
   }
 
-  private shapeDependent(d: any) {
+  private formatearDependiente(d: any) {
     if (!d) return d
-    const p = this.parseObj(d.profile_data)
+    const p = this.parsearObjeto(d.datosPerfil)
     return {
       id: d.id,
-      full_name: d.full_name,
-      relationship: d.relationship,
-      disability_types: Array.isArray(p.disability_types) ? p.disability_types : [],
-      age_range: p.age_range ?? null,
-      life_stage: p.life_stage ?? null,
-      notes: p.notes ?? '',
-      created_at: d.created_at,
+      nombreCompleto: d.nombreCompleto,
+      parentesco: d.parentesco,
+      tiposDiscapacidad: Array.isArray(p.tiposDiscapacidad) ? p.tiposDiscapacidad : [],
+      rangoEdad: p.rangoEdad ?? null,
+      etapaVida: p.etapaVida ?? null,
+      notas: p.notas ?? '',
+      fechaCreacion: d.fechaCreacion,
     }
   }
 
-  private parseJsonField(val: any) {
-    if (typeof val === 'string') {
-      try { return JSON.parse(val) }
-      catch { return val }
+  private parsearCampoJson(valor: any) {
+    if (typeof valor === 'string') {
+      try { return JSON.parse(valor) }
+      catch { return valor }
     }
-    return val
+    return valor
   }
 
-  private parseObj(val: any) {
-    if (!val) return {}
-    try { const p = JSON.parse(val); return p && typeof p === 'object' ? p : {} } catch { return {} }
+  private parsearObjeto(valor: any) {
+    if (!valor) return {}
+    try { const p = JSON.parse(valor); return p && typeof p === 'object' ? p : {} } catch { return {} }
   }
 }

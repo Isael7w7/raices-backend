@@ -1,123 +1,122 @@
 import { Injectable, Inject, NotFoundException, ConflictException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import { randomUUID } from 'crypto'
 
 @Injectable()
 export class JobsService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async findAll(filters: { city?: string; modality?: string; disability_types?: string } = {}) {
-    let q = this.db.collection('p_jobs').where('is_active', '==', true)
-    if (filters.modality) q = q.where('modality', '==', filters.modality)
-    const snap = await q.orderBy('created_at', 'desc').get()
-    let jobs = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string } = {}) {
+    let q = this.db.collection(COLECCIONES.vacantes).where('activa', '==', true)
+    if (filtros.modalidad) q = q.where('modalidad', '==', filtros.modalidad)
+    const snap = await q.orderBy('fechaCreacion', 'desc').get()
+    let vacantes = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
-    // Enrich with institution data
-    const instIds = [...new Set(jobs.map(j => j.institution_id))]
-    const instMap = new Map<string, any>()
+    const instIds = [...new Set(vacantes.map(v => v.institucionId))]
+    const mapaInst = new Map<string, any>()
     for (const iid of instIds) {
-      const doc = await this.db.collection('p_institutions').doc(iid).get()
-      if (doc.exists) instMap.set(iid, { id: doc.id, ...doc.data() })
+      const doc = await this.db.collection(COLECCIONES.instituciones).doc(iid).get()
+      if (doc.exists) mapaInst.set(iid, { id: doc.id, ...doc.data() })
     }
 
-    // Filter by city (post-query, LIKE pattern)
-    if (filters.city) {
-      const term = filters.city.toLowerCase()
-      jobs = jobs.filter(j => (j.city ?? '').toLowerCase().includes(term))
+    if (filtros.ciudad) {
+      const termino = filtros.ciudad.toLowerCase()
+      vacantes = vacantes.filter(v => (v.ciudad ?? '').toLowerCase().includes(termino))
     }
 
-    return jobs.map(j => {
-      const inst = instMap.get(j.institution_id) ?? {}
+    return vacantes.map(v => {
+      const inst = mapaInst.get(v.institucionId) ?? {}
       return {
-        ...j,
-        disability_types: (() => { try { return JSON.parse(j.disability_types) } catch { return [] } })(),
-        institution_name: inst.name ?? null,
-        institution_city: inst.city ?? null,
-        institution_verified: inst.is_verified ?? false,
+        ...v,
+        tiposDiscapacidad: (() => { try { return JSON.parse(v.tiposDiscapacidad) } catch { return [] } })(),
+        nombreInstitucion: inst.nombre ?? null,
+        ciudadInstitucion: inst.ciudad ?? null,
+        institucionVerificada: inst.verificada ?? false,
       }
-    }).filter(j => instMap.has(j.institution_id) && (instMap.get(j.institution_id).is_active ?? false))
+    }).filter(v => mapaInst.has(v.institucionId) && (mapaInst.get(v.institucionId).activa ?? false))
   }
 
   async findOne(id: string) {
-    const doc = await this.db.collection('p_jobs').doc(id).get()
+    const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
-    const job = { id: doc.id, ...doc.data() } as any
+    const vacante = { id: doc.id, ...doc.data() } as any
 
-    const instDoc = await this.db.collection('p_institutions').doc(job.institution_id).get()
+    const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(vacante.institucionId).get()
     const inst = instDoc.data() ?? {}
 
-    job.disability_types = (() => { try { return JSON.parse(job.disability_types) } catch { return [] } })()
+    vacante.tiposDiscapacidad = (() => { try { return JSON.parse(vacante.tiposDiscapacidad) } catch { return [] } })()
     return {
-      ...job,
-      institution_name: inst.name ?? null,
-      institution_city: inst.city ?? null,
-      institution_description: inst.description ?? null,
-      institution_phone: inst.phone ?? null,
-      institution_email: inst.email ?? null,
-      institution_website: inst.website ?? null,
-      institution_verified: inst.is_verified ?? false,
+      ...vacante,
+      nombreInstitucion: inst.nombre ?? null,
+      ciudadInstitucion: inst.ciudad ?? null,
+      descripcionInstitucion: inst.descripcion ?? null,
+      telefonoInstitucion: inst.telefono ?? null,
+      emailInstitucion: inst.email ?? null,
+      sitioWebInstitucion: inst.sitioWeb ?? null,
+      institucionVerificada: inst.verificada ?? false,
     }
   }
 
-  async apply(userId: string, jobId: string, coverLetter: string) {
-    const jobDoc = await this.db.collection('p_jobs').doc(jobId).get()
-    if (!jobDoc.exists || !jobDoc.data()?.is_active) throw new NotFoundException('Vacante no encontrada o inactiva')
+  async apply(usuarioId: string, vacanteId: string, cartaPresentacion: string) {
+    const vacanteDoc = await this.db.collection(COLECCIONES.vacantes).doc(vacanteId).get()
+    if (!vacanteDoc.exists || !vacanteDoc.data()?.activa) throw new NotFoundException('Vacante no encontrada o inactiva')
 
-    const existing = await this.db.collection('u_job_applications')
-      .where('job_id', '==', jobId).where('user_id', '==', userId).limit(1).get()
-    if (!existing.empty) throw new ConflictException('Ya enviaste una solicitud para esta vacante')
+    const existente = await this.db.collection(COLECCIONES.postulaciones)
+      .where('vacanteId', '==', vacanteId).where('usuarioId', '==', usuarioId).limit(1).get()
+    if (!existente.empty) throw new ConflictException('Ya enviaste una solicitud para esta vacante')
 
     const id = randomUUID()
-    await this.db.collection('u_job_applications').doc(id).set({
-      id, job_id: jobId, user_id: userId, cover_letter: coverLetter, status: 'pending',
-      created_at: new Date().toISOString(),
+    await this.db.collection(COLECCIONES.postulaciones).doc(id).set({
+      id, vacanteId, usuarioId, cartaPresentacion, estado: 'pendiente',
+      fechaCreacion: new Date().toISOString(),
     })
-    return { id, status: 'pending', message: '¡Solicitud enviada con éxito!' }
+    return { id, estado: 'pendiente', mensaje: '¡Solicitud enviada con éxito!' }
   }
 
-  async myApplications(userId: string) {
-    const snap = await this.db.collection('u_job_applications')
-      .where('user_id', '==', userId).orderBy('created_at', 'desc').get()
-    const apps = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+  async myApplications(usuarioId: string) {
+    const snap = await this.db.collection(COLECCIONES.postulaciones)
+      .where('usuarioId', '==', usuarioId).orderBy('fechaCreacion', 'desc').get()
+    const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
-    const jobIds = [...new Set(apps.map(a => a.job_id))]
-    const jobMap = new Map<string, any>()
-    for (const jid of jobIds) {
-      const doc = await this.db.collection('p_jobs').doc(jid).get()
-      if (doc.exists) jobMap.set(jid, doc.data())
+    const vacanteIds = [...new Set(postulaciones.map(p => p.vacanteId))]
+    const mapaVacantes = new Map<string, any>()
+    for (const vid of vacanteIds) {
+      const doc = await this.db.collection(COLECCIONES.vacantes).doc(vid).get()
+      if (doc.exists) mapaVacantes.set(vid, doc.data())
     }
 
-    const instIds = [...new Set([...jobMap.values()].map(j => j?.institution_id).filter(Boolean))]
-    const instMap = new Map<string, any>()
+    const instIds = [...new Set([...mapaVacantes.values()].map(v => v?.institucionId).filter(Boolean))]
+    const mapaInst = new Map<string, any>()
     for (const iid of instIds) {
-      const doc = await this.db.collection('p_institutions').doc(iid).get()
-      if (doc.exists) instMap.set(iid, doc.data())
+      const doc = await this.db.collection(COLECCIONES.instituciones).doc(iid).get()
+      if (doc.exists) mapaInst.set(iid, doc.data())
     }
 
-    return apps.map(a => {
-      const job = jobMap.get(a.job_id) ?? {}
-      const inst = instMap.get(job.institution_id) ?? {}
-      return { ...a, title: job.title, modality: job.modality, institution_name: inst.name ?? null }
+    return postulaciones.map(p => {
+      const vacante = mapaVacantes.get(p.vacanteId) ?? {}
+      const inst = mapaInst.get(vacante.institucionId) ?? {}
+      return { ...p, titulo: vacante.titulo, modalidad: vacante.modalidad, nombreInstitucion: inst.nombre ?? null }
     })
   }
 
-  async getAppliedJobIds(userId: string): Promise<string[]> {
-    const snap = await this.db.collection('u_job_applications')
-      .where('user_id', '==', userId).get()
-    return snap.docs.map(d => d.data().job_id)
+  async getAppliedJobIds(usuarioId: string): Promise<string[]> {
+    const snap = await this.db.collection(COLECCIONES.postulaciones)
+      .where('usuarioId', '==', usuarioId).get()
+    return snap.docs.map(d => d.data().vacanteId)
   }
 
-  async createJob(institutionId: string, dto: any) {
+  async createJob(institucionId: string, dto: any) {
     const id = randomUUID()
-    await this.db.collection('p_jobs').doc(id).set({
-      id, institution_id: institutionId, title: dto.title, description: dto.description ?? '',
-      requirements: dto.requirements ?? '', modality: dto.modality ?? 'presencial',
-      schedule: dto.schedule ?? '', salary_range: dto.salary_range ?? '',
-      city: dto.city ?? '', state: dto.state ?? '',
-      disability_inclusive: dto.disability_inclusive !== false,
-      disability_types: JSON.stringify(dto.disability_types ?? []),
-      is_active: true, created_at: new Date().toISOString(),
+    await this.db.collection(COLECCIONES.vacantes).doc(id).set({
+      id, institucionId, titulo: dto.titulo, descripcion: dto.descripcion ?? '',
+      requisitos: dto.requisitos ?? '', modalidad: dto.modalidad ?? 'presencial',
+      horario: dto.horario ?? '', rangoSalario: dto.rangoSalario ?? '',
+      ciudad: dto.ciudad ?? '', estado: dto.estado ?? '',
+      inclusivaDiscapacidad: dto.inclusivaDiscapacidad !== false,
+      tiposDiscapacidad: JSON.stringify(dto.tiposDiscapacidad ?? []),
+      activa: true, fechaCreacion: new Date().toISOString(),
     })
     return this.findOne(id)
   }

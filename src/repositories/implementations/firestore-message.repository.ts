@@ -2,104 +2,105 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, CollectionReference } from 'firebase-admin/firestore'
 import { randomUUID } from 'crypto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import type {
-  Message,
-  CreateMessageData,
-  IMessageRepository,
+  Mensaje,
+  CrearMensajeDatos,
+  IRepositorioMensaje,
 } from '../interfaces/message.repository.interface'
 
 @Injectable()
-export class FirestoreMessageRepository implements IMessageRepository {
+export class RepositorioMensajeFirestore implements IRepositorioMensaje {
   private readonly col: CollectionReference
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    this.col = this.db.collection('u_direct_messages')
+    this.col = this.db.collection(COLECCIONES.mensajesDirectos)
   }
 
-  async findSentByUser(userId: string): Promise<Message[]> {
-    const snap = await this.col.where('from_id', '==', userId).get()
-    return snap.docs.map((d) => this.toDomain(d.id, d.data()))
+  async listarEnviadosPorUsuario(usuarioId: string): Promise<Mensaje[]> {
+    const snap = await this.col.where('remitenteId', '==', usuarioId).get()
+    return snap.docs.map((d) => this.aDominio(d.id, d.data()))
   }
 
-  async findReceivedByUser(userId: string): Promise<Message[]> {
-    const snap = await this.col.where('to_id', '==', userId).get()
-    return snap.docs.map((d) => this.toDomain(d.id, d.data()))
+  async listarRecibidosPorUsuario(usuarioId: string): Promise<Mensaje[]> {
+    const snap = await this.col.where('destinatarioId', '==', usuarioId).get()
+    return snap.docs.map((d) => this.aDominio(d.id, d.data()))
   }
 
-  async findMessagesBetween(userId: string, partnerId: string): Promise<Message[]> {
-    const [sentSnap, receivedSnap] = await Promise.all([
-      this.col.where('from_id', '==', userId).where('to_id', '==', partnerId).get(),
-      this.col.where('from_id', '==', partnerId).where('to_id', '==', userId).get(),
+  async listarMensajesEntre(usuarioId: string, parceiroId: string): Promise<Mensaje[]> {
+    const [enviadosSnap, recibidosSnap] = await Promise.all([
+      this.col.where('remitenteId', '==', usuarioId).where('destinatarioId', '==', parceiroId).get(),
+      this.col.where('remitenteId', '==', parceiroId).where('destinatarioId', '==', usuarioId).get(),
     ])
-    const messages = [
-      ...sentSnap.docs.map((d) => this.toDomain(d.id, d.data())),
-      ...receivedSnap.docs.map((d) => this.toDomain(d.id, d.data())),
+    const mensajes = [
+      ...enviadosSnap.docs.map((d) => this.aDominio(d.id, d.data())),
+      ...recibidosSnap.docs.map((d) => this.aDominio(d.id, d.data())),
     ]
-    return messages.sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    return mensajes.sort(
+      (a, b) => new Date(a.fechaCreacion).getTime() - new Date(b.fechaCreacion).getTime(),
     )
   }
 
-  async sendMessage(data: CreateMessageData): Promise<Message> {
+  async enviar(datos: CrearMensajeDatos): Promise<Mensaje> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    const message: Message = {
+    const ahora = new Date().toISOString()
+    const mensaje: Mensaje = {
       id,
-      from_id: data.from_id,
-      to_id: data.to_id,
-      content: data.content,
-      is_read: false,
-      created_at: now,
+      remitenteId: datos.remitenteId,
+      destinatarioId: datos.destinatarioId,
+      contenido: datos.contenido,
+      leido: false,
+      fechaCreacion: ahora,
     }
-    await this.col.doc(id).set(message)
-    return message
+    await this.col.doc(id).set(mensaje)
+    return mensaje
   }
 
-  async getUnreadCount(userId: string): Promise<number> {
+  async contarNoLeidos(usuarioId: string): Promise<number> {
     const snap = await this.col
-      .where('to_id', '==', userId)
-      .where('is_read', '==', false)
+      .where('destinatarioId', '==', usuarioId)
+      .where('leido', '==', false)
       .get()
     return snap.size
   }
 
-  async markMessagesAsRead(fromUserId: string, toUserId: string): Promise<void> {
+  async marcarComoLeidos(remitenteId: string, destinatarioId: string): Promise<void> {
     const snap = await this.col
-      .where('from_id', '==', fromUserId)
-      .where('to_id', '==', toUserId)
-      .where('is_read', '==', false)
+      .where('remitenteId', '==', remitenteId)
+      .where('destinatarioId', '==', destinatarioId)
+      .where('leido', '==', false)
       .get()
     if (snap.empty) return
-    const batch = this.db.batch()
+    const lote = this.db.batch()
     for (const doc of snap.docs) {
-      batch.update(doc.ref, { is_read: true })
+      lote.update(doc.ref, { leido: true })
     }
-    await batch.commit()
+    await lote.commit()
   }
 
-  async markAllAsRead(userId: string): Promise<void> {
+  async marcarTodosComoLeidos(usuarioId: string): Promise<void> {
     const snap = await this.col
-      .where('to_id', '==', userId)
-      .where('is_read', '==', false)
+      .where('destinatarioId', '==', usuarioId)
+      .where('leido', '==', false)
       .get()
     if (snap.empty) return
-    const batch = this.db.batch()
+    const lote = this.db.batch()
     for (const doc of snap.docs) {
-      batch.update(doc.ref, { is_read: true })
+      lote.update(doc.ref, { leido: true })
     }
-    await batch.commit()
+    await lote.commit()
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private toDomain(id: string, data: FirebaseFirestore.DocumentData): Message {
+  private aDominio(id: string, data: FirebaseFirestore.DocumentData): Mensaje {
     return {
       id,
-      from_id: data.from_id ?? '',
-      to_id: data.to_id ?? '',
-      content: data.content ?? '',
-      is_read: data.is_read ?? false,
-      created_at: data.created_at ?? '',
+      remitenteId: data.remitenteId ?? '',
+      destinatarioId: data.destinatarioId ?? '',
+      contenido: data.contenido ?? '',
+      leido: data.leido ?? false,
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 }

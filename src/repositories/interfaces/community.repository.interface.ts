@@ -1,102 +1,72 @@
-// ─── Grupos de comunidad (u_groups) ──────────────────────────────────────
-export interface CommunityGroup {
+// ─── Grupos de comunidad (grupos) ──────────────────────────────────────
+export interface GrupoComunidad {
   id: string
-  name: string
-  description: string
-  is_public: boolean
-  member_count: number
-  created_at: string
+  nombre: string
+  descripcion: string
+  esPublico: boolean
+  cantidadMiembros: number
+  fechaCreacion: string
   [key: string]: any
 }
 
-// ─── Publicaciones (u_posts) ─────────────────────────────────────────────
-export interface Post {
+// ─── Publicaciones (publicaciones) ─────────────────────────────────────
+export interface Publicacion {
   id: string
-  author_id: string
-  content: string
-  group_id: string | null
-  like_count: number
-  created_at: string
+  autorId: string
+  contenido: string
+  grupoId: string | null
+  cantidadMeGustas: number
+  fechaCreacion: string
 }
 
-// ─── Comentarios (u_comments) ────────────────────────────────────────────
-export interface Comment {
+// ─── Comentarios (comentarios) ────────────────────────────────────────
+export interface Comentario {
   id: string
-  post_id: string
-  author_id: string
-  content: string
-  created_at: string
+  publicacionId: string
+  autorId: string
+  contenido: string
+  fechaCreacion: string
 }
 
-// ─── Likes (u_post_likes) ────────────────────────────────────────────────
-export interface PostLike {
+// ─── Likes (meGustas) ────────────────────────────────────────────────
+export interface MeGusta {
   id?: string
-  user_id: string
-  post_id: string
+  usuarioId: string
+  publicacionId: string
 }
 
-// ─── DTOs ────────────────────────────────────────────────────────────────
-export interface CreatePostData {
-  author_id: string
-  content: string
-  group_id?: string | null
+// ─── DTOs ────────────────────────────────────────────────────────────
+export interface CrearPublicacionDatos {
+  autorId: string
+  contenido: string
+  grupoId?: string | null
 }
 
-export interface CreateCommentData {
-  post_id: string
-  author_id: string
-  content: string
+export interface CrearComentarioDatos {
+  publicacionId: string
+  autorId: string
+  contenido: string
 }
 
-// ─── Token de inyección ──────────────────────────────────────────────────
-export const COMMUNITY_REPOSITORY = 'COMMUNITY_REPOSITORY'
+// ─── Token de inyección ──────────────────────────────────────────────
+export const REPOSITORIO_COMUNIDAD = 'REPOSITORIO_COMUNIDAD'
 
-// ─── Interfaz del repositorio ────────────────────────────────────────────
-export interface ICommunityRepository {
-  // ── Grupos ───────────────────────────────────────────────────────────
+// ─── Interfaz del repositorio ────────────────────────────────────────
+export interface IRepositorioComunidad {
+  listarGruposPublicos(): Promise<GrupoComunidad[]>
 
-  /** Lista grupos públicos ordenados por miembros descendente */
-  findPublicGroups(): Promise<CommunityGroup[]>
+  listarPublicaciones(grupoId?: string, limite?: number): Promise<Publicacion[]>
+  buscarPublicacionPorId(id: string): Promise<Publicacion | null>
+  crearPublicacion(datos: CrearPublicacionDatos): Promise<Publicacion>
+  incrementarMeGustas(publicacionId: string): Promise<void>
+  decrementarMeGustas(publicacionId: string): Promise<void>
+  contarTodasPublicaciones(): Promise<number>
 
-  // ── Publicaciones ────────────────────────────────────────────────────
+  listarComentariosPorPublicacion(publicacionId: string): Promise<Comentario[]>
+  crearComentario(datos: CrearComentarioDatos): Promise<Comentario>
 
-  /** Lista publicaciones, opcionalmente filtradas por grupo, con límite */
-  findPosts(groupId?: string, limit?: number): Promise<Post[]>
-
-  /** Busca una publicación por ID */
-  findPostById(id: string): Promise<Post | null>
-
-  /** Crea una nueva publicación */
-  createPost(data: CreatePostData): Promise<Post>
-
-  /** Incrementa el contador de likes de una publicación */
-  incrementPostLikeCount(postId: string): Promise<void>
-
-  /** Decrementa el contador de likes de una publicación */
-  decrementPostLikeCount(postId: string): Promise<void>
-
-  /** Cuenta total de publicaciones */
-  countAllPosts(): Promise<number>
-
-  // ── Comentarios ──────────────────────────────────────────────────────
-
-  /** Lista comentarios de una publicación, orden ascendente */
-  findCommentsByPost(postId: string): Promise<Comment[]>
-
-  /** Crea un nuevo comentario */
-  createComment(data: CreateCommentData): Promise<Comment>
-
-  // ── Likes ────────────────────────────────────────────────────────────
-
-  /** Obtiene todos los likes de un usuario (para saber qué posts le gustan) */
-  findLikesByUser(userId: string): Promise<PostLike[]>
-
-  /** Busca un like específico (para toggle) */
-  findLikeByUserAndPost(userId: string, postId: string): Promise<PostLike | null>
-
-  /** Crea un like */
-  createLike(userId: string, postId: string): Promise<void>
-
-  /** Elimina un like por su ID de documento */
-  deleteLikeById(likeId: string): Promise<void>
+  listarMeGustasPorUsuario(usuarioId: string): Promise<MeGusta[]>
+  buscarMeGustaPorUsuarioYPublicacion(usuarioId: string, publicacionId: string): Promise<MeGusta | null>
+  crearMeGusta(usuarioId: string, publicacionId: string): Promise<void>
+  eliminarMeGustaPorId(meGustaId: string): Promise<void>
 }

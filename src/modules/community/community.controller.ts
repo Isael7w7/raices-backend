@@ -5,16 +5,16 @@ import { CommunityService } from './community.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-export class CreatePostDto {
+export class CrearPublicacionDto {
   @ApiProperty({ description: 'Contenido del post', example: '¡Hola comunidad!' })
-  @IsString() content: string
+  @IsString() contenido: string
   @ApiProperty({ description: 'ID del grupo (opcional)', required: false })
-  @IsOptional() @IsString() group_id?: string
+  @IsOptional() @IsString() grupoId?: string
 }
 
-export class CreateCommentDto {
+export class CrearComentarioDto {
   @ApiProperty({ description: 'Contenido del comentario', example: '¡Gran aporte!' })
-  @IsString() content: string
+  @IsString() contenido: string
 }
 
 @ApiTags('Community')
@@ -33,8 +33,8 @@ export class CommunityController {
   @ApiOperation({ summary: 'Listar posts', description: 'Retorna posts con información del autor y si el usuario dio like' })
   @ApiQuery({ name: 'group_id', required: false, description: 'Filtrar por grupo' })
   @ApiResponse({ status: 200, description: 'Lista de posts (últimos 20 por defecto)' })
-  posts(@Query('group_id') groupId: string, @CurrentUser() user: any) {
-    return this.svc.getPosts(groupId, user.id)
+  posts(@Query('group_id') grupoId: string, @CurrentUser() user: any) {
+    return this.svc.getPosts(grupoId, user.id)
   }
 
   @Get('posts/:id/comments')
@@ -49,8 +49,8 @@ export class CommunityController {
   @ApiOperation({ summary: 'Crear post', description: 'Publica un post en el feed general o en un grupo específico' })
   @ApiResponse({ status: 201, description: 'Post creado' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  createPost(@Body() dto: CreatePostDto, @CurrentUser() user: any) {
-    return this.svc.createPost(user.id, dto.content, dto.group_id)
+  createPost(@Body() dto: CrearPublicacionDto, @CurrentUser() user: any) {
+    return this.svc.createPost(user.id, dto.contenido, dto.grupoId)
   }
 
   @Post('posts/:id/comments')
@@ -60,8 +60,8 @@ export class CommunityController {
   @ApiParam({ name: 'id', description: 'ID del post' })
   @ApiResponse({ status: 201, description: 'Comentario creado' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  createComment(@Param('id') postId: string, @Body() dto: CreateCommentDto, @CurrentUser() user: any) {
-    return this.svc.createComment(postId, user.id, dto.content)
+  createComment(@Param('id') publicacionId: string, @Body() dto: CrearComentarioDto, @CurrentUser() user: any) {
+    return this.svc.createComment(publicacionId, user.id, dto.contenido)
   }
 
   @Post('posts/:id/like')
@@ -71,7 +71,7 @@ export class CommunityController {
   @ApiParam({ name: 'id', description: 'ID del post' })
   @ApiResponse({ status: 200, description: 'Estado del like: { liked: boolean }' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  toggleLike(@Param('id') postId: string, @CurrentUser() user: any) {
-    return this.svc.toggleLike(user.id, postId)
+  toggleLike(@Param('id') publicacionId: string, @CurrentUser() user: any) {
+    return this.svc.toggleLike(user.id, publicacionId)
   }
 }

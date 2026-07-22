@@ -2,221 +2,213 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, CollectionReference } from 'firebase-admin/firestore'
 import { randomUUID } from 'crypto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import type {
-  UserProfile,
-  UserProfiling,
-  CreateUserProfileData,
-  UpdateUserProfileData,
-  UpsertProfilingData,
-  IProfileRepository,
+  PerfilUsuario,
+  PerfilNecesidades,
+  CrearPerfilDatos,
+  ActualizarPerfilDatos,
+  ActualizarPerfilNecesidadesDatos,
+  IRepositorioPerfil,
 } from '../interfaces/profile.repository.interface'
 
 @Injectable()
-export class FirestoreProfileRepository implements IProfileRepository {
-  private readonly profilesCol: CollectionReference
-  private readonly profilingCol: CollectionReference
+export class RepositorioPerfilFirestore implements IRepositorioPerfil {
+  private readonly colPerfiles: CollectionReference
+  private readonly colPerfilesExtendidos: CollectionReference
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    this.profilesCol = this.db.collection('u_profiles')
-    this.profilingCol = this.db.collection('u_user_profiles')
+    this.colPerfiles = this.db.collection(COLECCIONES.perfiles)
+    this.colPerfilesExtendidos = this.db.collection(COLECCIONES.perfilesExtendidos)
   }
 
-  // ── Perfiles de usuario (u_profiles) ──────────────────────────────────
+  // ── Perfiles de usuario (perfiles) ──────────────────────────────────
 
-  async findById(id: string): Promise<UserProfile | null> {
-    const doc = await this.profilesCol.doc(id).get()
+  async buscarPorId(id: string): Promise<PerfilUsuario | null> {
+    const doc = await this.colPerfiles.doc(id).get()
     if (!doc.exists) return null
-    return this.profileToDomain(doc.id, doc.data()!)
+    return this.perfilADominio(doc.id, doc.data()!)
   }
 
-  async findByEmail(
-    email: string,
-  ): Promise<(UserProfile & { password_hash: string }) | null> {
-    const snap = await this.profilesCol.where('email', '==', email).limit(1).get()
+  async buscarPorEmail(email: string): Promise<PerfilUsuario | null> {
+    const snap = await this.colPerfiles.where('email', '==', email).limit(1).get()
     if (snap.empty) return null
     const doc = snap.docs[0]
-    const data = doc.data()
-    return {
-      ...this.profileToDomain(doc.id, data),
-      password_hash: data.password_hash ?? '',
-    }
+    return this.perfilADominio(doc.id, doc.data())
   }
 
-  async create(data: CreateUserProfileData): Promise<UserProfile> {
-    const now = new Date().toISOString()
-    await this.profilesCol.doc(data.id).set({
-      id: data.id,
-      email: data.email,
-      password_hash: data.password_hash,
-      full_name: data.full_name,
-      role: data.role,
-      city: data.city ?? null,
-      state: data.state ?? null,
-      avatar_url: null,
-      is_active: true,
-      is_verified: false,
-      created_at: now,
+  async crear(datos: CrearPerfilDatos): Promise<PerfilUsuario> {
+    const ahora = new Date().toISOString()
+    await this.colPerfiles.doc(datos.id).set({
+      id: datos.id,
+      email: datos.email,
+      nombreCompleto: datos.nombreCompleto,
+      rol: datos.rol,
+      ciudad: datos.ciudad ?? null,
+      estado: datos.estado ?? null,
+      urlAvatar: null,
+      activo: true,
+      verificado: false,
+      fechaCreacion: ahora,
     })
-    return (await this.findById(data.id))!
+    return (await this.buscarPorId(datos.id))!
   }
 
-  async update(id: string, data: UpdateUserProfileData): Promise<void> {
-    const updateData: Record<string, any> = { ...data, updated_at: new Date().toISOString() }
-    await this.profilesCol.doc(id).update(updateData)
+  async actualizar(id: string, datos: ActualizarPerfilDatos): Promise<void> {
+    const datosActualizados: Record<string, any> = { ...datos, fechaActualizacion: new Date().toISOString() }
+    await this.colPerfiles.doc(id).update(datosActualizados)
   }
 
-  async updateFields(id: string, fields: Record<string, any>): Promise<void> {
-    fields.updated_at = new Date().toISOString()
-    await this.profilesCol.doc(id).update(fields)
+  async actualizarCampos(id: string, campos: Record<string, any>): Promise<void> {
+    campos.fechaActualizacion = new Date().toISOString()
+    await this.colPerfiles.doc(id).update(campos)
   }
 
-  async softDelete(id: string): Promise<void> {
-    await this.profilesCol.doc(id).update({
-      is_active: false,
-      updated_at: new Date().toISOString(),
+  async eliminarSuave(id: string): Promise<void> {
+    await this.colPerfiles.doc(id).update({
+      activo: false,
+      fechaActualizacion: new Date().toISOString(),
     })
   }
 
-  async existsByEmail(email: string): Promise<boolean> {
-    const snap = await this.profilesCol.where('email', '==', email).limit(1).get()
+  async existePorEmail(email: string): Promise<boolean> {
+    const snap = await this.colPerfiles.where('email', '==', email).limit(1).get()
     return !snap.empty
   }
 
-  async findAll(orderByField = 'created_at'): Promise<UserProfile[]> {
-    const snap = await this.profilesCol.orderBy(orderByField, 'desc').get()
-    return snap.docs.map((d) => this.profileToDomain(d.id, d.data()))
+  async listarTodos(campoOrden = 'fechaCreacion'): Promise<PerfilUsuario[]> {
+    const snap = await this.colPerfiles.orderBy(campoOrden, 'desc').get()
+    return snap.docs.map((d) => this.perfilADominio(d.id, d.data()))
   }
 
-  async countActive(): Promise<number> {
-    const snap = await this.profilesCol.where('is_active', '==', true).get()
+  async contarActivos(): Promise<number> {
+    const snap = await this.colPerfiles.where('activo', '==', true).get()
     return snap.size
   }
 
-  async countAll(): Promise<number> {
-    const snap = await this.profilesCol.get()
+  async contarTodos(): Promise<number> {
+    const snap = await this.colPerfiles.get()
     return snap.size
   }
 
-  async findByRole(role: string): Promise<UserProfile[]> {
-    const snap = await this.profilesCol.where('role', '==', role).get()
-    return snap.docs.map((d) => this.profileToDomain(d.id, d.data()))
+  async listarPorRol(rol: string): Promise<PerfilUsuario[]> {
+    const snap = await this.colPerfiles.where('rol', '==', rol).get()
+    return snap.docs.map((d) => this.perfilADominio(d.id, d.data()))
   }
 
-  // ── Perfiles extendidos de necesidades (u_user_profiles) ──────────
+  // ── Perfiles extendidos de necesidades (perfilesExtendidos) ──────────
 
-  async findProfilingByUserId(userId: string): Promise<UserProfiling | null> {
-    const snap = await this.profilingCol
-      .where('user_id', '==', userId)
+  async buscarPerfilNecesidadesPorUsuario(usuarioId: string): Promise<PerfilNecesidades | null> {
+    const snap = await this.colPerfilesExtendidos
+      .where('usuarioId', '==', usuarioId)
       .limit(1)
       .get()
     if (snap.empty) return null
-    return this.profilingToDomain(snap.docs[0].id, snap.docs[0].data())
+    return this.necesidadesADominio(snap.docs[0].id, snap.docs[0].data())
   }
 
-  async upsertProfiling(
-    userId: string,
-    data: UpsertProfilingData,
-  ): Promise<UserProfiling> {
-    const existing = await this.findProfilingByUserId(userId)
+  async guardarPerfilNecesidades(
+    usuarioId: string,
+    datos: ActualizarPerfilNecesidadesDatos,
+  ): Promise<PerfilNecesidades> {
+    const existente = await this.buscarPerfilNecesidadesPorUsuario(usuarioId)
 
-    const payload: Record<string, any> = {
-      disability_types: this.serialize(data.disability_types),
-      disability_severity: data.disability_severity ?? null,
-      communication_modes: this.serialize(data.communication_modes),
-      mobility_needs: this.serialize(data.mobility_needs),
-      tech_access: this.serialize(data.tech_access),
-      preferred_zones: this.serialize(data.preferred_zones),
-      needs: this.serialize(data.needs),
-      current_goals: this.serialize(data.current_goals),
-      support_areas: this.serialize(data.support_areas),
-      education_history: this.serialize(data.education_history),
-      therapy_history: this.serialize(data.therapy_history),
-      life_stage: data.life_stage ?? null,
-      current_concerns: data.current_concerns ?? null,
-      support_level: data.support_level ?? null,
+    const carga: Record<string, any> = {
+      tiposDiscapacidad: this.serializar(datos.tiposDiscapacidad),
+      severidadDiscapacidad: datos.severidadDiscapacidad ?? null,
+      modosComunicacion: this.serializar(datos.modosComunicacion),
+      necesidadesMovilidad: this.serializar(datos.necesidadesMovilidad),
+      accesoTecnologia: this.serializar(datos.accesoTecnologia),
+      zonasPreferidas: this.serializar(datos.zonasPreferidas),
+      necesidades: this.serializar(datos.necesidades),
+      metasActuales: this.serializar(datos.metasActuales),
+      areasApoyo: this.serializar(datos.areasApoyo),
+      historialEducacion: this.serializar(datos.historialEducacion),
+      historialTerapia: this.serializar(datos.historialTerapia),
+      etapaVida: datos.etapaVida ?? null,
+      preocupacionesActuales: datos.preocupacionesActuales ?? null,
+      nivelApoyo: datos.nivelApoyo ?? null,
     }
 
-    if (existing) {
-      await this.profilingCol.doc(existing.id).update(payload)
-      return (await this.findProfilingByUserId(userId))!
+    if (existente) {
+      await this.colPerfilesExtendidos.doc(existente.id).update(carga)
+      return (await this.buscarPerfilNecesidadesPorUsuario(usuarioId))!
     }
 
     const id = randomUUID()
-    await this.profilingCol.doc(id).set({
+    await this.colPerfilesExtendidos.doc(id).set({
       id,
-      user_id: userId,
-      ...payload,
+      usuarioId,
+      ...carga,
     })
-    return (await this.findProfilingByUserId(userId))!
+    return (await this.buscarPerfilNecesidadesPorUsuario(usuarioId))!
   }
 
-  async countProfiling(): Promise<number> {
-    const snap = await this.profilingCol.get()
+  async contarPerfilesNecesidades(): Promise<number> {
+    const snap = await this.colPerfilesExtendidos.get()
     return snap.size
   }
 
-  async findAllProfiling(): Promise<UserProfiling[]> {
-    const snap = await this.profilingCol.get()
-    return snap.docs.map((d) => this.profilingToDomain(d.id, d.data()))
+  async listarTodosPerfilesNecesidades(): Promise<PerfilNecesidades[]> {
+    const snap = await this.colPerfilesExtendidos.get()
+    return snap.docs.map((d) => this.necesidadesADominio(d.id, d.data()))
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private profileToDomain(
+  private perfilADominio(
     id: string,
     data: FirebaseFirestore.DocumentData,
-  ): UserProfile {
+  ): PerfilUsuario {
     return {
       id,
       email: data.email ?? '',
-      full_name: data.full_name ?? '',
-      role: data.role ?? '',
-      city: data.city ?? '',
-      state: data.state ?? '',
-      avatar_url: data.avatar_url ?? null,
-      is_active: data.is_active ?? false,
-      is_verified: data.is_verified ?? false,
-      created_at: data.created_at ?? '',
+      nombreCompleto: data.nombreCompleto ?? '',
+      rol: data.rol ?? '',
+      ciudad: data.ciudad ?? '',
+      estado: data.estado ?? '',
+      urlAvatar: data.urlAvatar ?? null,
+      activo: data.activo ?? false,
+      verificado: data.verificado ?? false,
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 
-  private profilingToDomain(
+  private necesidadesADominio(
     id: string,
     data: FirebaseFirestore.DocumentData,
-  ): UserProfiling {
+  ): PerfilNecesidades {
     return {
       id,
-      user_id: data.user_id ?? '',
-      disability_types: this.parseArr(data.disability_types),
-      disability_severity: data.disability_severity ?? null,
-      communication_modes: this.parseArr(data.communication_modes),
-      mobility_needs: this.parseArr(data.mobility_needs),
-      tech_access: this.parseArr(data.tech_access),
-      preferred_zones: this.parseArr(data.preferred_zones),
-      needs: this.parseArr(data.needs),
-      current_goals: this.parseArr(data.current_goals),
-      support_areas: this.parseArr(data.support_areas),
-      education_history: this.parseArr(data.education_history),
-      therapy_history: this.parseArr(data.therapy_history),
-      life_stage: data.life_stage ?? null,
-      current_concerns: data.current_concerns ?? null,
-      support_level: data.support_level ?? null,
+      usuarioId: data.usuarioId ?? '',
+      tiposDiscapacidad: this.parsearArreglo(data.tiposDiscapacidad),
+      severidadDiscapacidad: data.severidadDiscapacidad ?? null,
+      modosComunicacion: this.parsearArreglo(data.modosComunicacion),
+      necesidadesMovilidad: this.parsearArreglo(data.necesidadesMovilidad),
+      accesoTecnologia: this.parsearArreglo(data.accesoTecnologia),
+      zonasPreferidas: this.parsearArreglo(data.zonasPreferidas),
+      necesidades: this.parsearArreglo(data.necesidades),
+      metasActuales: this.parsearArreglo(data.metasActuales),
+      areasApoyo: this.parsearArreglo(data.areasApoyo),
+      historialEducacion: this.parsearArreglo(data.historialEducacion),
+      historialTerapia: this.parsearArreglo(data.historialTerapia),
+      etapaVida: data.etapaVida ?? null,
+      preocupacionesActuales: data.preocupacionesActuales ?? null,
+      nivelApoyo: data.nivelApoyo ?? null,
     }
   }
 
-  /** Parsea un JSON string a string[]; devuelve [] si falla */
-  private parseArr(val: any): string[] {
-    if (!val) return []
+  private parsearArreglo(valor: any): string[] {
+    if (!valor) return []
     try {
-      const p = JSON.parse(val)
+      const p = JSON.parse(valor)
       return Array.isArray(p) ? p : []
     } catch {
       return []
     }
   }
 
-  /** Serializa un array a JSON string; devuelve '[]' si es undefined */
-  private serialize(arr: any[] | undefined): string {
-    return JSON.stringify(arr ?? [])
+  private serializar(arreglo: any[] | undefined): string {
+    return JSON.stringify(arreglo ?? [])
   }
 }

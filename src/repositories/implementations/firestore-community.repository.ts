@@ -2,173 +2,174 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, CollectionReference, Query, FieldValue } from 'firebase-admin/firestore'
 import { randomUUID } from 'crypto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 import type {
-  CommunityGroup,
-  Post,
-  Comment,
-  PostLike,
-  CreatePostData,
-  CreateCommentData,
-  ICommunityRepository,
+  GrupoComunidad,
+  Publicacion,
+  Comentario,
+  MeGusta,
+  CrearPublicacionDatos,
+  CrearComentarioDatos,
+  IRepositorioComunidad,
 } from '../interfaces/community.repository.interface'
 
 @Injectable()
-export class FirestoreCommunityRepository implements ICommunityRepository {
-  private readonly groupsCol: CollectionReference
-  private readonly postsCol: CollectionReference
-  private readonly commentsCol: CollectionReference
-  private readonly likesCol: CollectionReference
+export class RepositorioComunidadFirestore implements IRepositorioComunidad {
+  private readonly colGrupos: CollectionReference
+  private readonly colPublicaciones: CollectionReference
+  private readonly colComentarios: CollectionReference
+  private readonly colMeGustas: CollectionReference
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    this.groupsCol = this.db.collection('u_groups')
-    this.postsCol = this.db.collection('u_posts')
-    this.commentsCol = this.db.collection('u_comments')
-    this.likesCol = this.db.collection('u_post_likes')
+    this.colGrupos = this.db.collection(COLECCIONES.grupos)
+    this.colPublicaciones = this.db.collection(COLECCIONES.publicaciones)
+    this.colComentarios = this.db.collection(COLECCIONES.comentarios)
+    this.colMeGustas = this.db.collection(COLECCIONES.meGustas)
   }
 
   // ── Grupos ────────────────────────────────────────────────────────────
 
-  async findPublicGroups(): Promise<CommunityGroup[]> {
-    const snap = await this.groupsCol
-      .where('is_public', '==', true)
-      .orderBy('member_count', 'desc')
+  async listarGruposPublicos(): Promise<GrupoComunidad[]> {
+    const snap = await this.colGrupos
+      .where('esPublico', '==', true)
+      .orderBy('cantidadMiembros', 'desc')
       .get()
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CommunityGroup))
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as GrupoComunidad))
   }
 
   // ── Publicaciones ─────────────────────────────────────────────────────
 
-  async findPosts(groupId?: string, limit = 20): Promise<Post[]> {
-    let q: Query = this.postsCol
-    if (groupId) {
-      q = q.where('group_id', '==', groupId)
+  async listarPublicaciones(grupoId?: string, limite = 20): Promise<Publicacion[]> {
+    let q: Query = this.colPublicaciones
+    if (grupoId) {
+      q = q.where('grupoId', '==', grupoId)
     }
-    const snap = await q.orderBy('created_at', 'desc').limit(limit).get()
-    return snap.docs.map((d) => this.postToDomain(d.id, d.data()))
+    const snap = await q.orderBy('fechaCreacion', 'desc').limit(limite).get()
+    return snap.docs.map((d) => this.publicacionADominio(d.id, d.data()))
   }
 
-  async findPostById(id: string): Promise<Post | null> {
-    const doc = await this.postsCol.doc(id).get()
+  async buscarPublicacionPorId(id: string): Promise<Publicacion | null> {
+    const doc = await this.colPublicaciones.doc(id).get()
     if (!doc.exists) return null
-    return this.postToDomain(doc.id, doc.data()!)
+    return this.publicacionADominio(doc.id, doc.data()!)
   }
 
-  async createPost(data: CreatePostData): Promise<Post> {
+  async crearPublicacion(datos: CrearPublicacionDatos): Promise<Publicacion> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    const post: Post = {
+    const ahora = new Date().toISOString()
+    const publicacion: Publicacion = {
       id,
-      author_id: data.author_id,
-      content: data.content,
-      group_id: data.group_id ?? null,
-      like_count: 0,
-      created_at: now,
+      autorId: datos.autorId,
+      contenido: datos.contenido,
+      grupoId: datos.grupoId ?? null,
+      cantidadMeGustas: 0,
+      fechaCreacion: ahora,
     }
-    await this.postsCol.doc(id).set(post)
-    return post
+    await this.colPublicaciones.doc(id).set(publicacion)
+    return publicacion
   }
 
-  async incrementPostLikeCount(postId: string): Promise<void> {
-    await this.postsCol.doc(postId).update({
-      like_count: FieldValue.increment(1),
+  async incrementarMeGustas(publicacionId: string): Promise<void> {
+    await this.colPublicaciones.doc(publicacionId).update({
+      cantidadMeGustas: FieldValue.increment(1),
     })
   }
 
-  async decrementPostLikeCount(postId: string): Promise<void> {
-    await this.postsCol.doc(postId).update({
-      like_count: FieldValue.increment(-1),
+  async decrementarMeGustas(publicacionId: string): Promise<void> {
+    await this.colPublicaciones.doc(publicacionId).update({
+      cantidadMeGustas: FieldValue.increment(-1),
     })
   }
 
-  async countAllPosts(): Promise<number> {
-    const snap = await this.postsCol.get()
+  async contarTodasPublicaciones(): Promise<number> {
+    const snap = await this.colPublicaciones.get()
     return snap.size
   }
 
   // ── Comentarios ───────────────────────────────────────────────────────
 
-  async findCommentsByPost(postId: string): Promise<Comment[]> {
-    const snap = await this.commentsCol
-      .where('post_id', '==', postId)
-      .orderBy('created_at', 'asc')
+  async listarComentariosPorPublicacion(publicacionId: string): Promise<Comentario[]> {
+    const snap = await this.colComentarios
+      .where('publicacionId', '==', publicacionId)
+      .orderBy('fechaCreacion', 'asc')
       .get()
-    return snap.docs.map((d) => this.commentToDomain(d.id, d.data()))
+    return snap.docs.map((d) => this.comentarioADominio(d.id, d.data()))
   }
 
-  async createComment(data: CreateCommentData): Promise<Comment> {
+  async crearComentario(datos: CrearComentarioDatos): Promise<Comentario> {
     const id = randomUUID()
-    const now = new Date().toISOString()
-    const comment: Comment = {
+    const ahora = new Date().toISOString()
+    const comentario: Comentario = {
       id,
-      post_id: data.post_id,
-      author_id: data.author_id,
-      content: data.content,
-      created_at: now,
+      publicacionId: datos.publicacionId,
+      autorId: datos.autorId,
+      contenido: datos.contenido,
+      fechaCreacion: ahora,
     }
-    await this.commentsCol.doc(id).set(comment)
-    return comment
+    await this.colComentarios.doc(id).set(comentario)
+    return comentario
   }
 
   // ── Likes ─────────────────────────────────────────────────────────────
 
-  async findLikesByUser(userId: string): Promise<PostLike[]> {
-    const snap = await this.likesCol.where('user_id', '==', userId).get()
+  async listarMeGustasPorUsuario(usuarioId: string): Promise<MeGusta[]> {
+    const snap = await this.colMeGustas.where('usuarioId', '==', usuarioId).get()
     return snap.docs.map((d) => ({
       id: d.id,
       ...d.data(),
-    })) as PostLike[]
+    })) as MeGusta[]
   }
 
-  async findLikeByUserAndPost(
-    userId: string,
-    postId: string,
-  ): Promise<PostLike | null> {
-    const snap = await this.likesCol
-      .where('user_id', '==', userId)
-      .where('post_id', '==', postId)
+  async buscarMeGustaPorUsuarioYPublicacion(
+    usuarioId: string,
+    publicacionId: string,
+  ): Promise<MeGusta | null> {
+    const snap = await this.colMeGustas
+      .where('usuarioId', '==', usuarioId)
+      .where('publicacionId', '==', publicacionId)
       .limit(1)
       .get()
     if (snap.empty) return null
-    return { id: snap.docs[0].id, ...snap.docs[0].data() } as PostLike
+    return { id: snap.docs[0].id, ...snap.docs[0].data() } as MeGusta
   }
 
-  async createLike(userId: string, postId: string): Promise<void> {
-    await this.likesCol.doc(randomUUID()).set({
-      user_id: userId,
-      post_id: postId,
+  async crearMeGusta(usuarioId: string, publicacionId: string): Promise<void> {
+    await this.colMeGustas.doc(randomUUID()).set({
+      usuarioId,
+      publicacionId,
     })
   }
 
-  async deleteLikeById(likeId: string): Promise<void> {
-    await this.likesCol.doc(likeId).delete()
+  async eliminarMeGustaPorId(meGustaId: string): Promise<void> {
+    await this.colMeGustas.doc(meGustaId).delete()
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────
 
-  private postToDomain(
+  private publicacionADominio(
     id: string,
     data: FirebaseFirestore.DocumentData,
-  ): Post {
+  ): Publicacion {
     return {
       id,
-      author_id: data.author_id ?? '',
-      content: data.content ?? '',
-      group_id: data.group_id ?? null,
-      like_count: data.like_count ?? 0,
-      created_at: data.created_at ?? '',
+      autorId: data.autorId ?? '',
+      contenido: data.contenido ?? '',
+      grupoId: data.grupoId ?? null,
+      cantidadMeGustas: data.cantidadMeGustas ?? 0,
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 
-  private commentToDomain(
+  private comentarioADominio(
     id: string,
     data: FirebaseFirestore.DocumentData,
-  ): Comment {
+  ): Comentario {
     return {
       id,
-      post_id: data.post_id ?? '',
-      author_id: data.author_id ?? '',
-      content: data.content ?? '',
-      created_at: data.created_at ?? '',
+      publicacionId: data.publicacionId ?? '',
+      autorId: data.autorId ?? '',
+      contenido: data.contenido ?? '',
+      fechaCreacion: data.fechaCreacion ?? '',
     }
   }
 }

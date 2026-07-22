@@ -1,166 +1,166 @@
 {
   "indexes": [
     {
-      "collectionGroup": "p_jobs",
+      "collectionGroup": "vacantes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "is_active", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "activa", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "p_jobs",
+      "collectionGroup": "vacantes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "is_active", "order": "ASCENDING" },
-        { "fieldPath": "modality", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "activa", "order": "ASCENDING" },
+        { "fieldPath": "modalidad", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_job_applications",
+      "collectionGroup": "postulaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_job_applications",
+      "collectionGroup": "postulaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "job_id", "order": "ASCENDING" }
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "vacanteId", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_reviews",
+      "collectionGroup": "resenas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "institution_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "institucionId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_reviews",
+      "collectionGroup": "resenas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_groups",
+      "collectionGroup": "grupos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "is_public", "order": "ASCENDING" },
-        { "fieldPath": "member_count", "order": "DESCENDING" }
+        { "fieldPath": "esPublico", "order": "ASCENDING" },
+        { "fieldPath": "cantidadMiembros", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_posts",
+      "collectionGroup": "publicaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "group_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "grupoId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_posts",
+      "collectionGroup": "publicaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "author_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "autorId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_comments",
+      "collectionGroup": "comentarios",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "post_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "ASCENDING" }
+        { "fieldPath": "publicacionId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_notifications",
+      "collectionGroup": "notificaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_notifications",
+      "collectionGroup": "notificaciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "is_read", "order": "ASCENDING" }
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "leida", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "p_institutions",
+      "collectionGroup": "instituciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "is_active", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "activa", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "p_institutions",
+      "collectionGroup": "instituciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "is_active", "order": "ASCENDING" },
-        { "fieldPath": "category", "order": "ASCENDING" },
-        { "fieldPath": "rating_avg", "order": "DESCENDING" }
+        { "fieldPath": "activa", "order": "ASCENDING" },
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "calificacionPromedio", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "p_institutions",
+      "collectionGroup": "instituciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "is_active", "order": "ASCENDING" },
-        { "fieldPath": "rating_avg", "order": "DESCENDING" }
+        { "fieldPath": "activa", "order": "ASCENDING" },
+        { "fieldPath": "calificacionPromedio", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "p_institutions",
+      "collectionGroup": "instituciones",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "category", "order": "ASCENDING" },
-        { "fieldPath": "rating_avg", "order": "DESCENDING" }
+        { "fieldPath": "categoria", "order": "ASCENDING" },
+        { "fieldPath": "calificacionPromedio", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_dependents",
+      "collectionGroup": "dependientes",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "guardian_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "ASCENDING" }
+        { "fieldPath": "tutorId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_direct_messages",
+      "collectionGroup": "mensajesDirectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "from_id", "order": "ASCENDING" },
-        { "fieldPath": "to_id", "order": "ASCENDING" },
-        { "fieldPath": "is_read", "order": "ASCENDING" }
+        { "fieldPath": "remitenteId", "order": "ASCENDING" },
+        { "fieldPath": "destinatarioId", "order": "ASCENDING" },
+        { "fieldPath": "leida", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_direct_messages",
+      "collectionGroup": "mensajesDirectos",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "to_id", "order": "ASCENDING" },
-        { "fieldPath": "is_read", "order": "ASCENDING" }
+        { "fieldPath": "destinatarioId", "order": "ASCENDING" },
+        { "fieldPath": "leida", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "u_post_likes",
+      "collectionGroup": "meGustas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "post_id", "order": "ASCENDING" }
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "publicacionId", "order": "ASCENDING" }
       ]
     }
   ],
