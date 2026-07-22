@@ -41,7 +41,7 @@ export class AuthService {
       firebaseUser = await this.auth.createUser({
         email: dto.email,
         password: dto.password,
-        displayName: dto.full_name,
+        displayName: dto.fullName,
       })
     } catch (e: any) {
       this.logger.error(`Firebase Auth user creation failed: ${e?.message ?? e}`)
@@ -56,7 +56,7 @@ export class AuthService {
     await this.db.collection('u_profiles').doc(uid).set({
       id: uid,
       email: dto.email,
-      full_name: dto.full_name,
+      full_name: dto.fullName,
       role: dto.role,
       city: dto.city ?? null,
       state: dto.state ?? null,
@@ -86,13 +86,13 @@ export class AuthService {
       id: uid,
       email: dto.email,
       role: dto.role,
-      full_name: dto.full_name,
+      full_name: dto.fullName,
     }
 
-    await this.analytics?.increment('total_usuarios')
-    await this.analytics?.increment('usuarios_activos')
+    await this.analytics?.incrementar('total_usuarios')
+    await this.analytics?.incrementar('usuarios_activos')
 
-    this.emailService.sendWelcome(dto.email, dto.full_name).catch(() => null)
+    this.emailService.sendWelcome(dto.email, dto.fullName).catch(() => null)
 
     return {
       token: idToken,
