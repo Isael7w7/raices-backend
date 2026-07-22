@@ -6,10 +6,10 @@ import { NotificationsService } from './notifications.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-@ApiTags('Notifications')
+@ApiTags('Notificaciones')
 @ApiBearerAuth('jwt-auth')
 @UseGuards(JwtAuthGuard)
-@Controller('notifications')
+@Controller('notificaciones')
 export class NotificationsController {
   constructor(private readonly svc: NotificationsService) {}
 
@@ -19,7 +19,7 @@ export class NotificationsController {
   @ApiResponse({ status: 401, description: 'No autenticado' })
   list(@CurrentUser() user: any) { return this.svc.findByUser(user.id) }
 
-  @Patch(':id/read')
+  @Patch(':id/leer')
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   @ApiParam({ name: 'id', description: 'ID de la notificación' })
   @ApiResponse({ status: 200, description: 'Notificación marcada como leída' })
@@ -27,14 +27,14 @@ export class NotificationsController {
     return this.svc.markRead(user.id, id)
   }
 
-  @Patch('read-all')
+  @Patch('leer-todas')
   @ApiOperation({ summary: 'Marcar todas como leídas', description: 'Marca todas las notificaciones no leídas del usuario como leídas' })
   @ApiResponse({ status: 200, description: 'Todas marcadas como leídas' })
   markAllRead(@CurrentUser() user: any) { return this.svc.markAllRead(user.id) }
 
-  @Sse('stream')
-  @ApiOperation({ summary: 'Stream de notificaciones en tiempo real', description: 'Server-Sent Events para recibir notificaciones instantáneas' })
-  @ApiResponse({ status: 200, description: 'Stream SSE activo' })
+  @Sse('flujo')
+  @ApiOperation({ summary: 'Flujo de notificaciones en tiempo real', description: 'Eventos en tiempo real del servidor para recibir notificaciones instantáneas' })
+  @ApiResponse({ status: 200, description: 'Flujo de eventos en tiempo real activo' })
   stream(@CurrentUser() user: any): Observable<MessageEvent> {
     const subject = this.svc.getStream(user.id)
     return subject.asObservable().pipe(

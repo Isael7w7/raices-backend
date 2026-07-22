@@ -14,12 +14,10 @@ import { StorageModule } from './modules/storage/storage.module'
 import { EmailModule } from './modules/email/email.module'
 import { JobsModule } from './modules/jobs/jobs.module'
 import { MessagesModule } from './modules/messages/messages.module'
-import { RepositoriesModule } from './repositories/repositories.module'
 
 @Module({
   imports: [
     DatabaseModule,
-    RepositoriesModule,
     AuthModule,
     UsersModule,
     InstitutionsModule,

@@ -4,18 +4,18 @@ import { InstitutionsService } from './institutions.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-@ApiTags('Institutions')
-@Controller('institutions')
+@ApiTags('Instituciones')
+@Controller('instituciones')
 export class InstitutionsController {
   constructor(private readonly svc: InstitutionsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar instituciones', description: 'Retorna instituciones activas con filtros opcionales' })
-  @ApiQuery({ name: 'category', required: false, description: 'Filtrar por categoría: funcional, educativo, laboral, social' })
-  @ApiQuery({ name: 'city', required: false, description: 'Filtrar por ciudad (búsqueda parcial)' })
-  @ApiQuery({ name: 'search', required: false, description: 'Búsqueda por nombre, descripción o ciudad' })
-  @ApiQuery({ name: 'disability_type', required: false, description: 'Filtrar por tipo de discapacidad: tea, motriz, visual, etc.' })
-  @ApiQuery({ name: 'age', required: false, description: 'Filtrar por edad del usuario' })
+  @ApiQuery({ name: 'categoria', required: false, description: 'Filtrar por categoría: funcional, educativo, laboral, social' })
+  @ApiQuery({ name: 'ciudad', required: false, description: 'Filtrar por ciudad (búsqueda parcial)' })
+  @ApiQuery({ name: 'busqueda', required: false, description: 'Búsqueda por nombre, descripción o ciudad' })
+  @ApiQuery({ name: 'tipoDiscapacidad', required: false, description: 'Filtrar por tipo de discapacidad: tea, motriz, visual, etc.' })
+  @ApiQuery({ name: 'edad', required: false, description: 'Filtrar por edad del usuario' })
   @ApiResponse({ status: 200, description: 'Lista de instituciones' })
   findAll(@Query() q: any) { return this.svc.findAll(q) }
 

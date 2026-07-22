@@ -1,8 +1,10 @@
 import { Injectable, Inject, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
+import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
 
-const MOCK_REPLIES = [
+const RESPUESTAS_MOCK = [
   'Entiendo tu consulta. Basándome en tu perfil, te recomiendo explorar las instituciones de la categoría funcional en tu ciudad. ¿Quieres que te muestre opciones específicas?',
   'Hay varias opciones que podrían ayudarte. En Raíces tenemos instituciones verificadas con experiencia en tu situación. ¿Te gustaría explorar el mapa?',
   'Gracias por compartir eso. Es un paso importante. Muchas familias en situaciones similares han encontrado apoyo en los grupos de comunidad. ¿Quieres unirte a alguno?',
@@ -29,175 +31,174 @@ export class AiService {
     }
   }
 
-  private async getUserProfile(userId: string) {
-    const snap = await this.db.collection('u_user_profiles')
-      .where('user_id', '==', userId).limit(1).get()
+  private async getUserProfile(usuarioId: string) {
+    const snap = await this.db.collection(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
     return snap.empty ? null : snap.docs[0].data()
   }
 
-  async chat(userId: string, message: string, history: any[] = []) {
-    const profile = await this.getUserProfile(userId)
+  async chat(usuarioId: string, mensaje: string, historial: any[] = []) {
+    const perfil = await this.getUserProfile(usuarioId)
 
     if (!this.client) {
       await new Promise((r) => setTimeout(r, 600))
-      const reply = MOCK_REPLIES[Math.floor(Math.random() * MOCK_REPLIES.length)]
-      return { reply, mock: true }
+      const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
+      return { respuesta, simulado: true }
     }
 
-    const disabilityTypes = profile?.disability_types
-      ? JSON.parse(profile.disability_types).join(', ')
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad).join(', ')
       : 'no especificadas'
 
-    const system = `Eres el asistente de Raíces para Florecer, ecosistema digital para personas con discapacidad en México.
-Perfil del usuario: etapa=${profile?.life_stage ?? 'no especificada'}, discapacidades=${disabilityTypes}.
+    const sistema = `Eres el asistente de Raíces para Florecer, ecosistema digital para personas con discapacidad en México.
+Perfil del usuario: etapa=${perfil?.etapaVida ?? 'no especificada'}, discapacidades=${tiposDiscapacidad}.
 NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y directo.`
 
     const response = await this.client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
-      system,
-      messages: [...history.slice(-6), { role: 'user', content: message }],
+      system: sistema,
+      messages: [...historial.slice(-6), { role: 'user', content: mensaje }],
     })
 
-    return { reply: response.content[0].text, mock: false }
+    return { respuesta: response.content[0].text, simulado: false }
   }
 
-  private async getUserHistory(userId: string) {
+  private async getUserHistory(usuarioId: string) {
     const [favSnap, postsSnap, appsSnap] = await Promise.all([
-      this.db.collection('u_favorites').where('user_id', '==', userId).limit(10).get(),
-      this.db.collection('u_posts').where('author_id', '==', userId).get(),
-      this.db.collection('u_job_applications').where('user_id', '==', userId).get().catch(() => ({ size: 0 } as any)),
+      this.db.collection(COLECCIONES.favoritos).where('usuarioId', '==', usuarioId).limit(10).get(),
+      this.db.collection(COLECCIONES.publicaciones).where('autorId', '==', usuarioId).get(),
+      this.db.collection(COLECCIONES.postulaciones).where('usuarioId', '==', usuarioId).get().catch(() => ({ size: 0 } as any)),
     ])
 
-    // Enrich favorites with institution data
-    const favorites: any[] = []
+    const favoritos: any[] = []
     for (const fdoc of favSnap.docs) {
-      const instDoc = await this.db.collection('p_institutions').doc(fdoc.data().institution_id).get()
+      const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(fdoc.data().institucionId).get()
       if (instDoc.exists) {
         const inst = instDoc.data()!
-        favorites.push({ name: inst.name, category: inst.category, city: inst.city })
+        favoritos.push({ nombre: inst.nombre, categoria: inst.categoria, ciudad: inst.ciudad })
       }
     }
 
-    return { favorites, postCount: postsSnap.size, applicationCount: appsSnap.size ?? 0 }
+    return { favoritos, cantidadPublicaciones: postsSnap.size, cantidadPostulaciones: appsSnap.size ?? 0 }
   }
 
-  async recommend(userId: string) {
-    const [profile, userRecord, history] = await Promise.all([
-      this.getUserProfile(userId),
-      this.db.collection('u_profiles').doc(userId).get(),
-      this.getUserHistory(userId),
+  async recommend(usuarioId: string) {
+    const [perfil, registroUsuario, historial] = await Promise.all([
+      this.getUserProfile(usuarioId),
+      this.db.collection(COLECCIONES.perfiles).doc(usuarioId).get(),
+      this.getUserHistory(usuarioId),
     ])
 
-    const disabilityTypes = profile?.disability_types
-      ? (() => { try { return JSON.parse(profile.disability_types) } catch { return [] } })()
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
       : []
-    const hasNoDiagnosis = disabilityTypes.length === 0
-    const userData = userRecord.data()
+    const sinDiagnostico = tiposDiscapacidad.length === 0
+    const datosUsuario = registroUsuario.data()
 
-    if (!this.client || !profile) {
-      const steps = hasNoDiagnosis ? [
+    if (!this.client || !perfil) {
+      const pasos = sinDiagnostico ? [
         'Agenda una evaluación diagnóstica — visita una institución de Terapia en tu ciudad para obtener un diagnóstico formal',
         'Completa tu perfil con tus necesidades actuales para recibir recomendaciones más precisas',
         'Explora la sección Comunidad para conectar con otras personas en situación similar',
       ] : [
-        `Busca instituciones de ${disabilityTypes.join(' / ')} en ${userData?.city ?? 'tu ciudad'}`,
+        `Busca instituciones de ${tiposDiscapacidad.join(' / ')} en ${datosUsuario?.ciudad ?? 'tu ciudad'}`,
         'Completa tu historial de terapia y educación para un análisis más profundo',
         'Únete al grupo de comunidad relacionado con tu perfil',
       ]
       return {
-        next_steps: steps,
-        reasoning: hasNoDiagnosis ? 'Sin diagnóstico registrado — prioridad: evaluación (modo demo)' : 'Recomendaciones generales (modo demo)',
-        institution_suggestions: hasNoDiagnosis ? [{ category: 'Terapia', reason: 'Evaluación diagnóstica' }] : [],
-        mock: true,
+        proximosPasos: pasos,
+        razonamiento: sinDiagnostico ? 'Sin diagnóstico registrado — prioridad: evaluación (modo demo)' : 'Recomendaciones generales (modo demo)',
+        sugerenciasInstitucion: sinDiagnostico ? [{ categoria: 'Terapia', razon: 'Evaluación diagnóstica' }] : [],
+        simulado: true,
       }
     }
 
-    const favSummary = history.favorites.length > 0
-      ? `Favoritos: ${history.favorites.map(f => `${f.name} (${f.category})`).join(', ')}.`
+    const resumenFavoritos = historial.favoritos.length > 0
+      ? `Favoritos: ${historial.favoritos.map(f => `${f.nombre} (${f.categoria})`).join(', ')}.`
       : 'No tiene instituciones guardadas aún.'
 
     const prompt = `Eres el motor de análisis de Raíces para Florecer, plataforma de apoyo para personas con discapacidad en México.
 
 PERFIL DEL USUARIO:
-- Etapa de vida: ${profile.life_stage ?? 'no especificada'}
-- Discapacidades: ${disabilityTypes.length > 0 ? disabilityTypes.join(', ') : 'sin diagnóstico registrado'}
-- Ciudad: ${userData?.city ?? 'no especificada'}, ${userData?.state ?? ''}
-- Nivel de soporte: ${profile.support_level ?? 'no especificado'}
-- Metas actuales: ${profile.current_goals ? (() => { try { return JSON.parse(profile.current_goals).join(', ') } catch { return profile.current_goals } })() : 'no especificadas'}
-- Áreas de soporte: ${profile.support_areas ? (() => { try { return JSON.parse(profile.support_areas).join(', ') } catch { return profile.support_areas } })() : 'no especificadas'}
-- Preocupaciones actuales: ${profile.current_concerns ?? 'ninguna'}
+- Etapa de vida: ${perfil.etapaVida ?? 'no especificada'}
+- Discapacidades: ${tiposDiscapacidad.length > 0 ? tiposDiscapacidad.join(', ') : 'sin diagnóstico registrado'}
+- Ciudad: ${datosUsuario?.ciudad ?? 'no especificada'}, ${datosUsuario?.estado ?? ''}
+- Nivel de soporte: ${perfil.nivelApoyo ?? 'no especificado'}
+- Metas actuales: ${perfil.metasActuales ? (parsearCampoJson(perfil.metasActuales) as string[]).join(', ') : 'no especificadas'}
+- Áreas de soporte: ${perfil.areasApoyo ? (parsearCampoJson(perfil.areasApoyo) as string[]).join(', ') : 'no especificadas'}
+- Preocupaciones actuales: ${perfil.preocupacionesActuales ?? 'ninguna'}
 
 HISTORIAL DE ACTIVIDAD:
-- ${favSummary}
-- Publicaciones en comunidad: ${history.postCount}
-- Solicitudes de empleo enviadas: ${history.applicationCount}
+- ${resumenFavoritos}
+- Publicaciones en comunidad: ${historial.cantidadPublicaciones}
+- Solicitudes de empleo enviadas: ${historial.cantidadPostulaciones}
 
-${hasNoDiagnosis ? 'IMPORTANTE: El usuario NO tiene diagnóstico registrado. Prioriza sugerencias para evaluación diagnóstica.' : ''}
+${sinDiagnostico ? 'IMPORTANTE: El usuario NO tiene diagnóstico registrado. Prioriza sugerencias para evaluación diagnóstica.' : ''}
 
 Genera 3 próximos pasos concretos y accionables, personalizados para esta persona específica en México.
 Si no hay diagnóstico, el primer paso DEBE ser buscar evaluación diagnóstica.
-Responde SOLO con JSON válido: {"next_steps":["paso1","paso2","paso3"],"reasoning":"explicación breve en español","institution_suggestions":[{"category":"Terapia|Educación|Empleo","reason":"por qué"}]}`
+Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razonamiento":"explicación breve en español","sugerenciasInstitucion":[{"categoria":"Terapia|Educación|Empleo","razon":"por qué"}]}`
 
     try {
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-6', max_tokens: 500,
         messages: [{ role: 'user', content: prompt }],
       })
-      return { ...JSON.parse(response.content[0].text), mock: false }
+      return { ...JSON.parse(response.content[0].text), simulado: false }
     } catch {
       return {
-        next_steps: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
-        reasoning: 'Error al procesar — mostrando sugerencias generales', institution_suggestions: [], mock: true,
+        proximosPasos: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
+        razonamiento: 'Error al procesar — mostrando sugerencias generales', sugerenciasInstitucion: [], simulado: true,
       }
     }
   }
 
-  async recommendForDependent(userId: string, dependentId: string) {
-    const depDoc = await this.db.collection('u_dependents').doc(dependentId).get()
-    if (!depDoc.exists || depDoc.data()?.guardian_id !== userId) {
-      return { next_steps: ['Perfil no encontrado'], reasoning: 'Error de acceso', mock: true }
+  async recommendForDependent(usuarioId: string, dependienteId: string) {
+    const depDoc = await this.db.collection(COLECCIONES.dependientes).doc(dependienteId).get()
+    if (!depDoc.exists || depDoc.data()?.tutorId !== usuarioId) {
+      return { proximosPasos: ['Perfil no encontrado'], razonamiento: 'Error de acceso', simulado: true }
     }
     const dep = depDoc.data()!
 
-    let profileData: any = {}
-    try { profileData = dep.profile_data ? JSON.parse(dep.profile_data) : {} } catch {}
+    let datosPerfil: any = {}
+    try { datosPerfil = dep.datosPerfil ? JSON.parse(dep.datosPerfil) : {} } catch {}
 
-    const disabilities = (profileData.disability_types ?? []).join(', ') || 'no especificadas'
-    const lifeStage = profileData.life_stage ?? 'no especificada'
-    const notes = profileData.notes ?? ''
+    const discapacidades = (datosPerfil.tiposDiscapacidad ?? []).join(', ') || 'no especificadas'
+    const etapaVida = datosPerfil.etapaVida ?? 'no especificada'
+    const notas = datosPerfil.notas ?? ''
 
     if (!this.client) {
       return {
-        next_steps: [
-          `Buscar instituciones especializadas en ${disabilities} para ${dep.full_name}`,
-          `Explorar terapias adecuadas para la etapa de vida: ${lifeStage}`,
+        proximosPasos: [
+          `Buscar instituciones especializadas en ${discapacidades} para ${dep.nombreCompleto}`,
+          `Explorar terapias adecuadas para la etapa de vida: ${etapaVida}`,
           'Revisar grupos de apoyo para familias cuidadoras',
         ],
-        reasoning: `Recomendaciones para ${dep.full_name} (modo demo)`, mock: true,
+        razonamiento: `Recomendaciones para ${dep.nombreCompleto} (modo demo)`, simulado: true,
       }
     }
 
-    const prompt = `Persona bajo cuidado: ${dep.full_name}, relación con el tutor: ${dep.relationship}.
-Perfil: discapacidades=${disabilities}, etapa de vida=${lifeStage}.
-Notas del cuidador: ${notes || 'ninguna'}.
+    const prompt = `Persona bajo cuidado: ${dep.nombreCompleto}, relación con el tutor: ${dep.parentesco}.
+Perfil: discapacidades=${discapacidades}, etapa de vida=${etapaVida}.
+Notas del cuidador: ${notas || 'ninguna'}.
 Genera 3 próximos pasos concretos y accionables para apoyar a esta persona específica en México.
-Responde SOLO con JSON válido: {"next_steps":["paso1","paso2","paso3"],"reasoning":"explicación breve"}`
+Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razonamiento":"explicación breve"}`
 
     try {
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-6', max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       })
-      return { ...JSON.parse(response.content[0].text), mock: false }
+      return { ...JSON.parse(response.content[0].text), simulado: false }
     } catch {
       return {
-        next_steps: [
-          `Busca instituciones de ${disabilities} cerca de ti`,
+        proximosPasos: [
+          `Busca instituciones de ${discapacidades} cerca de ti`,
           'Completa el historial de necesidades del familiar',
           'Consulta el grupo de familias cuidadoras en la comunidad',
         ],
-        reasoning: 'Error al procesar — mostrando sugerencias generales', mock: true,
+        razonamiento: 'Error al procesar — mostrando sugerencias generales', simulado: true,
       }
     }
   }

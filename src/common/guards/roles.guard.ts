@@ -9,7 +9,7 @@ export class RolesGuard implements CanActivate {
     const roles = this.reflector.get<string[]>('roles', ctx.getHandler())
     if (!roles) return true
     const { user } = ctx.switchToHttp().getRequest()
-    if (!user || !roles.includes(user.role)) throw new ForbiddenException('Rol insuficiente')
+    if (!user || !roles.includes(user.rol)) throw new ForbiddenException('Rol insuficiente')
     return true
   }
 }

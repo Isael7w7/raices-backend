@@ -66,18 +66,18 @@ async function bootstrap() {
       },
       "jwt-auth",
     )
-    .addTag("Auth", "Autenticación y registro de usuarios")
-    .addTag("Users", "Gestión de perfil y dependientes")
-    .addTag("Institutions", "Directorio de instituciones")
-    .addTag("Discovery", "Búsqueda inteligente de instituciones")
-    .addTag("Favorites", "Instituciones guardadas por usuario")
-    .addTag("Reviews", "Reseñas y calificaciones")
-    .addTag("Community", "Grupos, posts y comentarios")
-    .addTag("Notifications", "Notificaciones in-app")
-    .addTag("Admin", "Panel administrativo")
-    .addTag("AI", "Chat y recomendaciones con IA")
-    .addTag("Jobs", "Bolsa de trabajo inclusiva")
-    .addTag("Messages", "Mensajería directa entre usuarios")
+    .addTag("Autenticación", "Autenticación y registro de usuarios")
+    .addTag("Usuarios", "Gestión de perfil y dependientes")
+    .addTag("Instituciones", "Directorio de instituciones")
+    .addTag("Descubrimiento", "Búsqueda inteligente de instituciones")
+    .addTag("Favoritos", "Instituciones guardadas por usuario")
+    .addTag("Reseñas", "Reseñas y calificaciones")
+    .addTag("Comunidad", "Grupos, posts y comentarios")
+    .addTag("Notificaciones", "Notificaciones in-app")
+    .addTag("Administración", "Panel administrativo")
+    .addTag("Inteligencia Artificial", "Chat y recomendaciones con IA")
+    .addTag("Empleo", "Bolsa de trabajo inclusiva")
+    .addTag("Mensajes", "Mensajería directa entre usuarios")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

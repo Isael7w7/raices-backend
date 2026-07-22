@@ -2,113 +2,126 @@ import { Injectable, Inject } from '@nestjs/common'
 import { Firestore, FieldValue, Query } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { COLECCIONES } from '../../database/firestore.constants'
 
 @Injectable()
 export class CommunityService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
   async getGroups() {
-    const snap = await this.db.collection('u_groups')
-      .where('is_public', '==', true).orderBy('member_count', 'desc').get()
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const snap = await this.db.collection(COLECCIONES.grupos)
+      .where('esPublico', '==', true).get()
+
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
+    return grupos
   }
 
-  async getPosts(groupId?: string, userId?: string, limit = 20) {
-    let q: Query = this.db.collection('u_posts')
-    if (groupId) q = q.where('group_id', '==', groupId)
-    const postSnap = await q.orderBy('created_at', 'desc').limit(limit).get()
-    const posts = postSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+  async getPosts(grupoId?: string, usuarioId?: string, limite = 20) {
+    let q: Query = this.db.collection(COLECCIONES.publicaciones)
+    if (grupoId) q = q.where('grupoId', '==', grupoId)
 
-    // Enrich with author profiles
-    const authorIds = [...new Set(posts.map(p => p.author_id))]
-    const authorMap = new Map<string, any>()
-    for (const aid of authorIds) {
-      const doc = await this.db.collection('u_profiles').doc(aid).get()
-      if (doc.exists) authorMap.set(aid, doc.data())
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const publicacionSnap = await q.get()
+    const publicaciones = publicacionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+
+    // Ordenar en memoria y limitar
+    publicaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+    publicaciones.splice(limite)
+
+    const autoresIds = [...new Set(publicaciones.map(p => p.autorId))]
+    const mapaAutores = new Map<string, any>()
+    for (const aid of autoresIds) {
+      const doc = await this.db.collection(COLECCIONES.perfiles).doc(aid).get()
+      if (doc.exists) mapaAutores.set(aid, doc.data())
     }
 
-    const enriched = posts.map(p => ({
+    const enriquecidas = publicaciones.map(p => ({
       ...p,
-      full_name: authorMap.get(p.author_id)?.full_name ?? null,
-      avatar_url: authorMap.get(p.author_id)?.avatar_url ?? null,
+      nombreCompleto: mapaAutores.get(p.autorId)?.nombreCompleto ?? null,
+      urlAvatar: mapaAutores.get(p.autorId)?.urlAvatar ?? null,
     }))
 
-    if (userId) {
-      const likedSnap = await this.db.collection('u_post_likes')
-        .where('user_id', '==', userId).get()
-      const likedSet = new Set(likedSnap.docs.map(l => l.data().post_id))
-      return enriched.map(p => ({ ...p, user_liked: likedSet.has(p.id) }))
+    if (usuarioId) {
+      const likedSnap = await this.db.collection(COLECCIONES.meGustas)
+        .where('usuarioId', '==', usuarioId).get()
+      const likedSet = new Set(likedSnap.docs.map(l => l.data().publicacionId))
+      return enriquecidas.map(p => ({ ...p, usuarioMeGusta: likedSet.has(p.id) }))
     }
 
-    return enriched.map(p => ({ ...p, user_liked: false }))
+    return enriquecidas.map(p => ({ ...p, usuarioMeGusta: false }))
   }
 
-  async getComments(postId: string) {
-    const snap = await this.db.collection('u_comments')
-      .where('post_id', '==', postId).orderBy('created_at', 'asc').get()
-    const comments = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+  async getComments(publicacionId: string) {
+    const snap = await this.db.collection(COLECCIONES.comentarios)
+      .where('publicacionId', '==', publicacionId).get()
 
-    const authorIds = [...new Set(comments.map(c => c.author_id))]
-    const authorMap = new Map<string, any>()
-    for (const aid of authorIds) {
-      const doc = await this.db.collection('u_profiles').doc(aid).get()
-      if (doc.exists) authorMap.set(aid, doc.data())
+    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
+    const comentarios = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
+
+    const autoresIds = [...new Set(comentarios.map(c => c.autorId))]
+    const mapaAutores = new Map<string, any>()
+    for (const aid of autoresIds) {
+      const doc = await this.db.collection(COLECCIONES.perfiles).doc(aid).get()
+      if (doc.exists) mapaAutores.set(aid, doc.data())
     }
 
-    return comments.map(c => ({
+    return comentarios.map(c => ({
       ...c,
-      full_name: authorMap.get(c.author_id)?.full_name ?? null,
-      avatar_url: authorMap.get(c.author_id)?.avatar_url ?? null,
+      nombreCompleto: mapaAutores.get(c.autorId)?.nombreCompleto ?? null,
+      urlAvatar: mapaAutores.get(c.autorId)?.urlAvatar ?? null,
     }))
   }
 
-  async createPost(authorId: string, content: string, groupId?: string) {
+  async createPost(autorId: string, contenido: string, grupoId?: string) {
     const id = uuid()
-    await this.db.collection('u_posts').doc(id).set({
-      id, author_id: authorId, content, group_id: groupId ?? null,
-      like_count: 0, created_at: new Date().toISOString(),
+    await this.db.collection(COLECCIONES.publicaciones).doc(id).set({
+      id, autorId, contenido, grupoId: grupoId ?? null,
+      cantidadMeGustas: 0, fechaCreacion: new Date().toISOString(),
     })
 
-    const authorDoc = await this.db.collection('u_profiles').doc(authorId).get()
-    const author = authorDoc.data()
-    return { id, author_id: authorId, content, group_id: groupId ?? null, like_count: 0,
-      created_at: new Date().toISOString(), full_name: author?.full_name ?? null,
-      avatar_url: author?.avatar_url ?? null, user_liked: false }
+    const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
+    const autor = autorDoc.data()
+    return { id, autorId, contenido, grupoId: grupoId ?? null, cantidadMeGustas: 0,
+      fechaCreacion: new Date().toISOString(), nombreCompleto: autor?.nombreCompleto ?? null,
+      urlAvatar: autor?.urlAvatar ?? null, usuarioMeGusta: false }
   }
 
-  async createComment(postId: string, authorId: string, content: string) {
+  async createComment(publicacionId: string, autorId: string, contenido: string) {
     const id = uuid()
-    await this.db.collection('u_comments').doc(id).set({
-      id, post_id: postId, author_id: authorId, content,
-      created_at: new Date().toISOString(),
+    await this.db.collection(COLECCIONES.comentarios).doc(id).set({
+      id, publicacionId, autorId, contenido,
+      fechaCreacion: new Date().toISOString(),
     })
 
-    const doc = await this.db.collection('u_comments').doc(id).get()
-    const authorDoc = await this.db.collection('u_profiles').doc(authorId).get()
-    const author = authorDoc.data()
-    return { id: doc.id, ...doc.data()!, full_name: author?.full_name ?? null, avatar_url: author?.avatar_url ?? null }
+    const doc = await this.db.collection(COLECCIONES.comentarios).doc(id).get()
+    const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
+    const autor = autorDoc.data()
+    return { id: doc.id, ...doc.data()!, nombreCompleto: autor?.nombreCompleto ?? null, urlAvatar: autor?.urlAvatar ?? null }
   }
 
-  async toggleLike(userId: string, postId: string) {
-    const snap = await this.db.collection('u_post_likes')
-      .where('user_id', '==', userId)
-      .where('post_id', '==', postId)
+  async toggleLike(usuarioId: string, publicacionId: string) {
+    const snap = await this.db.collection(COLECCIONES.meGustas)
+      .where('usuarioId', '==', usuarioId)
+      .where('publicacionId', '==', publicacionId)
       .limit(1).get()
 
     if (!snap.empty) {
       await snap.docs[0].ref.delete()
-      await this.db.collection('u_posts').doc(postId).update({
-        like_count: FieldValue.increment(-1),
+      await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
+        cantidadMeGustas: FieldValue.increment(-1),
       })
-      return { liked: false }
+      return { meGusta: false }
     }
 
-    await this.db.collection('u_post_likes').doc(uuid()).set({
-      user_id: userId, post_id: postId,
+    await this.db.collection(COLECCIONES.meGustas).doc(uuid()).set({
+      usuarioId, publicacionId,
     })
-    await this.db.collection('u_posts').doc(postId).update({
-      like_count: FieldValue.increment(1),
+    await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
+      cantidadMeGustas: FieldValue.increment(1),
     })
-    return { liked: true }
+    return { meGusta: true }
   }
 }
