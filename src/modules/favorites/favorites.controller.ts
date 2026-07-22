@@ -4,10 +4,10 @@ import { FavoritesService } from './favorites.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-@ApiTags('Favorites')
+@ApiTags('Favoritos')
 @ApiBearerAuth('jwt-auth')
 @UseGuards(JwtAuthGuard)
-@Controller('favorites')
+@Controller('favoritos')
 export class FavoritesController {
   constructor(private readonly svc: FavoritesService) {}
 
@@ -18,13 +18,13 @@ export class FavoritesController {
 
   @Get('ids')
   @ApiOperation({ summary: 'IDs de favoritos', description: 'Retorna solo los IDs de instituciones guardadas (respuesta ligera)' })
-  @ApiResponse({ status: 200, description: 'Array de IDs' })
+  @ApiResponse({ status: 200, description: 'Arreglo de IDs' })
   getIds(@CurrentUser() user: any) { return this.svc.getFavoriteIds(user.id) }
 
-  @Post(':institutionId/toggle')
+  @Post(':institutionId/alternar')
   @ApiOperation({ summary: 'Agregar/quitar de favoritos', description: 'Alterna el estado de favorito. Si ya existe lo elimina, si no existe lo crea.' })
   @ApiParam({ name: 'institutionId', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Estado actualizado: { favorited: boolean }' })
+  @ApiResponse({ status: 200, description: 'Estado actualizado: { favorito: boolean }' })
   toggle(@Param('institutionId') institutionId: string, @CurrentUser() user: any) {
     return this.svc.toggle(user.id, institutionId)
   }

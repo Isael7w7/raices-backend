@@ -4,10 +4,10 @@ import { DiscoveryService } from './discovery.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 
-@ApiTags('Discovery')
+@ApiTags('Descubrimiento')
 @ApiBearerAuth('jwt-auth')
 @UseGuards(JwtAuthGuard)
-@Controller('discovery')
+@Controller('descubrimiento')
 export class DiscoveryController {
   constructor(private readonly svc: DiscoveryService) {}
 

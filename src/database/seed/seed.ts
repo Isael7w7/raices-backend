@@ -91,7 +91,7 @@ const usuariosDemo = [
   {
     email: 'demo@raices.mx',
     password: 'Demo1234',
-    rol: 'user',
+    rol: 'pcd',
     nombreCompleto: 'Luis Hernandez',
     ciudad: 'Merida',
     estado: 'Yucatan',
@@ -142,9 +142,20 @@ async function seed() {
     COLECCIONES.mensajesDirectos, COLECCIONES.notificaciones, COLECCIONES.postulaciones,
     COLECCIONES.instituciones, COLECCIONES.vacantes,
     COLECCIONES.configuraciones,
+    // Colecciones antiguas en inglés (eliminar residuos)
+    'users', 'profiles', 'userProfiles', 'dependents',
+    'favorites', 'reviews', 'posts', 'comments', 'likes',
+    'groups', 'groupsMembers', 'messages', 'notifications',
+    'applications', 'institutions', 'jobs', 'settings',
+    'u_profiles', 'u_user_profiles', 'u_dependents', 'u_favorites',
+    'u_reviews', 'u_posts', 'u_comments', 'u_post_likes',
+    'u_groups', 'u_group_members', 'u_notifications',
+    'u_job_applications', 'u_direct_messages',
+    'p_institutions', 'p_institution_docs', 'p_jobs',
+    's_settings', '_analytics', 'usuarios', 'tareas',
   ]
   for (const col of coleccionesALimpiar) await limpiarColeccion(col)
-  console.log(`✨ ${coleccionesALimpiar.length} colecciones limpiadas\n`)
+  console.log(`✨ ${coleccionesALimpiar.length} colecciones (incluyendo residuos en inglés) limpiadas\n`)
 
   const ahora = new Date().toISOString()
 
@@ -191,7 +202,7 @@ async function seed() {
       urlAvatar: null, activo: true, verificado: true, fechaCreacion: ahora,
     },
     {
-      id: demoId, email: 'demo@raices.mx', rol: 'user',
+      id: demoId, email: 'demo@raices.mx', rol: 'pcd',
       nombreCompleto: 'Luis Hernandez', ciudad: 'Merida', estado: 'Yucatan',
       urlAvatar: null, activo: true, verificado: true, fechaCreacion: ahora,
     },
@@ -584,7 +595,7 @@ async function seed() {
   console.log('')
   console.log('👤 Usuarios demo:')
   console.log('   Admin:  admin@raices.mx  / Admin1234  (rol: admin)')
-  console.log('   PCD:    demo@raices.mx   / Demo1234   (rol: user)')
+  console.log('   PCD:    demo@raices.mx   / Demo1234   (rol: pcd)')
   console.log('   Tutor:  tutor@raices.mx  / Tutor1234  (rol: tutor)')
   console.log(`   Auth:   ${authSincronizado ? 'Firebase Auth (reales)' : 'UIDs estaticos (sin Auth)'}`)
   console.log('')

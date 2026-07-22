@@ -10,30 +10,30 @@ export class PostulacionDto {
   @IsOptional() @IsString() cartaPresentacion?: string
 }
 
-@ApiTags('Jobs')
-@Controller('jobs')
+@ApiTags('Empleo')
+@Controller('empleo')
 export class JobsController {
   constructor(private readonly svc: JobsService) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar vacantes', description: 'Retorna vacantes activas de instituciones activas' })
   @ApiQuery({ name: 'ciudad', required: false, description: 'Filtrar por ciudad' })
-  @ApiQuery({ name: 'modalidad', required: false, description: 'Filtrar por modalidad: presencial, remoto, hibrido' })
-  @ApiResponse({ status: 200, description: 'Lista de vacantes con info de institución' })
+  @ApiQuery({ name: 'modalidad', required: false, description: 'Filtrar por modalidad: presencial, remoto, híbrido' })
+  @ApiResponse({ status: 200, description: 'Lista de vacantes con información de institución' })
   findAll(@Query('ciudad') ciudad?: string, @Query('modalidad') modalidad?: string) {
     return this.svc.findAll({ ciudad, modalidad })
   }
 
-  @Get('applied')
+  @Get('postuladas')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'IDs de vacantes postuladas', description: 'Retorna solo los IDs para saber en cuáles ya aplicaste' })
-  @ApiResponse({ status: 200, description: 'Array de IDs de vacantes postuladas' })
+  @ApiResponse({ status: 200, description: 'Arreglo de IDs de vacantes postuladas' })
   appliedIds(@CurrentUser() user: any) {
     return this.svc.getAppliedJobIds(user.id)
   }
 
-  @Get('my-applications')
+  @Get('mis-postulaciones')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Mis postulaciones', description: 'Retorna todas las postulaciones del usuario con estado y detalles' })
@@ -45,13 +45,13 @@ export class JobsController {
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de vacante' })
   @ApiParam({ name: 'id', description: 'ID de la vacante' })
-  @ApiResponse({ status: 200, description: 'Detalle completo de la vacante con info de institución' })
+  @ApiResponse({ status: 200, description: 'Detalle completo de la vacante con información de institución' })
   @ApiResponse({ status: 404, description: 'Vacante no encontrada' })
   findOne(@Param('id') id: string) {
     return this.svc.findOne(id)
   }
 
-  @Post(':id/apply')
+  @Post(':id/postularse')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Postularse a vacante', description: 'Envía una solicitud con carta de presentación. Un usuario solo puede postularse una vez por vacante.' })
