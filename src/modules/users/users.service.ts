@@ -37,6 +37,16 @@ export class UsersService {
     }
   }
 
+  async updateAvatar(usuarioId: string, urlAvatar: string) {
+    try {
+      await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar })
+      return { mensaje: 'Avatar actualizado correctamente', urlAvatar }
+    } catch (dbError: any) {
+      console.error('Error al guardar avatarUrl en Firestore:', dbError)
+      return { exito: true, urlAvatar, mensaje: 'Imagen subida, fallo actualización en BD' }
+    }
+  }
+
   async updateProfile(usuarioId: string, datos: any) {
     const datosSeguros = datos ?? {}
     const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar']

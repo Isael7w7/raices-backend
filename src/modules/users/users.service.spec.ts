@@ -321,4 +321,70 @@ describe('UsersService', () => {
       expect(JSON.parse(payload.historialTerapia)).toEqual(['nueva_terapia']);
     });
   });
+
+  // ── updateAvatar ────────────────────────────────────────────────────────
+
+  describe('updateAvatar', () => {
+    it('should update Firestore and return success message when DB write succeeds', async () => {
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1' })),
+        set: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      const avatarUrl = 'https://storage.googleapis.com/raices-499122.appspot.com/avatars/abc-123.jpg'
+      const result = await service.updateAvatar('user1', avatarUrl)
+
+      expect(firestoreMock.collection).toHaveBeenCalledWith('perfiles')
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: avatarUrl })
+      expect(result).toEqual({
+        mensaje: 'Avatar actualizado correctamente',
+        urlAvatar: avatarUrl,
+      })
+    })
+
+    it('should catch Firestore error and return partial success with URL', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
+
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc(null)),
+        set: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockRejectedValue(new Error('Firestore write denied')),
+        delete: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      const avatarUrl = 'https://storage.googleapis.com/raices-499122.appspot.com/avatars/abc-123.jpg'
+      const result = await service.updateAvatar('user1', avatarUrl)
+
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: avatarUrl })
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'Error al guardar avatarUrl en Firestore:',
+        expect.any(Error),
+      )
+      expect(result).toEqual({
+        exito: true,
+        urlAvatar: avatarUrl,
+        mensaje: 'Imagen subida, fallo actualización en BD',
+      })
+
+      consoleSpy.mockRestore()
+    })
+  })
 });

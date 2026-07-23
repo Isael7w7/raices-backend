@@ -1,6 +1,8 @@
-import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
+import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
+import { StorageService } from '../storage/storage.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
@@ -10,7 +12,10 @@ import { UseETag } from '../../common/decorators/use-etag.decorator'
 @UseGuards(JwtAuthGuard)
 @Controller('usuarios')
 export class UsersController {
-  constructor(private readonly svc: UsersService) {}
+  constructor(
+    private readonly svc: UsersService,
+    private readonly storage: StorageService,
+  ) {}
 
   @Get('perfil')
   @UseETag()
@@ -24,6 +29,33 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Perfil actualizado' })
   updateProfile(@CurrentUser() user: any, @Body() body: any) {
     return this.svc.updateProfile(user.id, body)
+  }
+
+  @Post('avatar')
+  @UseInterceptors(FileInterceptor('avatar', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  @ApiOperation({ summary: 'Subir/actualizar foto de perfil', description: 'Sube una imagen (JPEG, PNG, WebP o GIF) de hasta 5MB para usarla como avatar del usuario autenticado.' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { avatar: { type: 'string', format: 'binary' } } } })
+  @ApiResponse({ status: 201, description: 'Avatar actualizado correctamente' })
+  @ApiResponse({ status: 400, description: 'Archivo inválido o demasiado grande' })
+  async uploadAvatar(
+    @CurrentUser() user: any,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp|gif)$/ }),
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo')
+    }
+    const filename = await this.storage.upload(file.buffer, file.originalname, 'avatars')
+    const urlAvatar = await this.storage.getSignedUrl(filename)
+    return this.svc.updateAvatar(user.id, urlAvatar)
   }
 
   @Post('perfil-necesidades')
