@@ -53,8 +53,7 @@ export class UsersController {
     if (!file) {
       throw new BadRequestException('No se proporcionó ningún archivo')
     }
-    const filename = await this.storage.upload(file.buffer, file.originalname, 'avatars')
-    const urlAvatar = await this.storage.getSignedUrl(filename)
+    const urlAvatar = await this.storage.upload(file.buffer, file.originalname, 'avatars')
     return this.svc.updateAvatar(user.id, urlAvatar)
   }
 

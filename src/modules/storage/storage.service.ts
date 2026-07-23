@@ -47,8 +47,8 @@ export class StorageService {
           `❌ Error al inicializar bucket "${this.bucketName}": ${err.message}`,
         )
         this.logger.warn('⚠️  Fallback: se usará almacenamiento local.')
-        // Intentionally NOT resetting bucketName so getSignedUrl/delete
-        // still know which bucket was intended
+        // Intentionally NOT resetting bucketName so delete
+        // still knows which bucket was intended
       }
     } else {
       this.logger.warn(
@@ -91,18 +91,25 @@ export class StorageService {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         const gcsFile = this.bucket!.file(filename)
+        const downloadToken = uuid()
 
         await gcsFile.save(file, {
-          metadata: { contentType },
+          metadata: {
+            contentType,
+            metadata: {
+              firebaseStorageDownloadTokens: downloadToken,
+            },
+          },
         })
 
-        // Make the file publicly readable for simple URL access
-        await gcsFile.makePublic()
+        // Build public URL using download token (works with Uniform Bucket-Level Access)
+        const encodedPath = encodeURIComponent(filename)
+        const avatarUrl = `https://firebasestorage.googleapis.com/v0/b/${this.bucketName}/o/${encodedPath}?alt=media&token=${downloadToken}`
 
         this.logger.log(
           `[GCS] Archivo subido: ${filename} (${(file.length / 1024).toFixed(1)} KB, intento ${attempt})`,
         )
-        return filename
+        return avatarUrl
       } catch (err: any) {
         lastError = err
         const isTransient =
@@ -143,20 +150,7 @@ export class StorageService {
     fs.mkdirSync(path.dirname(fullPath), { recursive: true })
     fs.writeFileSync(fullPath, file)
     this.logger.log(`[LOCAL] Archivo guardado: ${filename} (${(file.length / 1024).toFixed(1)} KB)`)
-    return filename
-  }
-
-  // ─── URL / Signed URL ────────────────────────────────────────
-
-  /**
-   * Get the public URL for a previously uploaded file.
-   * Returns a signed URL for GCS files or a local dev URL for local files.
-   */
-  async getSignedUrl(filePath: string): Promise<string> {
-    if (this.bucket && this.bucketName) {
-      return `https://storage.googleapis.com/${this.bucketName}/${filePath}`
-    }
-    return `http://localhost:7000/uploads/${filePath}`
+    return `http://localhost:7000/uploads/${filename}`
   }
 
   // ─── Delete ──────────────────────────────────────────────────
