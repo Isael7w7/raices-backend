@@ -1,10 +1,12 @@
-import { Injectable, Inject, NotFoundException, BadRequestException } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { NotificationsService } from '../notifications/notifications.service'
 import { EmailService } from '../email/email.service'
+import { StorageService } from '../storage/storage.service'
 import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import { extractStoragePath } from '../../common/utils/storage-path.util'
 
 const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
   tea: 'TEA / Autismo', motriz: 'Motriz', intelectual: 'Intelectual',
@@ -25,10 +27,13 @@ const CONFIGURACION_POR_DEFECTO: Record<string, string> = {
 
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger('AdminService')
+
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
     private readonly notificaciones: NotificationsService,
     private readonly email: EmailService,
+    private readonly storage: StorageService,
   ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
@@ -305,6 +310,63 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     await doc.ref.update({ rol })
     return { exito: true, rol }
+  }
+
+  async deleteUser(id: string, adminId: string) {
+    if (id === adminId) throw new BadRequestException('No puedes eliminar tu propia cuenta')
+
+    const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
+    const perfil = doc.data()!
+
+    // 1. Eliminar avatar de Storage
+    if (perfil.urlAvatar) {
+      try {
+        const filePath = extractStoragePath(perfil.urlAvatar)
+        if (filePath) await this.storage.delete(filePath)
+      } catch (err: any) {
+        this.logger.warn(`No se pudo eliminar avatar de Storage: ${err.message}`)
+      }
+    }
+
+    // 2. Eliminar datos relacionados en paralelo
+    await Promise.all([
+      // Dependientes
+      this.eliminarDocsEnLote(COLECCIONES.dependientes, 'tutorId', id),
+      // Perfil extendido de necesidades
+      this.eliminarDocsEnLote(COLECCIONES.perfilesExtendidos, 'usuarioId', id),
+      // Favoritos
+      this.eliminarDocsEnLote(COLECCIONES.favoritos, 'usuarioId', id),
+      // Reseñas
+      this.eliminarDocsEnLote(COLECCIONES.resenas, 'usuarioId', id),
+      // Publicaciones
+      this.eliminarDocsEnLote(COLECCIONES.publicaciones, 'autorId', id),
+      // Comentarios
+      this.eliminarDocsEnLote(COLECCIONES.comentarios, 'autorId', id),
+      // Mensajes directos
+      this.eliminarDocsEnLote(COLECCIONES.mensajesDirectos, 'emisorId', id),
+      this.eliminarDocsEnLote(COLECCIONES.mensajesDirectos, 'receptorId', id),
+      // Notificaciones
+      this.eliminarDocsEnLote(COLECCIONES.notificaciones, 'usuarioId', id),
+      // Postulaciones
+      this.eliminarDocsEnLote(COLECCIONES.postulaciones, 'usuarioId', id),
+      // Miembros de grupo
+      this.eliminarDocsEnLote(COLECCIONES.miembrosGrupo, 'usuarioId', id),
+    ])
+
+    // 3. Eliminar perfil principal
+    await doc.ref.delete()
+
+    return { exito: true, mensaje: 'Cuenta eliminada permanentemente' }
+  }
+
+  private async eliminarDocsEnLote(coleccion: string, campo: string, valor: string): Promise<void> {
+    const snap = await this.col(coleccion).where(campo, '==', valor).get()
+    const batch = this.db.batch()
+    for (const doc of snap.docs) {
+      batch.delete(doc.ref)
+    }
+    if (!snap.empty) await batch.commit()
   }
 
   /* ───────────────────────── Reseñas (moderación) ───────────────────────── */

@@ -4,9 +4,10 @@ import { AdminService } from './admin.service'
 import { NotificationsModule } from '../notifications/notifications.module'
 import { EmailModule } from '../email/email.module'
 import { FirebaseAnalyticsModule } from './firebase-analytics.module'
+import { StorageModule } from '../storage/storage.module'
 
 @Module({
-  imports: [NotificationsModule, EmailModule, FirebaseAnalyticsModule],
+  imports: [NotificationsModule, EmailModule, FirebaseAnalyticsModule, StorageModule],
   controllers: [AdminController],
   providers: [AdminService],
 })

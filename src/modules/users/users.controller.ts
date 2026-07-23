@@ -57,6 +57,14 @@ export class UsersController {
     return this.svc.updateAvatar(user.id, urlAvatar)
   }
 
+  @Delete('avatar')
+  @ApiOperation({ summary: 'Eliminar foto de perfil', description: 'Elimina el avatar del usuario de Firebase Storage y limpia el campo en la base de datos.' })
+  @ApiResponse({ status: 200, description: 'Foto de perfil eliminada correctamente' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  deleteAvatar(@CurrentUser() user: any) {
+    return this.svc.deleteAvatar(user.id)
+  }
+
   @Post('perfil-necesidades')
   @ApiOperation({ summary: 'Guardar perfil de necesidades', description: 'Guarda tipos de discapacidad, necesidades, metas, historial, etc.' })
   @ApiResponse({ status: 200, description: 'Perfil de necesidades guardado' })

@@ -87,6 +87,17 @@ export class AdminController {
     return this.svc.changeUserRole(id, role, user.id)
   }
 
+  @Delete('usuarios/:id')
+  @ApiOperation({ summary: 'Eliminar cuenta de usuario', description: 'Elimina permanentemente el usuario, su avatar en Storage, perfil extendido y dependientes. No se puede eliminar la propia cuenta.' })
+  @ApiParam({ name: 'id', description: 'ID del usuario a eliminar' })
+  @ApiResponse({ status: 200, description: 'Cuenta eliminada permanentemente' })
+  @ApiResponse({ status: 400, description: 'Intento de eliminar la propia cuenta' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  deleteUser(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.svc.deleteUser(id, user.id)
+  }
+
   /* ── Reseñas ── */
   @Get('resenas')
   @ApiOperation({ summary: 'Moderar reseñas', description: 'Lista las últimas 100 reseñas con información de usuario e institución' })

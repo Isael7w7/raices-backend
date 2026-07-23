@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { FIRESTORE } from '../../database/firebase.provider';
+import { StorageService } from '../storage/storage.service';
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ function mockCollection(docResult: any, empty = false, docs: any[] = []) {
 describe('UsersService', () => {
   let service: UsersService;
   let firestoreMock: Record<string, any>;
+  let storageMock: { delete: jest.Mock };
 
   beforeEach(async () => {
     // Create Firestore mock that returns different collections
@@ -40,10 +42,15 @@ describe('UsersService', () => {
       collection: jest.fn(),
     };
 
+    storageMock = {
+      delete: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: FIRESTORE, useValue: firestoreMock },
+        { provide: StorageService, useValue: storageMock },
       ],
     }).compile();
 
@@ -325,7 +332,35 @@ describe('UsersService', () => {
   // ── updateAvatar ────────────────────────────────────────────────────────
 
   describe('updateAvatar', () => {
-    it('should update Firestore and return success message when DB write succeeds', async () => {
+    it('should delete old avatar from Storage and set new one', async () => {
+      const oldUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fold-photo.jpg?alt=media&token=tok'
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1', urlAvatar: oldUrl })),
+        set: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      const newAvatarUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fnew-photo.jpg?alt=media&token=tok2'
+      const result = await service.updateAvatar('user1', newAvatarUrl)
+
+      expect(storageMock.delete).toHaveBeenCalledWith('avatars/old-photo.jpg')
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: newAvatarUrl })
+      expect(result).toEqual({
+        mensaje: 'Avatar actualizado correctamente',
+        urlAvatar: newAvatarUrl,
+      })
+    })
+
+    it('should not call storage.delete when user has no previous avatar', async () => {
       const mockDocRef = {
         get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1' })),
         set: jest.fn().mockResolvedValue(undefined),
@@ -341,14 +376,40 @@ describe('UsersService', () => {
         get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       })
 
-      const avatarUrl = 'https://storage.googleapis.com/raices-499122.appspot.com/avatars/abc-123.jpg'
-      const result = await service.updateAvatar('user1', avatarUrl)
+      const avatarUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Ffirst.jpg?alt=media&token=tok'
+      await service.updateAvatar('user1', avatarUrl)
 
-      expect(firestoreMock.collection).toHaveBeenCalledWith('perfiles')
+      expect(storageMock.delete).not.toHaveBeenCalled()
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: avatarUrl })
+    })
+
+    it('should continue even if old avatar deletion fails', async () => {
+      const oldUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fgone.jpg?alt=media&token=tok'
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1', urlAvatar: oldUrl })),
+        set: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      storageMock.delete.mockRejectedValueOnce(new Error('File not found'))
+
+      const newAvatarUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fnew.jpg?alt=media&token=tok2'
+      const result = await service.updateAvatar('user1', newAvatarUrl)
+
+      // Storage failed but new avatar is still saved
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: newAvatarUrl })
       expect(result).toEqual({
         mensaje: 'Avatar actualizado correctamente',
-        urlAvatar: avatarUrl,
+        urlAvatar: newAvatarUrl,
       })
     })
 
@@ -370,7 +431,7 @@ describe('UsersService', () => {
         get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       })
 
-      const avatarUrl = 'https://storage.googleapis.com/raices-499122.appspot.com/avatars/abc-123.jpg'
+      const avatarUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/avatars/abc-123.jpg'
       const result = await service.updateAvatar('user1', avatarUrl)
 
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: avatarUrl })
@@ -387,4 +448,127 @@ describe('UsersService', () => {
       consoleSpy.mockRestore()
     })
   })
+
+  // ── deleteAvatar ────────────────────────────────────────────────────────
+
+  describe('deleteAvatar', () => {
+    it('should delete file from Storage and clear urlAvatar in Firestore', async () => {
+      const gcsUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fabc-123.jpg?alt=media&token=tok123'
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1', urlAvatar: gcsUrl })),
+        update: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      const result = await service.deleteAvatar('user1')
+
+      expect(mockDocRef.get).toHaveBeenCalled()
+      expect(storageMock.delete).toHaveBeenCalledWith('avatars/abc-123.jpg')
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
+      expect(result).toEqual({
+        exito: true,
+        mensaje: 'Foto de perfil eliminada correctamente',
+      })
+    })
+
+    it('should clear urlAvatar even when user has no avatar', async () => {
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user2' })),
+        update: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      const result = await service.deleteAvatar('user2')
+
+      expect(storageMock.delete).not.toHaveBeenCalled()
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
+      expect(result).toEqual({
+        exito: true,
+        mensaje: 'Foto de perfil eliminada correctamente',
+      })
+    })
+
+    it('should throw NotFoundException if user does not exist', async () => {
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      await expect(service.deleteAvatar('nonexistent')).rejects.toThrow(NotFoundException)
+      expect(storageMock.delete).not.toHaveBeenCalled()
+    })
+
+    it('should continue even if Storage delete fails (file already gone)', async () => {
+      const gcsUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fdeleted.jpg?alt=media&token=tok456'
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user3', urlAvatar: gcsUrl })),
+        update: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      storageMock.delete.mockRejectedValueOnce(new Error('Not found'))
+
+      const result = await service.deleteAvatar('user3')
+
+      // Storage failed but avatar is still cleared in DB
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
+      expect(result).toEqual({
+        exito: true,
+        mensaje: 'Foto de perfil eliminada correctamente',
+      })
+    })
+
+    it('should handle local fallback URLs correctly', async () => {
+      const localUrl = 'http://localhost:7000/uploads/avatars/local-file.jpg'
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user4', urlAvatar: localUrl })),
+        update: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      const result = await service.deleteAvatar('user4')
+
+      expect(storageMock.delete).toHaveBeenCalledWith('avatars/local-file.jpg')
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
+      expect(result).toEqual({
+        exito: true,
+        mensaje: 'Foto de perfil eliminada correctamente',
+      })
+    })
+
+    it('should handle empty string urlAvatar as no avatar', async () => {
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user5', urlAvatar: '' })),
+        update: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      const result = await service.deleteAvatar('user5')
+
+      expect(storageMock.delete).not.toHaveBeenCalled()
+      expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
+      expect(result).toEqual({
+        exito: true,
+        mensaje: 'Foto de perfil eliminada correctamente',
+      })
+    })
+  });
 });
