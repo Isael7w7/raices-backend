@@ -72,7 +72,9 @@ export class UsersController {
   @Post('perfil-necesidades')
   @ApiOperation({ summary: 'Guardar perfil de necesidades', description: 'Guarda tipos de discapacidad, necesidades, metas, historial, etc.' })
   @ApiBody({ type: GuardarPerfilNecesidadesDto })
-  @ApiResponse({ status: 200, description: 'Perfil de necesidades guardado' })
+  @ApiResponse({ status: 201, description: 'Perfil de necesidades guardado con éxito' })
+  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
   saveProfiling(@CurrentUser() user: any, @Body() dto: GuardarPerfilNecesidadesDto) {
     return this.svc.saveProfilingData(user.id, dto)
   }
