@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Put, Delete,
   Param, Body, Query,
-  UseGuards,
+  UseGuards, HttpCode,
 } from '@nestjs/common'
 import {
   ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
@@ -118,6 +118,7 @@ export class InstitutionsController {
 
   // ─── DELETE /instituciones/:id ────────────────────────────────────
   @Delete(':id')
+  @HttpCode(204)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
@@ -125,7 +126,7 @@ export class InstitutionsController {
     description: 'Elimina suavemente (soft-delete) una institución de la base de datos.',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Institución eliminada' })
+  @ApiResponse({ status: 204, description: 'Institución eliminada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   remove(@Param('id') id: string, @CurrentUser() user: any) {

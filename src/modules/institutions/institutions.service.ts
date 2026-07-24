@@ -207,8 +207,6 @@ export class InstitutionsService {
       activa: false,
       fechaEliminacion: new Date().toISOString(),
     })
-
-    return { exito: true, mensaje: 'Institución eliminada correctamente' }
   }
 
   // ─── Helpers privados ──────────────────────────────────────────────

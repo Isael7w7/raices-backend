@@ -266,12 +266,10 @@ export class AdminService {
       const inst = doc.data()!
       await this.email.sendInstitutionApproved(inst.emailContacto ?? inst.email ?? '', inst.nombre)
     }
-    return { exito: true }
   }
 
   async rejectInstitution(id: string) {
     await this.col(COLECCIONES.instituciones).doc(id).delete()
-    return { exito: true }
   }
 
   async toggleVerifyInstitution(id: string) {
@@ -279,7 +277,7 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Institución no encontrada')
     const nuevoVerificado = !doc.data()!.verificada
     await doc.ref.update({ verificada: nuevoVerificado })
-    return { exito: true, verificada: nuevoVerificado }
+    return { verificada: nuevoVerificado }
   }
 
   /* ───────────────────────── Usuarios ───────────────────────── */
@@ -299,7 +297,7 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     const nuevoActivo = !doc.data()!.activo
     await doc.ref.update({ activo: nuevoActivo })
-    return { exito: true, activo: nuevoActivo }
+    return { activo: nuevoActivo }
   }
 
   async changeUserRole(id: string, rol: string, adminId: string) {
@@ -309,7 +307,7 @@ export class AdminService {
     const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     await doc.ref.update({ rol })
-    return { exito: true, rol }
+    return { rol }
   }
 
   async deleteUser(id: string, adminId: string) {
@@ -356,8 +354,6 @@ export class AdminService {
 
     // 3. Eliminar perfil principal
     await doc.ref.delete()
-
-    return { exito: true, mensaje: 'Cuenta eliminada permanentemente' }
   }
 
   private async eliminarDocsEnLote(coleccion: string, campo: string, valor: string): Promise<void> {
@@ -414,7 +410,6 @@ export class AdminService {
         cantidadCalificaciones: todasRev.size,
       })
     }
-    return { exito: true }
   }
 
   /* ───────────────────────── Configuración ───────────────────────── */

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, UseGuards, HttpCode } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
@@ -44,9 +44,10 @@ export class AdminController {
   pending() { return this.svc.getPendingInstitutions() }
 
   @Post('instituciones/:id/aprobar')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Aprobar institución', description: 'Activa la institución y envía correo de notificación' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Institución aprobada' })
+  @ApiResponse({ status: 204, description: 'Institución aprobada' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   approve(@Param('id') id: string) { return this.svc.approveInstitution(id) }
 
@@ -57,9 +58,10 @@ export class AdminController {
   verify(@Param('id') id: string) { return this.svc.toggleVerifyInstitution(id) }
 
   @Delete('instituciones/:id')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Rechazar/eliminar institución', description: 'Elimina permanentemente la institución' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Institución eliminada' })
+  @ApiResponse({ status: 204, description: 'Institución eliminada' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   reject(@Param('id') id: string) { return this.svc.rejectInstitution(id) }
 
@@ -89,9 +91,10 @@ export class AdminController {
   }
 
   @Delete('usuarios/:id')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar cuenta de usuario', description: 'Elimina permanentemente el usuario, su avatar en Storage, perfil extendido y dependientes. No se puede eliminar la propia cuenta.' })
   @ApiParam({ name: 'id', description: 'ID del usuario a eliminar' })
-  @ApiResponse({ status: 200, description: 'Cuenta eliminada permanentemente' })
+  @ApiResponse({ status: 204, description: 'Cuenta eliminada permanentemente' })
   @ApiResponse({ status: 400, description: 'Intento de eliminar la propia cuenta' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
@@ -106,9 +109,10 @@ export class AdminController {
   reviews() { return this.svc.getReviews() }
 
   @Delete('resenas/:id')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar reseña', description: 'Elimina la reseña y recalcula la calificación de la institución' })
   @ApiParam({ name: 'id', description: 'ID de la reseña' })
-  @ApiResponse({ status: 200, description: 'Reseña eliminada y calificación recalculada' })
+  @ApiResponse({ status: 204, description: 'Reseña eliminada y calificación recalculada' })
   @ApiResponse({ status: 404, description: 'Reseña no encontrada' })
   deleteReview(@Param('id') id: string) { return this.svc.deleteReview(id) }
 

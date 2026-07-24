@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator } from '@nestjs/common'
+import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
@@ -62,8 +62,9 @@ export class UsersController {
   }
 
   @Delete('avatar')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar foto de perfil', description: 'Elimina el avatar del usuario de Firebase Storage y limpia el campo en la base de datos.' })
-  @ApiResponse({ status: 200, description: 'Foto de perfil eliminada correctamente' })
+  @ApiResponse({ status: 204, description: 'Foto de perfil eliminada correctamente' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   deleteAvatar(@CurrentUser() user: any) {
     return this.svc.deleteAvatar(user.id)
@@ -113,9 +114,10 @@ export class UsersController {
   }
 
   @Delete('dependientes/:id')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar dependiente' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
-  @ApiResponse({ status: 200, description: 'Dependiente eliminado' })
+  @ApiResponse({ status: 204, description: 'Dependiente eliminado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   deleteDependent(@CurrentUser() user: any, @Param('id') id: string) {
     return this.svc.deleteDependent(user.id, id)

@@ -27,27 +27,23 @@ export class UsersService {
     const perfilExtendido = perfilExtendidoSnap.empty ? null : perfilExtendidoSnap.docs[0].data()
 
     return {
-      exito: true,
-      mensaje: 'Perfil obtenido con éxito',
-      datos: {
-        ...perfil,
-        perfilNecesidades: perfilExtendido ? {
-          tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
-          severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
-          modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
-          necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
-          accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
-          zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
-          necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
-          metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
-          areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
-          historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
-          historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
-          etapaVida: perfilExtendido.etapaVida ?? null,
-          preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
-          nivelApoyo: perfilExtendido.nivelApoyo ?? null,
-        } : null,
-      },
+      ...perfil,
+      perfilNecesidades: perfilExtendido ? {
+        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
+        severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
+        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
+        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
+        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
+        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
+        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
+        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
+        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
+        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
+        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
+        etapaVida: perfilExtendido.etapaVida ?? null,
+        preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
+        nivelApoyo: perfilExtendido.nivelApoyo ?? null,
+      } : null,
     }
   }
 
@@ -70,7 +66,6 @@ export class UsersService {
     }
 
     await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar: null })
-    return { exito: true, mensaje: 'Avatar eliminado correctamente', datos: null }
   }
 
 
@@ -92,10 +87,10 @@ export class UsersService {
     // 2. Actualizar la URL en Firestore
     try {
       await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar })
-      return { exito: true, mensaje: 'Avatar actualizado correctamente', datos: { urlAvatar } }
+      return { urlAvatar }
     } catch (dbError: any) {
       console.error('Error al guardar avatarUrl en Firestore:', dbError)
-      return { exito: false, mensaje: 'Imagen subida, fallo actualización en BD', datos: { urlAvatar } }
+      return { urlAvatar }
     }
   }
 
@@ -157,7 +152,7 @@ export class UsersService {
       preocupacionesActuales: carga.preocupacionesActuales,
       nivelApoyo: carga.nivelApoyo,
     }
-    return { exito: true, mensaje: 'Perfil de necesidades guardado con éxito', datos: perfilGuardado }
+    return perfilGuardado
   }
 
   async getDependents(usuarioId: string) {
@@ -166,7 +161,7 @@ export class UsersService {
 
     const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
     dependientes.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
-    return { exito: true, mensaje: 'Dependientes obtenidos con éxito', datos: dependientes }
+    return dependientes
   }
 
   async addDependent(usuarioId: string, datos: any) {
@@ -184,7 +179,7 @@ export class UsersService {
       fechaCreacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
-    return { exito: true, mensaje: 'Dependiente creado con éxito', datos: this.formatearDependiente({ id: fila.id, ...fila.data()! }) }
+    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
   }
 
   async updateDependent(usuarioId: string, id: string, datos: any) {
@@ -203,7 +198,7 @@ export class UsersService {
       fechaActualizacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
-    return { exito: true, mensaje: 'Dependiente actualizado con éxito', datos: this.formatearDependiente({ id: fila.id, ...fila.data()! }) }
+    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
   }
 
   async getDependent(usuarioId: string, id: string) {
@@ -211,14 +206,13 @@ export class UsersService {
     if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
       throw new NotFoundException('Dependiente no encontrado')
     }
-    return { exito: true, mensaje: 'Dependiente obtenido con éxito', datos: this.formatearDependiente({ id: doc.id, ...doc.data()! }) }
+    return this.formatearDependiente({ id: doc.id, ...doc.data()! })
   }
 
   async deleteDependent(usuarioId: string, id: string) {
     const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
     if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
     await this.col(COLECCIONES.dependientes).doc(id).delete()
-    return { exito: true, mensaje: 'Dependiente eliminado con éxito', datos: null }
   }
 
   private formatearDependiente(d: any) {

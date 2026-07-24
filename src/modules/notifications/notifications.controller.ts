@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent, Res } from '@nestjs/common'
+import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent, Res, HttpCode } from '@nestjs/common'
 import { Observable, fromEvent } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
@@ -20,16 +20,18 @@ export class NotificationsController {
   list(@CurrentUser() user: any) { return this.svc.findByUser(user.id) }
 
   @Patch(':id/leer')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   @ApiParam({ name: 'id', description: 'ID de la notificación' })
-  @ApiResponse({ status: 200, description: 'Notificación marcada como leída' })
+  @ApiResponse({ status: 204, description: 'Notificación marcada como leída' })
   markRead(@Param('id') id: string, @CurrentUser() user: any) {
     return this.svc.markRead(user.id, id)
   }
 
   @Patch('leer-todas')
+  @HttpCode(204)
   @ApiOperation({ summary: 'Marcar todas como leídas', description: 'Marca todas las notificaciones no leídas del usuario como leídas' })
-  @ApiResponse({ status: 200, description: 'Todas marcadas como leídas' })
+  @ApiResponse({ status: 204, description: 'Todas marcadas como leídas' })
   markAllRead(@CurrentUser() user: any) { return this.svc.markAllRead(user.id) }
 
   @Sse('flujo')

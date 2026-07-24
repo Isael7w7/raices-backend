@@ -354,10 +354,7 @@ describe('UsersService', () => {
 
       expect(storageMock.delete).toHaveBeenCalledWith('avatars/old-photo.jpg')
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: newAvatarUrl })
-      expect(result).toEqual({
-        mensaje: 'Avatar actualizado correctamente',
-        urlAvatar: newAvatarUrl,
-      })
+      expect(result).toEqual({ urlAvatar: newAvatarUrl })
     })
 
     it('should not call storage.delete when user has no previous avatar', async () => {
@@ -407,10 +404,7 @@ describe('UsersService', () => {
 
       // Storage failed but new avatar is still saved
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: newAvatarUrl })
-      expect(result).toEqual({
-        mensaje: 'Avatar actualizado correctamente',
-        urlAvatar: newAvatarUrl,
-      })
+      expect(result).toEqual({ urlAvatar: newAvatarUrl })
     })
 
     it('should catch Firestore error and return partial success with URL', async () => {
@@ -439,11 +433,7 @@ describe('UsersService', () => {
         'Error al guardar avatarUrl en Firestore:',
         expect.any(Error),
       )
-      expect(result).toEqual({
-        exito: true,
-        urlAvatar: avatarUrl,
-        mensaje: 'Imagen subida, fallo actualización en BD',
-      })
+      expect(result).toEqual({ urlAvatar: avatarUrl })
 
       consoleSpy.mockRestore()
     })
@@ -536,10 +526,7 @@ describe('UsersService', () => {
       expect(mockDocRef.get).toHaveBeenCalled()
       expect(storageMock.delete).toHaveBeenCalledWith('avatars/abc-123.jpg')
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
-      expect(result).toEqual({
-        exito: true,
-        mensaje: 'Foto de perfil eliminada correctamente',
-      })
+      expect(result).toBeUndefined()
     })
 
     it('should clear urlAvatar even when user has no avatar', async () => {
@@ -556,10 +543,7 @@ describe('UsersService', () => {
 
       expect(storageMock.delete).not.toHaveBeenCalled()
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
-      expect(result).toEqual({
-        exito: true,
-        mensaje: 'Foto de perfil eliminada correctamente',
-      })
+      expect(result).toBeUndefined()
     })
 
     it('should throw NotFoundException if user does not exist', async () => {
@@ -592,10 +576,7 @@ describe('UsersService', () => {
 
       // Storage failed but avatar is still cleared in DB
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
-      expect(result).toEqual({
-        exito: true,
-        mensaje: 'Foto de perfil eliminada correctamente',
-      })
+      expect(result).toBeUndefined()
     })
 
     it('should handle local fallback URLs correctly', async () => {
@@ -613,10 +594,7 @@ describe('UsersService', () => {
 
       expect(storageMock.delete).toHaveBeenCalledWith('avatars/local-file.jpg')
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
-      expect(result).toEqual({
-        exito: true,
-        mensaje: 'Foto de perfil eliminada correctamente',
-      })
+      expect(result).toBeUndefined()
     })
 
     it('should handle empty string urlAvatar as no avatar', async () => {
@@ -633,10 +611,7 @@ describe('UsersService', () => {
 
       expect(storageMock.delete).not.toHaveBeenCalled()
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: null })
-      expect(result).toEqual({
-        exito: true,
-        mensaje: 'Foto de perfil eliminada correctamente',
-      })
+      expect(result).toBeUndefined()
     })
   });
 });

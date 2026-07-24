@@ -78,7 +78,7 @@ export class JobsService {
       id, vacanteId, usuarioId, cartaPresentacion, estado: 'pendiente',
       fechaCreacion: new Date().toISOString(),
     })
-    return { exito: true, mensaje: '¡Solicitud enviada con éxito!', datos: { id, estado: 'pendiente' } }
+    return { id, estado: 'pendiente' }
   }
 
   async myApplications(usuarioId: string) {

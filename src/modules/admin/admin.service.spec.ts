@@ -67,7 +67,7 @@ describe('AdminService', () => {
 
       expect(storageMock.delete).toHaveBeenCalledWith('avatars/user-photo.jpg')
       expect(perfilDoc.ref.delete).toHaveBeenCalled()
-      expect(result).toEqual({ exito: true, mensaje: 'Cuenta eliminada permanentemente' })
+      expect(result).toBeUndefined()
     })
 
     it('should throw BadRequestException when admin tries to delete own account', async () => {
@@ -99,7 +99,7 @@ describe('AdminService', () => {
 
       expect(storageMock.delete).not.toHaveBeenCalled()
       expect(perfilDoc.ref.delete).toHaveBeenCalled()
-      expect(result).toEqual({ exito: true, mensaje: 'Cuenta eliminada permanentemente' })
+      expect(result).toBeUndefined()
     })
 
     it('should continue even if Storage delete fails', async () => {
@@ -119,7 +119,7 @@ describe('AdminService', () => {
       const result = await service.deleteUser('user3', 'admin-1')
 
       expect(perfilDoc.ref.delete).toHaveBeenCalled()
-      expect(result).toEqual({ exito: true, mensaje: 'Cuenta eliminada permanentemente' })
+      expect(result).toBeUndefined()
     })
 
     it('should call batch.commit to clean up dependientes', async () => {
@@ -140,7 +140,7 @@ describe('AdminService', () => {
       expect(batch.delete).toHaveBeenCalled()
       expect(batch.commit).toHaveBeenCalled()
       expect(perfilDoc.ref.delete).toHaveBeenCalled()
-      expect(result).toEqual({ exito: true, mensaje: 'Cuenta eliminada permanentemente' })
+      expect(result).toBeUndefined()
     })
   });
 });

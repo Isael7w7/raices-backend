@@ -423,8 +423,7 @@ describe('InstitutionsService', () => {
       expect(updateMock).toHaveBeenCalledWith(
         expect.objectContaining({ activa: false })
       )
-      expect(result.exito).toBe(true)
-      expect(result.mensaje).toContain('eliminada')
+      expect(result).toBeUndefined()
     })
 
     it('should soft-delete an institution when admin', async () => {
@@ -442,7 +441,7 @@ describe('InstitutionsService', () => {
       expect(updateMock).toHaveBeenCalledWith(
         expect.objectContaining({ activa: false })
       )
-      expect(result.exito).toBe(true)
+      expect(result).toBeUndefined()
     })
 
     it('should throw ForbiddenException when non-owner non-admin tries to delete', async () => {
