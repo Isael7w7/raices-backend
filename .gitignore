@@ -26,3 +26,8 @@ uploads/
 
 # Debug logs
 npm-debug.log*
+
+# Reglas locales de agentes IA
+AGENTS.md
+.cursorrules
+CLINE_RULES.md
