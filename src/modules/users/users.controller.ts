@@ -3,6 +3,9 @@ import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
 import { StorageService } from '../storage/storage.service'
+import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
+import { CrearDependienteDto } from './dto/crear-dependiente.dto'
+import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
@@ -25,10 +28,11 @@ export class UsersController {
   profile(@CurrentUser() user: any) { return this.svc.getProfile(user.id) }
 
   @Put('perfil')
-  @ApiOperation({ summary: 'Actualizar perfil básico' })
+  @ApiOperation({ summary: 'Actualizar perfil básico', description: 'Actualiza nombre, ciudad, estado o urlAvatar del usuario autenticado.' })
+  @ApiBody({ type: ActualizarPerfilDto })
   @ApiResponse({ status: 200, description: 'Perfil actualizado' })
-  updateProfile(@CurrentUser() user: any, @Body() body: any) {
-    return this.svc.updateProfile(user.id, body)
+  updateProfile(@CurrentUser() user: any, @Body() dto: ActualizarPerfilDto) {
+    return this.svc.updateProfile(user.id, dto)
   }
 
   @Post('avatar')
@@ -67,9 +71,10 @@ export class UsersController {
 
   @Post('perfil-necesidades')
   @ApiOperation({ summary: 'Guardar perfil de necesidades', description: 'Guarda tipos de discapacidad, necesidades, metas, historial, etc.' })
+  @ApiBody({ type: GuardarPerfilNecesidadesDto })
   @ApiResponse({ status: 200, description: 'Perfil de necesidades guardado' })
-  saveProfiling(@CurrentUser() user: any, @Body() body: any) {
-    return this.svc.saveProfilingData(user.id, body)
+  saveProfiling(@CurrentUser() user: any, @Body() dto: GuardarPerfilNecesidadesDto) {
+    return this.svc.saveProfilingData(user.id, dto)
   }
 
   @Get('dependientes')
@@ -80,18 +85,29 @@ export class UsersController {
 
   @Post('dependientes')
   @ApiOperation({ summary: 'Agregar dependiente' })
+  @ApiBody({ type: CrearDependienteDto })
   @ApiResponse({ status: 201, description: 'Dependiente creado' })
-  addDependent(@CurrentUser() user: any, @Body() body: any) {
-    return this.svc.addDependent(user.id, body)
+  addDependent(@CurrentUser() user: any, @Body() dto: CrearDependienteDto) {
+    return this.svc.addDependent(user.id, dto)
+  }
+
+  @Get('dependientes/:id')
+  @ApiOperation({ summary: 'Detalle de dependiente', description: 'Retorna la información de un dependiente específico por su ID.' })
+  @ApiParam({ name: 'id', description: 'ID del dependiente' })
+  @ApiResponse({ status: 200, description: 'Dependiente encontrado' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  getDependent(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.svc.getDependent(user.id, id)
   }
 
   @Put('dependientes/:id')
   @ApiOperation({ summary: 'Actualizar dependiente' })
+  @ApiBody({ type: CrearDependienteDto })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiResponse({ status: 200, description: 'Dependiente actualizado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
-  updateDependent(@CurrentUser() user: any, @Param('id') id: string, @Body() body: any) {
-    return this.svc.updateDependent(user.id, id, body)
+  updateDependent(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CrearDependienteDto) {
+    return this.svc.updateDependent(user.id, id, dto)
   }
 
   @Delete('dependientes/:id')
