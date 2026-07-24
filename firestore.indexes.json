@@ -131,6 +131,15 @@
       ]
     },
     {
+      "collectionGroup": "instituciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "creadoPor", "order": "ASCENDING" },
+        { "fieldPath": "activa", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "dependientes",
       "queryScope": "COLLECTION",
       "fields": [

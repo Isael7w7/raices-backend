@@ -183,6 +183,14 @@ export class UsersService {
     return this.formatearDependiente({ id: fila.id, ...fila.data()! })
   }
 
+  async getDependent(usuarioId: string, id: string) {
+    const doc = await this.col(COLECCIONES.dependientes).doc(id).get()
+    if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
+      throw new NotFoundException('Dependiente no encontrado')
+    }
+    return this.formatearDependiente({ id: doc.id, ...doc.data()! })
+  }
+
   async deleteDependent(usuarioId: string, id: string) {
     const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
     if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')

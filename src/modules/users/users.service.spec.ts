@@ -449,6 +449,74 @@ describe('UsersService', () => {
     })
   })
 
+  // ── getDependent ────────────────────────────────────────────────────────
+
+  describe('getDependent', () => {
+    it('should return formatted dependiente when found and owned by user', async () => {
+      const docData = {
+        id: 'dep1', tutorId: 'user1', nombreCompleto: 'María García',
+        parentesco: 'hijo', fechaCreacion: '2024-01-01T00:00:00.000Z',
+        datosPerfil: JSON.stringify({
+          tiposDiscapacidad: ['tea', 'motriz'],
+          rangoEdad: '6-12',
+          etapaVida: 'infancia',
+          notas: 'Requiere acompañamiento',
+        }),
+      }
+
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc(docData)),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      const result = await service.getDependent('user1', 'dep1')
+
+      expect(result).toEqual({
+        id: 'dep1',
+        nombreCompleto: 'María García',
+        parentesco: 'hijo',
+        tiposDiscapacidad: ['tea', 'motriz'],
+        rangoEdad: '6-12',
+        etapaVida: 'infancia',
+        notas: 'Requiere acompañamiento',
+        fechaCreacion: '2024-01-01T00:00:00.000Z',
+      })
+    })
+
+    it('should throw NotFoundException when dependiente does not exist', async () => {
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      await expect(service.getDependent('user1', 'nonexistent')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when dependiente belongs to another user', async () => {
+      const docData = {
+        id: 'dep2', tutorId: 'other-user', nombreCompleto: 'Otro Hijo',
+        parentesco: 'hijo', fechaCreacion: '2024-01-01T00:00:00.000Z',
+        datosPerfil: '{}',
+      }
+
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc(docData)),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      })
+
+      await expect(service.getDependent('user1', 'dep2')).rejects.toThrow(NotFoundException)
+    })
+  })
+
   // ── deleteAvatar ────────────────────────────────────────────────────────
 
   describe('deleteAvatar', () => {

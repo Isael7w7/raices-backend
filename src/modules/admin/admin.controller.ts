@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
+import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -125,7 +126,7 @@ export class AdminController {
 
   @Put('configuracion')
   @ApiOperation({ summary: 'Actualizar configuración', description: 'Actualiza configuración de la plataforma. Solo se modifican campos válidos.' })
-  @ApiBody({ schema: { properties: { nombrePlataforma: { type: 'string' }, modoMantenimiento: { type: 'boolean' }, iaHabilitada: { type: 'boolean' } } } })
+  @ApiBody({ type: ActualizarConfiguracionDto })
   @ApiResponse({ status: 200, description: 'Configuración actualizada' })
-  updateSettings(@Body() body: Record<string, string>) { return this.svc.updateSettings(body) }
+  updateSettings(@Body() dto: ActualizarConfiguracionDto) { return this.svc.updateSettings(dto as any) }
 }
