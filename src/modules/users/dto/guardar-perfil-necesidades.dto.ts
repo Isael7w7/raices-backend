@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { IsOptional, IsArray, IsString, IsIn } from 'class-validator'
 
 export class GuardarPerfilNecesidadesDto {
   @ApiProperty({
@@ -6,92 +7,130 @@ export class GuardarPerfilNecesidadesDto {
     example: ['tea', 'motriz', 'visual'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   tiposDiscapacidad?: string[]
 
   @ApiPropertyOptional({
     description: 'Nivel de severidad de la discapacidad',
-    example: 'moderado',
+    example: 'moderada',
   })
+  @IsOptional()
+  @IsString()
   severidadDiscapacidad?: string
 
   @ApiProperty({
     description: 'Modos de comunicación que utiliza',
-    example: ['lenguaje_señas', 'aac', 'verbal'],
+    example: ['verbal'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   modosComunicacion?: string[]
 
   @ApiProperty({
     description: 'Necesidades de movilidad',
-    example: ['silla_ruedas', 'andador'],
+    example: ['rampas'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   necesidadesMovilidad?: string[]
 
   @ApiProperty({
     description: 'Acceso a tecnología',
-    example: ['tablet', 'computadora', 'smartphone'],
+    example: ['smartphone'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   accesoTecnologia?: string[]
 
   @ApiProperty({
     description: 'Zonas o áreas preferidas para atención',
-    example: ['centro', 'norte', 'sur'],
+    example: ['Mérida Norte'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   zonasPreferidas?: string[]
 
   @ApiProperty({
     description: 'Necesidades específicas del usuario',
-    example: ['comunicacion', 'movilidad', 'educacion'],
+    example: ['terapia ocupacional'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   necesidades?: string[]
 
   @ApiProperty({
     description: 'Metas actuales del usuario',
-    example: ['mejorar_comunicacion', 'independencia_movilidad'],
+    example: ['autonomía'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   metasActuales?: string[]
 
   @ApiProperty({
     description: 'Áreas de apoyo requeridas',
-    example: ['familia', 'terapeutas', 'educadores'],
+    example: ['educación'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   areasApoyo?: string[]
 
   @ApiProperty({
     description: 'Historial educativo',
-    example: ['escuela_regular', 'educacion_especial', 'tutorias'],
+    example: ['educación especial'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   historialEducacion?: string[]
 
   @ApiProperty({
     description: 'Historial de terapias',
-    example: ['terapia_ocupacional', 'fonoaudiologia', 'psicologia'],
+    example: ['fisioterapia'],
     type: [String],
   })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
   historialTerapia?: string[]
 
   @ApiPropertyOptional({
     description: 'Etapa de vida del usuario',
-    example: 'infancia',
+    example: 'joven_adulto',
   })
+  @IsOptional()
+  @IsString()
   etapaVida?: string
 
   @ApiPropertyOptional({
     description: 'Preocupaciones o desafíos actuales del usuario',
-    example: 'Dificultad para encontrar terapias cerca de casa',
+    example: 'inclusión laboral',
   })
+  @IsOptional()
+  @IsString()
   preocupacionesActuales?: string
 
   @ApiPropertyOptional({
     description: 'Nivel de apoyo requerido',
-    example: 'moderado',
+    example: 'intermedio',
   })
+  @IsOptional()
+  @IsString()
   nivelApoyo?: string
 }
