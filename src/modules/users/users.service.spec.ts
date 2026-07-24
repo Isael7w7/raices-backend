@@ -614,4 +614,205 @@ describe('UsersService', () => {
       expect(result).toBeUndefined()
     })
   });
+
+  // ── getDependents ─────────────────────────────────────────────────────
+
+  describe('getDependents', () => {
+    it('should return dependents for user', async () => {
+      const deps = [
+        { id: 'dep1', data: () => ({ id: 'dep1', tutorId: 'user1', nombreCompleto: 'María', parentesco: 'hijo', fechaCreacion: '2024-01-01', datosPerfil: JSON.stringify({ tiposDiscapacidad: ['tea'], rangoEdad: '6-12', etapaVida: 'infancia', notas: 'Test' }) }) },
+      ]
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: deps }),
+      })
+
+      const result: any[] = await service.getDependents('user1')
+      expect(result).toHaveLength(1)
+      expect(result[0].nombreCompleto).toBe('María')
+      expect(result[0].tiposDiscapacidad).toEqual(['tea'])
+    })
+
+    it('should return empty array when no dependents', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: [] }),
+      })
+
+      const result = await service.getDependents('user1')
+      expect(result).toHaveLength(0)
+    })
+  })
+
+  // ── addDependent ─────────────────────────────────────────────────────
+
+  describe('addDependent', () => {
+    it('should create a dependent and return formatted data', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const docData = {
+        id: 'new-id', tutorId: 'user1', nombreCompleto: 'Carlos', parentesco: 'hijo',
+        fechaCreacion: '2024-01-01T00:00:00.000Z',
+        datosPerfil: JSON.stringify({ tiposDiscapacidad: ['motriz'], rangoEdad: '3-6', etapaVida: 'infancia', notas: 'Nota' }),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          set: setMock,
+          get: jest.fn().mockResolvedValue(mockDoc(docData)),
+        }),
+      })
+
+      const result: any = await service.addDependent('user1', {
+        nombreCompleto: 'Carlos', parentesco: 'hijo',
+        tiposDiscapacidad: ['motriz'], rangoEdad: '3-6', etapaVida: 'infancia', notas: 'Nota',
+      })
+
+      expect(setMock).toHaveBeenCalled()
+      expect(result.nombreCompleto).toBe('Carlos')
+      expect(result.tiposDiscapacidad).toEqual(['motriz'])
+    })
+
+    it('should use defaults when optional fields are missing', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const docData = {
+        id: 'new-id', tutorId: 'user1', nombreCompleto: 'Sin nombre', parentesco: 'familiar',
+        fechaCreacion: '2024-01-01T00:00:00.000Z',
+        datosPerfil: JSON.stringify({ tiposDiscapacidad: [], rangoEdad: null, etapaVida: null, notas: '' }),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          set: setMock,
+          get: jest.fn().mockResolvedValue(mockDoc(docData)),
+        }),
+      })
+
+      const result: any = await service.addDependent('user1', {})
+      expect(result.nombreCompleto).toBe('Sin nombre')
+      expect(result.parentesco).toBe('familiar')
+    })
+  })
+
+  // ── updateDependent ──────────────────────────────────────────────────
+
+  describe('updateDependent', () => {
+    it('should update an existing dependent', async () => {
+      const existingDoc = {
+        exists: true, id: 'dep1',
+        data: () => ({
+          id: 'dep1', tutorId: 'user1', nombreCompleto: 'Old Name', parentesco: 'hijo',
+          fechaCreacion: '2024-01-01',
+          datosPerfil: JSON.stringify({ tiposDiscapacidad: ['tea'], rangoEdad: '6-12', etapaVida: 'infancia', notas: 'Old' }),
+        }),
+      }
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const updatedDoc = {
+        id: 'dep1', tutorId: 'user1', nombreCompleto: 'New Name', parentesco: 'madre',
+        fechaCreacion: '2024-01-01',
+        datosPerfil: JSON.stringify({ tiposDiscapacidad: ['motriz'], rangoEdad: '3-6', etapaVida: 'infancia', notas: 'New' }),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn()
+            .mockResolvedValueOnce(existingDoc)
+            .mockResolvedValueOnce(mockDoc(updatedDoc)),
+          update: updateMock,
+        }),
+      })
+
+      const result: any = await service.updateDependent('user1', 'dep1', {
+        nombreCompleto: 'New Name', parentesco: 'madre',
+        tiposDiscapacidad: ['motriz'], rangoEdad: '3-6', notas: 'New',
+      })
+
+      expect(updateMock).toHaveBeenCalled()
+      expect(result.nombreCompleto).toBe('New Name')
+    })
+
+    it('should throw NotFoundException when dependent does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+
+      await expect(service.updateDependent('user1', 'nonexistent', {})).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when dependent belongs to another user', async () => {
+      const otherDoc = mockDoc({ id: 'dep1', tutorId: 'other-user' })
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(otherDoc) }),
+      })
+
+      await expect(service.updateDependent('user1', 'dep1', {})).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── deleteDependent ──────────────────────────────────────────────────
+
+  describe('deleteDependent', () => {
+    it('should delete a dependent', async () => {
+      const deleteMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'user1' })),
+          delete: deleteMock,
+        }),
+      })
+
+      await service.deleteDependent('user1', 'dep1')
+      expect(deleteMock).toHaveBeenCalled()
+    })
+
+    it('should throw NotFoundException when dependent does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+
+      await expect(service.deleteDependent('user1', 'nonexistent')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when dependent belongs to another user', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ tutorId: 'other' })) }),
+      })
+
+      await expect(service.deleteDependent('user1', 'dep1')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── updateProfile ────────────────────────────────────────────────────
+
+  describe('updateProfile', () => {
+    it('should update profile fields and return updated profile', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const profileData = { id: 'user1', nombreCompleto: 'Updated', ciudad: 'GDL' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({ update: updateMock }),
+        })
+        .mockReturnValueOnce(mockCollection(mockDoc(profileData)))
+        .mockReturnValueOnce(mockCollection(null, true))
+
+      const result: any = await service.updateProfile('user1', { nombreCompleto: 'Updated', ciudad: 'GDL' })
+
+      expect(updateMock).toHaveBeenCalledWith({ nombreCompleto: 'Updated', ciudad: 'GDL' })
+      expect(result.nombreCompleto).toBe('Updated')
+    })
+
+    it('should return existing profile when no fields to update', async () => {
+      const profileData = { id: 'user1', nombreCompleto: 'Original' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce(mockCollection(mockDoc(profileData)))
+        .mockReturnValueOnce(mockCollection(null, true))
+
+      const result: any = await service.updateProfile('user1', {})
+      expect(result.nombreCompleto).toBe('Original')
+    })
+  })
 });
