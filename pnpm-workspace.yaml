@@ -1,0 +1,8 @@
+allowBuilds:
+  '@firebase/util': true
+  '@nestjs/core': true
+  '@scarf/scarf': true
+  '@swc/core': true
+  esbuild: true
+  protobufjs: true
+  unrs-resolver: true
