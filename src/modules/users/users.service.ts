@@ -19,7 +19,7 @@ export class UsersService {
 
   async getProfile(usuarioId: string) {
     const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
-    if (!doc.exists) throw new NotFoundException('User not found')
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     const perfil = { id: doc.id, ...doc.data()! }
 
     const perfilExtendidoSnap = await this.col(COLECCIONES.perfilesExtendidos)
@@ -27,20 +27,27 @@ export class UsersService {
     const perfilExtendido = perfilExtendidoSnap.empty ? null : perfilExtendidoSnap.docs[0].data()
 
     return {
-      ...perfil,
-      perfilNecesidades: perfilExtendido ? {
-        ...perfilExtendido,
-        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
-        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
-        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
-        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
-        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
-        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
-        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
-        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
-        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
-        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
-      } : null,
+      exito: true,
+      mensaje: 'Perfil obtenido con éxito',
+      datos: {
+        ...perfil,
+        perfilNecesidades: perfilExtendido ? {
+          tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
+          severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
+          modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
+          necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
+          accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
+          zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
+          necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
+          metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
+          areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
+          historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
+          historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
+          etapaVida: perfilExtendido.etapaVida ?? null,
+          preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
+          nivelApoyo: perfilExtendido.nivelApoyo ?? null,
+        } : null,
+      },
     }
   }
 
@@ -63,7 +70,7 @@ export class UsersService {
     }
 
     await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar: null })
-    return { exito: true, mensaje: 'Foto de perfil eliminada correctamente' }
+    return { exito: true, mensaje: 'Avatar eliminado correctamente', datos: null }
   }
 
 
@@ -85,10 +92,10 @@ export class UsersService {
     // 2. Actualizar la URL en Firestore
     try {
       await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar })
-      return { mensaje: 'Avatar actualizado correctamente', urlAvatar }
+      return { exito: true, mensaje: 'Avatar actualizado correctamente', datos: { urlAvatar } }
     } catch (dbError: any) {
       console.error('Error al guardar avatarUrl en Firestore:', dbError)
-      return { exito: true, urlAvatar, mensaje: 'Imagen subida, fallo actualización en BD' }
+      return { exito: false, mensaje: 'Imagen subida, fallo actualización en BD', datos: { urlAvatar } }
     }
   }
 
@@ -133,17 +140,33 @@ export class UsersService {
       const id = uuid()
       await this.col(COLECCIONES.perfilesExtendidos).doc(id).set({ id, usuarioId, ...carga })
     }
-    return { exito: true }
+
+    const perfilGuardado = {
+      tiposDiscapacidad: this.parsearCampoJson(carga.tiposDiscapacidad),
+      severidadDiscapacidad: carga.severidadDiscapacidad,
+      modosComunicacion: this.parsearCampoJson(carga.modosComunicacion),
+      necesidadesMovilidad: this.parsearCampoJson(carga.necesidadesMovilidad),
+      accesoTecnologia: this.parsearCampoJson(carga.accesoTecnologia),
+      zonasPreferidas: this.parsearCampoJson(carga.zonasPreferidas),
+      necesidades: this.parsearCampoJson(carga.necesidades),
+      metasActuales: this.parsearCampoJson(carga.metasActuales),
+      areasApoyo: this.parsearCampoJson(carga.areasApoyo),
+      historialEducacion: this.parsearCampoJson(carga.historialEducacion),
+      historialTerapia: this.parsearCampoJson(carga.historialTerapia),
+      etapaVida: carga.etapaVida,
+      preocupacionesActuales: carga.preocupacionesActuales,
+      nivelApoyo: carga.nivelApoyo,
+    }
+    return { exito: true, mensaje: 'Perfil de necesidades guardado con éxito', datos: perfilGuardado }
   }
 
   async getDependents(usuarioId: string) {
     const snap = await this.col(COLECCIONES.dependientes)
       .where('tutorId', '==', usuarioId).get()
 
-    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
     dependientes.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
-    return dependientes
+    return { exito: true, mensaje: 'Dependientes obtenidos con éxito', datos: dependientes }
   }
 
   async addDependent(usuarioId: string, datos: any) {
@@ -161,7 +184,7 @@ export class UsersService {
       fechaCreacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
-    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
+    return { exito: true, mensaje: 'Dependiente creado con éxito', datos: this.formatearDependiente({ id: fila.id, ...fila.data()! }) }
   }
 
   async updateDependent(usuarioId: string, id: string, datos: any) {
@@ -180,7 +203,7 @@ export class UsersService {
       fechaActualizacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
-    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
+    return { exito: true, mensaje: 'Dependiente actualizado con éxito', datos: this.formatearDependiente({ id: fila.id, ...fila.data()! }) }
   }
 
   async getDependent(usuarioId: string, id: string) {
@@ -188,14 +211,14 @@ export class UsersService {
     if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
       throw new NotFoundException('Dependiente no encontrado')
     }
-    return this.formatearDependiente({ id: doc.id, ...doc.data()! })
+    return { exito: true, mensaje: 'Dependiente obtenido con éxito', datos: this.formatearDependiente({ id: doc.id, ...doc.data()! }) }
   }
 
   async deleteDependent(usuarioId: string, id: string) {
     const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
     if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
     await this.col(COLECCIONES.dependientes).doc(id).delete()
-    return { exito: true }
+    return { exito: true, mensaje: 'Dependiente eliminado con éxito', datos: null }
   }
 
   private formatearDependiente(d: any) {
