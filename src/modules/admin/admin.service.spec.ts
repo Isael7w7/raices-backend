@@ -273,7 +273,7 @@ describe('AdminService', () => {
       const remainingReviews = { empty: false, size: 2, docs: [{ data: () => ({ calificacion: 4 }) }, { data: () => ({ calificacion: 3 }) }] }
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(reviewDoc), delete: reviewDoc.ref.delete }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(reviewDoc) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(remainingReviews) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
 
@@ -288,7 +288,7 @@ describe('AdminService', () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(reviewDoc), delete: reviewDoc.ref.delete }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(reviewDoc) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptyReviews) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: updateMock }) })
 

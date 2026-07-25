@@ -60,9 +60,10 @@ describe('ReviewsService', () => {
     })
 
     it('should update existing review', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
       const existingSnap = {
         empty: false,
-        docs: [{ id: 'r1', ref: { update: jest.fn().mockResolvedValue(undefined) }, data: () => ({ calificacion: 3 }) }],
+        docs: [{ id: 'r1', ref: { update: updateMock }, data: () => ({ calificacion: 3 }) }],
         size: 1,
       }
       const allReviewsSnap = { docs: [{ data: () => ({ calificacion: 5 }) }], size: 1 }
@@ -74,6 +75,7 @@ describe('ReviewsService', () => {
 
       const result = await service.submit('user1', 'inst1', 5, 'Actualizado')
       expect(result.calificacion).toBe(5)
+      expect(updateMock).toHaveBeenCalledWith({ calificacion: 5, comentario: 'Actualizado' })
     })
   })
 

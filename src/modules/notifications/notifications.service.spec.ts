@@ -46,9 +46,11 @@ describe('NotificationsService', () => {
     })
 
     it('should limit to 50 notifications', async () => {
-      const notifs = Array.from({ length: 60 }, (_, i) => ({
-        id: `n${i}`, data: () => ({ titulo: `Notif ${i}`, fechaCreacion: `2024-01-${String(i + 1).padStart(2, '0')}` }),
-      }))
+      const notifs = Array.from({ length: 60 }, (_, i) => {
+        const day = String((i % 28) + 1).padStart(2, '0')
+        const month = String(Math.floor(i / 28) + 1).padStart(2, '0')
+        return { id: `n${i}`, data: () => ({ titulo: `Notif ${i}`, fechaCreacion: `2024-${month}-${day}` }) }
+      })
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: notifs }) })

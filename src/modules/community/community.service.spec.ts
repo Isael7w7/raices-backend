@@ -30,7 +30,9 @@ describe('CommunityService', () => {
 
       const result = await service.getGroups()
       expect(result).toHaveLength(2)
-      // Should be sorted by cantidadMiembros desc
+      // Should be sorted by cantidadMiembros desc (g2=50 before g1=10)
+      expect(result[0].id).toBe('g2')
+      expect(result[1].id).toBe('g1')
     })
   })
 

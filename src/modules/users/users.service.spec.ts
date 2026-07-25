@@ -643,6 +643,23 @@ describe('UsersService', () => {
       const result = await service.getDependents('user1')
       expect(result).toHaveLength(0)
     })
+
+    it('should sort dependents by fechaCreacion ascending', async () => {
+      const deps = [
+        { id: 'dep2', data: () => ({ id: 'dep2', tutorId: 'user1', nombreCompleto: 'Pedro', parentesco: 'hijo', fechaCreacion: '2024-03-01', datosPerfil: JSON.stringify({ tiposDiscapacidad: ['motriz'], rangoEdad: '0-5', etapaVida: 'infancia', notas: '' }) }) },
+        { id: 'dep1', data: () => ({ id: 'dep1', tutorId: 'user1', nombreCompleto: 'María', parentesco: 'hijo', fechaCreacion: '2024-01-01', datosPerfil: JSON.stringify({ tiposDiscapacidad: ['tea'], rangoEdad: '6-12', etapaVida: 'infancia', notas: '' }) }) },
+      ]
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: deps }),
+      })
+
+      const result: any[] = await service.getDependents('user1')
+      expect(result).toHaveLength(2)
+      expect(result[0].id).toBe('dep1')
+      expect(result[1].id).toBe('dep2')
+    })
   })
 
   // ── addDependent ─────────────────────────────────────────────────────
