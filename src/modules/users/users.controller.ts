@@ -8,6 +8,7 @@ import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Usuarios')
@@ -25,13 +26,13 @@ export class UsersController {
   @ApiOperation({ summary: 'Obtener perfil completo del usuario', description: 'Retorna perfil + datos de profiling (discapacidad, necesidades, etc.)' })
   @ApiResponse({ status: 200, description: 'Perfil completo' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  profile(@CurrentUser() user: any) { return this.svc.getProfile(user.id) }
+  profile(@CurrentUser() user: CurrentUserPayload) { return this.svc.getProfile(user.id) }
 
   @Put('perfil')
   @ApiOperation({ summary: 'Actualizar perfil básico', description: 'Actualiza nombre, ciudad, estado o urlAvatar del usuario autenticado.' })
   @ApiBody({ type: ActualizarPerfilDto })
   @ApiResponse({ status: 200, description: 'Perfil actualizado' })
-  updateProfile(@CurrentUser() user: any, @Body() dto: ActualizarPerfilDto) {
+  updateProfile(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilDto) {
     return this.svc.updateProfile(user.id, dto)
   }
 
@@ -43,7 +44,7 @@ export class UsersController {
   @ApiResponse({ status: 201, description: 'Avatar actualizado correctamente' })
   @ApiResponse({ status: 400, description: 'Archivo inválido o demasiado grande' })
   async uploadAvatar(
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserPayload,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
@@ -66,7 +67,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Eliminar foto de perfil', description: 'Elimina el avatar del usuario de Firebase Storage y limpia el campo en la base de datos.' })
   @ApiResponse({ status: 204, description: 'Foto de perfil eliminada correctamente' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  deleteAvatar(@CurrentUser() user: any) {
+  deleteAvatar(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.deleteAvatar(user.id)
   }
 
@@ -76,7 +77,7 @@ export class UsersController {
   @ApiResponse({ status: 201, description: 'Perfil de necesidades guardado con éxito' })
   @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
-  saveProfiling(@CurrentUser() user: any, @Body() dto: GuardarPerfilNecesidadesDto) {
+  saveProfiling(@CurrentUser() user: CurrentUserPayload, @Body() dto: GuardarPerfilNecesidadesDto) {
     return this.svc.saveProfilingData(user.id, dto)
   }
 
@@ -84,13 +85,13 @@ export class UsersController {
   @UseETag()
   @ApiOperation({ summary: 'Listar dependientes', description: 'Retorna personas bajo cuidado del usuario (hijos, pacientes)' })
   @ApiResponse({ status: 200, description: 'Lista de dependientes' })
-  dependents(@CurrentUser() user: any) { return this.svc.getDependents(user.id) }
+  dependents(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependents(user.id) }
 
   @Post('dependientes')
   @ApiOperation({ summary: 'Agregar dependiente' })
   @ApiBody({ type: CrearDependienteDto })
   @ApiResponse({ status: 201, description: 'Dependiente creado' })
-  addDependent(@CurrentUser() user: any, @Body() dto: CrearDependienteDto) {
+  addDependent(@CurrentUser() user: CurrentUserPayload, @Body() dto: CrearDependienteDto) {
     return this.svc.addDependent(user.id, dto)
   }
 
@@ -99,7 +100,7 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiResponse({ status: 200, description: 'Dependiente encontrado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
-  getDependent(@CurrentUser() user: any, @Param('id') id: string) {
+  getDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
     return this.svc.getDependent(user.id, id)
   }
 
@@ -109,7 +110,7 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiResponse({ status: 200, description: 'Dependiente actualizado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
-  updateDependent(@CurrentUser() user: any, @Param('id') id: string, @Body() dto: CrearDependienteDto) {
+  updateDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: CrearDependienteDto) {
     return this.svc.updateDependent(user.id, id, dto)
   }
 
@@ -119,7 +120,7 @@ export class UsersController {
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiResponse({ status: 204, description: 'Dependiente eliminado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
-  deleteDependent(@CurrentUser() user: any, @Param('id') id: string) {
+  deleteDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
     return this.svc.deleteDependent(user.id, id)
   }
 }

@@ -1,51 +1,13 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiProperty } from '@nestjs/swagger'
-import { IsOptional, IsString, IsNotEmpty, IsBoolean, IsArray } from 'class-validator'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger'
 import { JobsService } from './jobs.service'
+import { CreateJobDto } from './dto/create-job.dto'
+import { PostulacionDto } from './dto/postulacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
-
-export class CreateJobDto {
-  @ApiProperty({ description: 'Título de la vacante', example: 'Terapeuta Ocupacional' })
-  @IsString() @IsNotEmpty() titulo: string
-
-  @ApiProperty({ description: 'Descripción detallada de la vacante', required: false, example: 'Buscamos terapeuta ocupacional para atención a niños con TEA...' })
-  @IsOptional() @IsString() descripcion?: string
-
-  @ApiProperty({ description: 'Requisitos del puesto', required: false, example: 'Título en terapia ocupacional, experiencia mínima de 2 años' })
-  @IsOptional() @IsString() requisitos?: string
-
-  @ApiProperty({ description: 'Modalidad de trabajo', required: false, example: 'presencial', enum: ['presencial', 'remoto', 'híbrido'] })
-  @IsOptional() @IsString() modalidad?: string
-
-  @ApiProperty({ description: 'Horario laboral', required: false, example: 'Lunes a viernes 8:00 - 15:00' })
-  @IsOptional() @IsString() horario?: string
-
-  @ApiProperty({ description: 'Rango salarial', required: false, example: '$15,000 - $20,000 MXN' })
-  @IsOptional() @IsString() rangoSalario?: string
-
-  @ApiProperty({ description: 'Ciudad de la vacante', required: false, example: 'Mérida' })
-  @IsOptional() @IsString() ciudad?: string
-
-  @ApiProperty({ description: 'Estado/provincia', required: false, example: 'Yucatán' })
-  @IsOptional() @IsString() estado?: string
-
-  @ApiProperty({ description: 'Vacante inclusiva para discapacidad', required: false, default: true })
-  @IsOptional() @IsBoolean() inclusivaDiscapacidad?: boolean
-
-  @ApiProperty({ description: 'Tipos de discapacidad que la vacante apoya', required: false, example: ['tea', 'motriz'], type: [String] })
-  @IsOptional() @IsArray() @IsString({ each: true }) tiposDiscapacidad?: string[]
-
-  @ApiProperty({ description: 'ID de la institución (solo admin)', required: false })
-  @IsOptional() @IsString() institucionId?: string
-}
-
-export class PostulacionDto {
-  @ApiProperty({ description: 'Carta de presentación', required: false, example: 'Me interesa esta vacante porque...' })
-  @IsOptional() @IsString() cartaPresentacion?: string
-}
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
 @ApiTags('Empleo')
 @Controller('empleo')
@@ -66,7 +28,7 @@ export class JobsController {
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'IDs de vacantes postuladas', description: 'Retorna solo los IDs para saber en cuáles ya aplicaste' })
   @ApiResponse({ status: 200, description: 'Arreglo de IDs de vacantes postuladas' })
-  appliedIds(@CurrentUser() user: any) {
+  appliedIds(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.getAppliedJobIds(user.id)
   }
 
@@ -75,7 +37,7 @@ export class JobsController {
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Mis postulaciones', description: 'Retorna todas las postulaciones del usuario con estado y detalles' })
   @ApiResponse({ status: 200, description: 'Lista de postulaciones con título, modalidad, institución' })
-  myApplications(@CurrentUser() user: any) {
+  myApplications(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.myApplications(user.id)
   }
 
@@ -89,7 +51,7 @@ export class JobsController {
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere institución o admin)' })
-  create(@Body() dto: CreateJobDto, @CurrentUser() user: any) {
+  create(@Body() dto: CreateJobDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.createForUser(user, dto)
   }
 
@@ -110,7 +72,7 @@ export class JobsController {
   @ApiResponse({ status: 201, description: 'Postulación enviada con éxito' })
   @ApiResponse({ status: 409, description: 'Ya enviaste una solicitud para esta vacante' })
   @ApiResponse({ status: 404, description: 'Vacante no encontrada o inactiva' })
-  apply(@Param('id') id: string, @Body() dto: PostulacionDto, @CurrentUser() user: any) {
+  apply(@Param('id') id: string, @Body() dto: PostulacionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.apply(user.id, id, dto.cartaPresentacion ?? '')
   }
 }

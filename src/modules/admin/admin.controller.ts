@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
 @ApiTags('Administración')
 @ApiBearerAuth('jwt-auth')
@@ -76,7 +77,7 @@ export class AdminController {
   @ApiParam({ name: 'id', description: 'ID del usuario' })
   @ApiResponse({ status: 200, description: 'Estado de activación actualizado' })
   @ApiResponse({ status: 400, description: 'No puedes desactivar tu propia cuenta' })
-  toggleActive(@Param('id') id: string, @CurrentUser() user: any) {
+  toggleActive(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.toggleUserActive(id, user.id)
   }
 
@@ -86,7 +87,7 @@ export class AdminController {
   @ApiBody({ schema: { properties: { role: { type: 'string', enum: ['pcd', 'tutor', 'institution', 'admin'] } } } })
   @ApiResponse({ status: 200, description: 'Rol actualizado' })
   @ApiResponse({ status: 400, description: 'Rol inválido o intento de cambiar propio rol' })
-  changeRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: any) {
+  changeRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.changeUserRole(id, role, user.id)
   }
 
@@ -98,7 +99,7 @@ export class AdminController {
   @ApiResponse({ status: 400, description: 'Intento de eliminar la propia cuenta' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
-  deleteUser(@Param('id') id: string, @CurrentUser() user: any) {
+  deleteUser(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.deleteUser(id, user.id)
   }
 
@@ -132,5 +133,5 @@ export class AdminController {
   @ApiOperation({ summary: 'Actualizar configuración', description: 'Actualiza configuración de la plataforma. Solo se modifican campos válidos.' })
   @ApiBody({ type: ActualizarConfiguracionDto })
   @ApiResponse({ status: 200, description: 'Configuración actualizada' })
-  updateSettings(@Body() dto: ActualizarConfiguracionDto) { return this.svc.updateSettings(dto as any) }
+  updateSettings(@Body() dto: ActualizarConfiguracionDto) { return this.svc.updateSettings(dto as Record<string, string>) }
 }

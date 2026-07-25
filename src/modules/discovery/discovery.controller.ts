@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@ne
 import { DiscoveryService } from './discovery.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
 @ApiTags('Descubrimiento')
 @ApiBearerAuth('jwt-auth')
@@ -19,7 +20,7 @@ export class DiscoveryController {
   @ApiQuery({ name: 'tipoDiscapacidad', required: false })
   @ApiResponse({ status: 200, description: 'Instituciones ordenadas por relevancia con coincidencia_perfil' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  discover(@Query() q: any, @CurrentUser() user: any) {
+  discover(@Query() q: Record<string, string | string[]>, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.discover(user.id, q)
   }
 }

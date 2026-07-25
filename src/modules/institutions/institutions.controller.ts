@@ -12,6 +12,7 @@ import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
 @ApiTags('Instituciones')
 @Controller('instituciones')
@@ -29,7 +30,7 @@ export class InstitutionsController {
   @ApiResponse({ status: 200, description: 'Institución del usuario' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
-  findMine(@CurrentUser() user: any) {
+  findMine(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.findMine(user.id)
   }
 
@@ -45,7 +46,7 @@ export class InstitutionsController {
   @ApiResponse({ status: 200, description: 'Institución actualizada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
-  updateMine(@CurrentUser() user: any, @Body() dto: UpdateInstitucionDto) {
+  updateMine(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateInstitucionDto) {
     return this.svc.updateMine(user.id, dto)
   }
 
@@ -95,7 +96,7 @@ export class InstitutionsController {
   @ApiBody({ type: CreateInstitucionDto })
   @ApiResponse({ status: 201, description: 'Institución creada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  create(@Body() dto: CreateInstitucionDto, @CurrentUser() user: any) {
+  create(@Body() dto: CreateInstitucionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.create(dto, user.id)
   }
 
@@ -112,7 +113,7 @@ export class InstitutionsController {
   @ApiResponse({ status: 200, description: 'Institución actualizada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
-  update(@Param('id') id: string, @Body() dto: UpdateInstitucionDto, @CurrentUser() user: any) {
+  update(@Param('id') id: string, @Body() dto: UpdateInstitucionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.update(id, dto, user.id, user.rol)
   }
 
@@ -129,7 +130,7 @@ export class InstitutionsController {
   @ApiResponse({ status: 204, description: 'Institución eliminada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
-  remove(@Param('id') id: string, @CurrentUser() user: any) {
+  remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.remove(id, user.id, user.rol)
   }
 }

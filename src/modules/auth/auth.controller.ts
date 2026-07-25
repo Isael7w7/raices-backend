@@ -6,6 +6,7 @@ import { LoginDto } from './dto/login.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Autenticación')
@@ -40,5 +41,5 @@ export class AuthController {
   @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
   @ApiResponse({ status: 200, description: 'Perfil del usuario' })
   @ApiResponse({ status: 401, description: 'Token inválido o expirado' })
-  me(@CurrentUser() user: any) { return this.authService.me(user.id) }
+  me(@CurrentUser() user: CurrentUserPayload) { return this.authService.me(user.id) }
 }

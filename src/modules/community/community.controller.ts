@@ -1,21 +1,11 @@
 import { Controller, Get, Post, Param, Body, Query, UseGuards } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiProperty } from '@nestjs/swagger'
-import { IsString, IsOptional } from 'class-validator'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger'
 import { CommunityService } from './community.service'
+import { CrearPublicacionDto } from './dto/crear-publicacion.dto'
+import { CrearComentarioDto } from './dto/crear-comentario.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
-
-export class CrearPublicacionDto {
-  @ApiProperty({ description: 'Contenido de la publicación', example: '¡Hola comunidad!' })
-  @IsString() contenido: string
-  @ApiProperty({ description: 'ID del grupo (opcional)', required: false })
-  @IsOptional() @IsString() grupoId?: string
-}
-
-export class CrearComentarioDto {
-  @ApiProperty({ description: 'Contenido del comentario', example: '¡Gran aporte!' })
-  @IsString() contenido: string
-}
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
 @ApiTags('Comunidad')
 @Controller('comunidad')
@@ -33,7 +23,7 @@ export class CommunityController {
   @ApiOperation({ summary: 'Listar publicaciones', description: 'Retorna publicaciones con información del autor y si el usuario dio me gusta' })
   @ApiQuery({ name: 'grupoId', required: false, description: 'Filtrar por grupo' })
   @ApiResponse({ status: 200, description: 'Lista de publicaciones (últimas 20 por defecto)' })
-  posts(@Query('grupoId') grupoId: string, @CurrentUser() user: any) {
+  posts(@Query('grupoId') grupoId: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.getPosts(grupoId, user.id)
   }
 
@@ -49,7 +39,7 @@ export class CommunityController {
   @ApiOperation({ summary: 'Crear publicación', description: 'Publica una publicación en el muro general o en un grupo específico' })
   @ApiResponse({ status: 201, description: 'Publicación creada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  createPost(@Body() dto: CrearPublicacionDto, @CurrentUser() user: any) {
+  createPost(@Body() dto: CrearPublicacionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.createPost(user.id, dto.contenido, dto.grupoId)
   }
 
@@ -60,7 +50,7 @@ export class CommunityController {
   @ApiParam({ name: 'id', description: 'ID de la publicación' })
   @ApiResponse({ status: 201, description: 'Comentario creado' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  createComment(@Param('id') publicacionId: string, @Body() dto: CrearComentarioDto, @CurrentUser() user: any) {
+  createComment(@Param('id') publicacionId: string, @Body() dto: CrearComentarioDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.createComment(publicacionId, user.id, dto.contenido)
   }
 
@@ -71,7 +61,7 @@ export class CommunityController {
   @ApiParam({ name: 'id', description: 'ID de la publicación' })
   @ApiResponse({ status: 200, description: 'Estado del me gusta: { meGusta: boolean }' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  toggleLike(@Param('id') publicacionId: string, @CurrentUser() user: any) {
+  toggleLike(@Param('id') publicacionId: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.toggleLike(user.id, publicacionId)
   }
 }
