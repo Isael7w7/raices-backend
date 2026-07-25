@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common'
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { APP_GUARD } from '@nestjs/core'
 import { DatabaseModule } from './database/database.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
@@ -17,6 +19,10 @@ import { MessagesModule } from './modules/messages/messages.module'
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{
+      ttl: 60000,
+      limit: 100,
+    }]),
     DatabaseModule,
     AuthModule,
     UsersModule,
@@ -32,6 +38,12 @@ import { MessagesModule } from './modules/messages/messages.module'
     EmailModule,
     JobsModule,
     MessagesModule,
+  ],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
   ],
 })
 export class AppModule {}

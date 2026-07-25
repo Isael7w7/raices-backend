@@ -358,10 +358,10 @@ describe('AdminService', () => {
       const reviews = [{ id: 'r1', calificacion: 1 }]
 
       firestoreMock.collection
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: insts.map(i => ({ id: i.id, data: () => i })) }) })
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: users.map(u => ({ id: u.id, data: () => u })) }) })
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: reviews.map(r => ({ id: r.id, data: () => r })) }) })
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) }) // perfilesExtendidos
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: insts.map(i => ({ id: i.id, data: () => i })) }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: users.map(u => ({ id: u.id, data: () => u })) }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: reviews.map(r => ({ id: r.id, data: () => r })) }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) }) // perfilesExtendidos
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true }) }) // mant mode
 
       const result = await service.getAlerts()
@@ -375,10 +375,10 @@ describe('AdminService', () => {
       const reviews = [{ id: 'r1', calificacion: 5 }]
 
       firestoreMock.collection
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: insts.map(i => ({ id: i.id, data: () => i })) }) })
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: users.map(u => ({ id: u.id, data: () => u })) }) })
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: reviews.map(r => ({ id: r.id, data: () => r })) }) })
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ docs: [{ data: () => ({ usuarioId: 'u1' }) }], size: 1 }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: insts.map(i => ({ id: i.id, data: () => i })) }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: users.map(u => ({ id: u.id, data: () => u })) }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: reviews.map(r => ({ id: r.id, data: () => r })) }) })
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ data: () => ({ usuarioId: 'u1' }) }], size: 1 }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true }) })
 
       const result = await service.getAlerts()

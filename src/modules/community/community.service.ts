@@ -3,6 +3,7 @@ import { Firestore, FieldValue, Query } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class CommunityService {
@@ -30,12 +31,9 @@ export class CommunityService {
     publicaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
     publicaciones.splice(limite)
 
+    // Batch lookup de autores en lugar de N+1 queries
     const autoresIds = [...new Set(publicaciones.map(p => p.autorId))]
-    const mapaAutores = new Map<string, any>()
-    for (const aid of autoresIds) {
-      const doc = await this.db.collection(COLECCIONES.perfiles).doc(aid).get()
-      if (doc.exists) mapaAutores.set(aid, doc.data())
-    }
+    const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
 
     const enriquecidas = publicaciones.map(p => ({
       ...p,
@@ -61,12 +59,9 @@ export class CommunityService {
     const comentarios = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
     comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
 
+    // Batch lookup de autores en lugar de N+1 queries
     const autoresIds = [...new Set(comentarios.map(c => c.autorId))]
-    const mapaAutores = new Map<string, any>()
-    for (const aid of autoresIds) {
-      const doc = await this.db.collection(COLECCIONES.perfiles).doc(aid).get()
-      if (doc.exists) mapaAutores.set(aid, doc.data())
-    }
+    const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
 
     return comentarios.map(c => ({
       ...c,

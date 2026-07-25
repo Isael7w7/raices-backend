@@ -45,7 +45,7 @@ describe('CommunityService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: posts.map(p => ({ id: p.id, data: () => p })) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(authorData, true, 'u1')) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u1', data: () => authorData }], size: 1 }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) })
 
       const result = await service.getPosts(undefined, 'user1')
@@ -61,7 +61,7 @@ describe('CommunityService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: posts.map(p => ({ id: p.id, data: () => p })) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ nombreCompleto: 'A' }, true, 'u1')) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u1', data: () => ({ nombreCompleto: 'A' }) }], size: 1 }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) })
 
       const result = await service.getPosts('g1')

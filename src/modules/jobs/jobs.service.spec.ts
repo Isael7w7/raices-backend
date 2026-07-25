@@ -70,7 +70,7 @@ describe('JobsService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(vacantesSnap) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(instData, true, 'inst1')) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => instData }], size: 1 }) })
 
       const result = await service.findAll()
 
@@ -86,7 +86,7 @@ describe('JobsService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: vacantes.map(v => ({ id: v.id, data: () => v })), size: 2 }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst1', nombre: 'C', activa: true }, true, 'inst1')) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', nombre: 'C', activa: true }) }], size: 1 }) })
 
       const result = await service.findAll({ ciudad: 'Mérida' })
 
@@ -109,7 +109,7 @@ describe('JobsService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: vacantes.map(v => ({ id: v.id, data: () => v })), size: 1 }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst1', activa: false }, true, 'inst1')) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', activa: false }) }], size: 1 }) })
 
       const result = await service.findAll()
       expect(result).toHaveLength(0)

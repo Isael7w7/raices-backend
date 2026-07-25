@@ -1,6 +1,41 @@
+import { Firestore, FieldPath } from 'firebase-admin/firestore'
+
 /**
  * Helpers reutilizables para interactuar con Firestore de forma segura.
  */
+
+/**
+ * Límite máximo de IDs por consulta Firestore `in` (Firestore limita a 30).
+ */
+const BATCH_LIMIT = 30
+
+/**
+ * Obtiene documentos por sus IDs usando consultas `in` en lotes de 30.
+ * Retorna un Map<string, Record<string, any>> con el ID como clave y el documento como valor.
+ *
+ * @param db        Instancia de Firestore
+n * @param coleccion Nombre de la colección
+ * @param ids       Array de IDs a buscar
+ * @returns Map con ID → datos del documento
+ */
+export async function obtenerDocumentosPorIds(
+  db: Firestore,
+  coleccion: string,
+  ids: string[],
+): Promise<Map<string, Record<string, any>>> {
+  const mapa = new Map<string, Record<string, any>>()
+  if (ids.length === 0) return mapa
+
+  for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
+    const lote = ids.slice(i, i + BATCH_LIMIT)
+    const snap = await db.collection(coleccion)
+      .where(FieldPath.documentId(), 'in', lote)
+      .get()
+    snap.docs.forEach(doc => mapa.set(doc.id, doc.data()))
+  }
+
+  return mapa
+}
 
 /**
  * Parsea un valor que puede venir como array nativo de Firestore,

@@ -3,7 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { randomUUID } from 'crypto'
-import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class JobsService {
@@ -20,12 +20,11 @@ export class JobsService {
     // Ordenar en memoria por fecha de creación descendente
     vacantes.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
+    // Batch lookup de instituciones en lugar de N+1 queries
     const instIds = [...new Set(vacantes.map(v => v.institucionId))]
+    const mapaInstRaw = await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds)
     const mapaInst = new Map<string, any>()
-    for (const iid of instIds) {
-      const doc = await this.db.collection(COLECCIONES.instituciones).doc(iid).get()
-      if (doc.exists) mapaInst.set(iid, { id: doc.id, ...doc.data() })
-    }
+    mapaInstRaw.forEach((data, id) => mapaInst.set(id, { id, ...data }))
 
     if (filtros.ciudad) {
       const termino = filtros.ciudad.toLowerCase()
@@ -89,19 +88,12 @@ export class JobsService {
     const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
     postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
+    // Batch lookups de vacantes e instituciones en lugar de N+1 queries
     const vacanteIds = [...new Set(postulaciones.map(p => p.vacanteId))]
-    const mapaVacantes = new Map<string, any>()
-    for (const vid of vacanteIds) {
-      const doc = await this.db.collection(COLECCIONES.vacantes).doc(vid).get()
-      if (doc.exists) mapaVacantes.set(vid, doc.data())
-    }
+    const mapaVacantes = await obtenerDocumentosPorIds(this.db, COLECCIONES.vacantes, vacanteIds)
 
-    const instIds = [...new Set([...mapaVacantes.values()].map(v => v?.institucionId).filter(Boolean))]
-    const mapaInst = new Map<string, any>()
-    for (const iid of instIds) {
-      const doc = await this.db.collection(COLECCIONES.instituciones).doc(iid).get()
-      if (doc.exists) mapaInst.set(iid, doc.data())
-    }
+    const instIdsFromVacantes = [...new Set([...mapaVacantes.values()].map(v => v?.institucionId).filter(Boolean))] as string[]
+    const mapaInst = await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIdsFromVacantes)
 
     return postulaciones.map(p => {
       const vacante = mapaVacantes.get(p.vacanteId) ?? {}

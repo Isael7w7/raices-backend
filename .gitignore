@@ -31,3 +31,7 @@ npm-debug.log*
 AGENTS.md
 .cursorrules
 CLINE_RULES.md
+
+# Auditorías técnicas
+docs/AUDITORIA-TECNICA-COMPLETA.md
+docs/AUDITORIA.md

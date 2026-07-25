@@ -5,7 +5,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { NotificationsService } from '../notifications/notifications.service'
 import { EmailService } from '../email/email.service'
 import { StorageService } from '../storage/storage.service'
-import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 
 const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
@@ -374,16 +374,11 @@ export class AdminService {
     const usuariosIds = [...new Set(resenas.map(r => r.usuarioId))]
     const instIds = [...new Set(resenas.map(r => r.institucionId))]
 
-    const mapaUsuarios = new Map<string, any>()
-    for (const uid of usuariosIds) {
-      const doc = await this.col(COLECCIONES.perfiles).doc(uid).get()
-      if (doc.exists) mapaUsuarios.set(uid, doc.data())
-    }
-    const mapaInst = new Map<string, any>()
-    for (const iid of instIds) {
-      const doc = await this.col(COLECCIONES.instituciones).doc(iid).get()
-      if (doc.exists) mapaInst.set(iid, doc.data())
-    }
+    // Batch lookups en lugar de N+1 queries
+    const [mapaUsuarios, mapaInst] = await Promise.all([
+      obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuariosIds),
+      obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds),
+    ])
 
     return resenas.map(r => ({
       id: r.id, calificacion: r.calificacion, comentario: r.comentario, fechaCreacion: r.fechaCreacion,
@@ -442,10 +437,11 @@ export class AdminService {
     const hace7Dias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const hace48Horas = new Date(ahora.getTime() - 48 * 60 * 60 * 1000).toISOString()
 
+    // Usar límites razonables en vez de traer colecciones enteras
     const [todasInstsSnap, todosUsuariosSnap, todasResenasSnap] = await Promise.all([
-      this.col(COLECCIONES.instituciones).get(),
-      this.col(COLECCIONES.perfiles).get(),
-      this.col(COLECCIONES.resenas).get(),
+      this.col(COLECCIONES.instituciones).limit(500).get(),
+      this.col(COLECCIONES.perfiles).limit(1000).get(),
+      this.col(COLECCIONES.resenas).limit(500).get(),
     ])
     const todasInsts = todasInstsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
     const todosUsuarios = todosUsuariosSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
