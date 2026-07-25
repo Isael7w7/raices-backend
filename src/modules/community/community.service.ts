@@ -4,35 +4,56 @@ import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
-import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
 @Injectable()
 export class CommunityService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async getGroups(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getGroups(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const snap = await this.db.collection(COLECCIONES.grupos)
       .where('esPublico', '==', true).get()
 
-    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
+    let grupos = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[]
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      grupos = grupos.filter(g =>
+        (g.nombre ?? '').toLowerCase().includes(termino) ||
+        (g.descripcion ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    if (ordenarPor) {
+      grupos = ordenar(grupos, ordenarPor, direccion ?? 'desc')
+    } else {
+      grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
+    }
 
     const total = grupos.length
     const inicio = (pagina - 1) * limite
     return paginar(grupos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
-  async getPosts(grupoId?: string, usuarioId?: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getPosts(grupoId?: string, usuarioId?: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     let q: Query = this.db.collection(COLECCIONES.publicaciones)
     if (grupoId) q = q.where('grupoId', '==', grupoId)
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const publicacionSnap = await q.get()
-    const publicaciones = publicacionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    let publicaciones = publicacionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
-    // Ordenar en memoria
-    publicaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      const autoresIdsBusqueda = [...new Set(publicaciones.map(p => p.autorId))]
+      const mapaAutoresBusqueda = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
+      publicaciones = publicaciones.filter(p =>
+        (p.contenido ?? '').toLowerCase().includes(termino) ||
+        (mapaAutoresBusqueda.get(p.autorId)?.nombreCompleto ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    publicaciones = ordenar(publicaciones, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
 
     // Batch lookup de autores en lugar de N+1 queries
     const autoresIds = [...new Set(publicaciones.map(p => p.autorId))]

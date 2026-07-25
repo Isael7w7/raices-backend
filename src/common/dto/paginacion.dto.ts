@@ -1,19 +1,31 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsInt, Min, Max } from 'class-validator'
+import { IsOptional, IsInt, Min, Max, IsString, IsIn } from 'class-validator'
 import { Type } from 'class-transformer'
 
 export class PaginacionDto {
-  @ApiPropertyOptional({ description: 'Número de página (empieza en 1)', default: 1, minimum: 1 })
+  @ApiPropertyOptional({ description: 'Número de página (empieza en 1)', default: 1, minimum: 1, example: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt() @Min(1)
   pagina?: number = 1
 
-  @ApiPropertyOptional({ description: 'Elementos por página', default: 20, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({ description: 'Elementos por página', default: 20, minimum: 1, maximum: 100, example: 20 })
   @IsOptional()
   @Type(() => Number)
   @IsInt() @Min(1) @Max(100)
   limite?: number = 20
+
+  @ApiPropertyOptional({ description: 'Campo para ordenar resultados', example: 'fechaCreacion' })
+  @IsOptional() @IsString()
+  ordenarPor?: string
+
+  @ApiPropertyOptional({ description: 'Dirección del ordenamiento', enum: ['asc', 'desc'], default: 'desc', example: 'desc' })
+  @IsOptional() @IsIn(['asc', 'desc'])
+  direccion?: 'asc' | 'desc' = 'desc'
+
+  @ApiPropertyOptional({ description: 'Búsqueda por texto en campos relevantes (título, nombre, contenido, etc.)', example: 'terapeuta' })
+  @IsOptional() @IsString()
+  buscar?: string
 }
 
 export interface RespuestaPaginada<T> {
@@ -22,6 +34,33 @@ export interface RespuestaPaginada<T> {
   pagina: number
   limite: number
   totalPaginas: number
+}
+
+/**
+ * Ejemplo de respuesta paginada para documentación Swagger.
+ * Usar como @ApiResponse({ schema: { example: EJEMPLO_RESPUESTA_PAGINADA } })
+ */
+export const EJEMPLO_RESPUESTA_PAGINADA = {
+  example: {
+    datos: [],
+    total: 45,
+    pagina: 1,
+    limite: 20,
+    totalPaginas: 3,
+  },
+}
+
+/**
+ * Aplica ordenamiento por un campo de los datos en memoria.
+ */
+export function ordenar<T>(datos: T[], campo: string | undefined, direccion: 'asc' | 'desc'): T[] {
+  if (!campo) return datos
+  return [...datos].sort((a: any, b: any) => {
+    const aVal = a[campo] ?? ''
+    const bVal = b[campo] ?? ''
+    const cmp = String(aVal).localeCompare(String(bVal), 'es', { sensitivity: 'base' })
+    return direccion === 'asc' ? cmp : -cmp
+  })
 }
 
 export function paginar<T>(datos: T[], total: number, pagina: number, limite: number): RespuestaPaginada<T> {

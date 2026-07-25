@@ -5,7 +5,7 @@ import { CrearPublicacionDto } from './dto/crear-publicacion.dto'
 import { CrearComentarioDto } from './dto/crear-comentario.dto'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
 import { ActualizarPublicacionDto } from './dto/actualizar-publicacion.dto'
-import { PaginacionDto } from '../../common/dto/paginacion.dto'
+import { PaginacionDto, EJEMPLO_RESPUESTA_PAGINADA } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
@@ -19,8 +19,8 @@ export class CommunityController {
   @ApiOperation({ summary: 'Listar grupos públicos', description: 'Retorna grupos de comunidad con paginación, ordenados por miembros' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de grupos públicos' })
-  groups(@Query() paginacion: PaginacionDto) { return this.svc.getGroups(paginacion.pagina, paginacion.limite) }
+  @ApiResponse({ status: 200, description: 'Lista paginada de grupos públicos', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  groups(@Query() paginacion: PaginacionDto) { return this.svc.getGroups(paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Get('publicaciones')
   @UseGuards(JwtAuthGuard)
@@ -29,9 +29,9 @@ export class CommunityController {
   @ApiQuery({ name: 'grupoId', required: false, description: 'Filtrar por grupo' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de publicaciones' })
+  @ApiResponse({ status: 200, description: 'Lista paginada de publicaciones', schema: EJEMPLO_RESPUESTA_PAGINADA })
   posts(@Query('grupoId') grupoId: string, @CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) {
-    return this.svc.getPosts(grupoId, user.id, paginacion.pagina, paginacion.limite)
+    return this.svc.getPosts(grupoId, user.id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar)
   }
 
   @Get('publicaciones/:id/comentarios')
@@ -39,7 +39,7 @@ export class CommunityController {
   @ApiParam({ name: 'id', description: 'ID de la publicación' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de comentarios con autor' })
+  @ApiResponse({ status: 200, description: 'Lista paginada de comentarios con autor', schema: EJEMPLO_RESPUESTA_PAGINADA })
   comments(@Param('id') id: string, @Query() paginacion: PaginacionDto) { return this.svc.getComments(id, paginacion.pagina, paginacion.limite) }
 
   @Post('publicaciones')

@@ -2,7 +2,7 @@ import { Injectable, Inject, NotFoundException, BadRequestException, Logger } fr
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
-import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { EmailService } from '../email/email.service'
 import { StorageService } from '../storage/storage.service'
@@ -242,14 +242,25 @@ export class AdminService {
 
   /* ───────────────────────── Instituciones ───────────────────────── */
 
-  async getAllInstitutions(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getAllInstitutions(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const snap = await this.col(COLECCIONES.instituciones).orderBy('fechaCreacion', 'desc').get()
-    const todos = snap.docs.map(d => {
+    let todos = snap.docs.map(d => {
       const data = d.data()
       return { id: d.id, nombre: data.nombre, categoria: data.categoria, ciudad: data.ciudad,
         activa: data.activa, verificada: data.verificada, calificacionPromedio: data.calificacionPromedio,
         cantidadCalificaciones: data.cantidadCalificaciones, fechaCreacion: data.fechaCreacion }
     })
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      todos = todos.filter(i =>
+        (i.nombre ?? '').toLowerCase().includes(termino) ||
+        (i.categoria ?? '').toLowerCase().includes(termino) ||
+        (i.ciudad ?? '').toLowerCase().includes(termino)
+      )
+    }
+    todos = ordenar(todos, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
+
     const total = todos.length
     const inicio = (pagina - 1) * limite
     return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
@@ -286,13 +297,24 @@ export class AdminService {
 
   /* ───────────────────────── Usuarios ───────────────────────── */
 
-  async getUsers(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getUsers(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const snap = await this.col(COLECCIONES.perfiles).orderBy('fechaCreacion', 'desc').get()
-    const todos = snap.docs.map(d => {
+    let todos = snap.docs.map(d => {
       const data = d.data()
       return { id: d.id, email: data.email, nombreCompleto: data.nombreCompleto, rol: data.rol,
         ciudad: data.ciudad, activo: data.activo, verificado: data.verificado, fechaCreacion: data.fechaCreacion }
     })
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      todos = todos.filter(u =>
+        (u.nombreCompleto ?? '').toLowerCase().includes(termino) ||
+        (u.email ?? '').toLowerCase().includes(termino) ||
+        (u.rol ?? '').toLowerCase().includes(termino)
+      )
+    }
+    todos = ordenar(todos, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
+
     const total = todos.length
     const inicio = (pagina - 1) * limite
     return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
@@ -374,7 +396,7 @@ export class AdminService {
 
   /* ───────────────────────── Reseñas (moderación) ───────────────────────── */
 
-  async getReviews(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getReviews(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const revSnap = await this.col(COLECCIONES.resenas).orderBy('fechaCreacion', 'desc').get()
     const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
@@ -387,12 +409,22 @@ export class AdminService {
       obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds),
     ])
 
-    const todos = resenas.map(r => ({
+    let todos = resenas.map(r => ({
       id: r.id, calificacion: r.calificacion, comentario: r.comentario, fechaCreacion: r.fechaCreacion,
       nombreUsuario: mapaUsuarios.get(r.usuarioId)?.nombreCompleto ?? null,
       emailUsuario: mapaUsuarios.get(r.usuarioId)?.email ?? null,
       nombreInstitucion: mapaInst.get(r.institucionId)?.nombre ?? null,
     }))
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      todos = todos.filter(r =>
+        (r.comentario ?? '').toLowerCase().includes(termino) ||
+        (r.nombreUsuario ?? '').toLowerCase().includes(termino) ||
+        (r.nombreInstitucion ?? '').toLowerCase().includes(termino)
+      )
+    }
+    todos = ordenar(todos, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
 
     const total = todos.length
     const inicio = (pagina - 1) * limite

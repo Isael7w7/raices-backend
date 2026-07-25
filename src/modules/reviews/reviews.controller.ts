@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery }
 import { ReviewsService } from './reviews.service'
 import { EnviarResenaDto } from './dto/enviar-resena.dto'
 import { ActualizarResenaDto } from './dto/actualizar-resena.dto'
-import { PaginacionDto } from '../../common/dto/paginacion.dto'
+import { PaginacionDto, EJEMPLO_RESPUESTA_PAGINADA } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
@@ -18,8 +18,8 @@ export class ReviewsController {
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de reseñas con nombre y avatar del autor' })
-  byInstitution(@Param('id') id: string, @Query() paginacion: PaginacionDto) { return this.svc.findByInstitution(id, paginacion.pagina, paginacion.limite) }
+  @ApiResponse({ status: 200, description: 'Lista paginada de reseñas con nombre y avatar del autor', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  byInstitution(@Param('id') id: string, @Query() paginacion: PaginacionDto) { return this.svc.findByInstitution(id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Get('mias')
   @UseGuards(JwtAuthGuard)
@@ -27,8 +27,8 @@ export class ReviewsController {
   @ApiOperation({ summary: 'Mis reseñas', description: 'Retorna las reseñas del usuario con paginación' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de reseñas propias' })
-  mine(@CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) { return this.svc.myReviews(user.id, paginacion.pagina, paginacion.limite) }
+  @ApiResponse({ status: 200, description: 'Lista paginada de reseñas propias', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  mine(@CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) { return this.svc.myReviews(user.id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard)

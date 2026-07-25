@@ -3,13 +3,13 @@ import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
-import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
 @Injectable()
 export class ReviewsService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async findByInstitution(institucionId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async findByInstitution(institucionId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const revSnap = await this.db.collection(COLECCIONES.resenas)
       .where('institucionId', '==', institucionId).get()
 
@@ -24,11 +24,20 @@ export class ReviewsService {
       if (doc.exists) mapaUsuarios.set(uid, doc.data())
     }
 
-    const todos = resenas.map(r => ({
+    let todos = resenas.map(r => ({
       id: r.id, calificacion: r.calificacion, comentario: r.comentario, fechaCreacion: r.fechaCreacion,
       nombreCompleto: mapaUsuarios.get(r.usuarioId)?.nombreCompleto ?? null,
       urlAvatar: mapaUsuarios.get(r.usuarioId)?.urlAvatar ?? null,
     }))
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      todos = todos.filter(r =>
+        (r.comentario ?? '').toLowerCase().includes(termino) ||
+        (r.nombreCompleto ?? '').toLowerCase().includes(termino)
+      )
+    }
+    todos = ordenar(todos, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
 
     const total = todos.length
     const inicio = (pagina - 1) * limite
@@ -65,7 +74,7 @@ export class ReviewsService {
     return { id: resenaId, usuarioId, institucionId, calificacion, comentario, fechaCreacion: new Date().toISOString() }
   }
 
-  async myReviews(usuarioId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async myReviews(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const revSnap = await this.db.collection(COLECCIONES.resenas)
       .where('usuarioId', '==', usuarioId).get()
 
@@ -80,11 +89,20 @@ export class ReviewsService {
       if (doc.exists) mapaInst.set(iid, doc.data())
     }
 
-    const todos = resenas.map(r => ({
+    let todos = resenas.map(r => ({
       ...r,
       nombreInstitucion: mapaInst.get(r.institucionId)?.nombre ?? null,
       categoria: mapaInst.get(r.institucionId)?.categoria ?? null,
     }))
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      todos = todos.filter(r =>
+        (r.comentario ?? '').toLowerCase().includes(termino) ||
+        (r.nombreInstitucion ?? '').toLowerCase().includes(termino)
+      )
+    }
+    todos = ordenar(todos, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
 
     const total = todos.length
     const inicio = (pagina - 1) * limite

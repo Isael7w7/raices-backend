@@ -5,13 +5,13 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { randomUUID } from 'crypto'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
-import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
 @Injectable()
 export class JobsService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string; pagina?: number; limite?: number } = {}): Promise<RespuestaPaginada<any>> {
+  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string; pagina?: number; limite?: number; ordenarPor?: string; direccion?: 'asc' | 'desc'; buscar?: string } = {}): Promise<RespuestaPaginada<any>> {
     const pagina = filtros.pagina ?? 1
     const limite = filtros.limite ?? 20
 
@@ -47,9 +47,23 @@ export class JobsService {
       }
     }).filter(v => mapaInst.has(v.institucionId) && (mapaInst.get(v.institucionId).activa ?? false))
 
-    const total = todos.length
+    let resultado = todos
+
+    // Búsqueda por texto en título, descripción, nombre de institución
+    if (filtros.buscar) {
+      const termino = filtros.buscar.toLowerCase()
+      resultado = resultado.filter(v =>
+        (v.titulo ?? '').toLowerCase().includes(termino) ||
+        (v.descripcion ?? '').toLowerCase().includes(termino) ||
+        (v.nombreInstitucion ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    resultado = ordenar(resultado, filtros.ordenarPor, filtros.direccion ?? 'desc')
+
+    const total = resultado.length
     const inicio = (pagina - 1) * limite
-    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
+    return paginar(resultado.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async findOne(id: string) {
@@ -89,7 +103,7 @@ export class JobsService {
     return { id, estado: 'pendiente' }
   }
 
-  async myApplications(usuarioId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async myApplications(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('usuarioId', '==', usuarioId).get()
 
@@ -110,9 +124,19 @@ export class JobsService {
       return { ...p, titulo: vacante.titulo, modalidad: vacante.modalidad, nombreInstitucion: inst.nombre ?? null }
     })
 
-    const total = todos.length
+    let resultado = todos
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      resultado = resultado.filter(p =>
+        (p.titulo ?? '').toLowerCase().includes(termino) ||
+        (p.nombreInstitucion ?? '').toLowerCase().includes(termino)
+      )
+    }
+    resultado = ordenar(resultado, ordenarPor, direccion ?? 'desc')
+
+    const total = resultado.length
     const inicio = (pagina - 1) * limite
-    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
+    return paginar(resultado.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getAppliedJobIds(usuarioId: string): Promise<string[]> {
