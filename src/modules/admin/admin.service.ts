@@ -2,6 +2,7 @@ import { Injectable, Inject, NotFoundException, BadRequestException, Logger } fr
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { EmailService } from '../email/email.service'
 import { StorageService } from '../storage/storage.service'
@@ -241,14 +242,17 @@ export class AdminService {
 
   /* ───────────────────────── Instituciones ───────────────────────── */
 
-  async getAllInstitutions() {
+  async getAllInstitutions(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
     const snap = await this.col(COLECCIONES.instituciones).orderBy('fechaCreacion', 'desc').get()
-    return snap.docs.map(d => {
+    const todos = snap.docs.map(d => {
       const data = d.data()
       return { id: d.id, nombre: data.nombre, categoria: data.categoria, ciudad: data.ciudad,
         activa: data.activa, verificada: data.verificada, calificacionPromedio: data.calificacionPromedio,
         cantidadCalificaciones: data.cantidadCalificaciones, fechaCreacion: data.fechaCreacion }
     })
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getPendingInstitutions() {
@@ -282,13 +286,16 @@ export class AdminService {
 
   /* ───────────────────────── Usuarios ───────────────────────── */
 
-  async getUsers() {
+  async getUsers(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
     const snap = await this.col(COLECCIONES.perfiles).orderBy('fechaCreacion', 'desc').get()
-    return snap.docs.map(d => {
+    const todos = snap.docs.map(d => {
       const data = d.data()
       return { id: d.id, email: data.email, nombreCompleto: data.nombreCompleto, rol: data.rol,
         ciudad: data.ciudad, activo: data.activo, verificado: data.verificado, fechaCreacion: data.fechaCreacion }
     })
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async toggleUserActive(id: string, adminId: string) {
@@ -367,8 +374,8 @@ export class AdminService {
 
   /* ───────────────────────── Reseñas (moderación) ───────────────────────── */
 
-  async getReviews() {
-    const revSnap = await this.col(COLECCIONES.resenas).orderBy('fechaCreacion', 'desc').limit(100).get()
+  async getReviews(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+    const revSnap = await this.col(COLECCIONES.resenas).orderBy('fechaCreacion', 'desc').get()
     const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
 
     const usuariosIds = [...new Set(resenas.map(r => r.usuarioId))]
@@ -380,12 +387,16 @@ export class AdminService {
       obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds),
     ])
 
-    return resenas.map(r => ({
+    const todos = resenas.map(r => ({
       id: r.id, calificacion: r.calificacion, comentario: r.comentario, fechaCreacion: r.fechaCreacion,
       nombreUsuario: mapaUsuarios.get(r.usuarioId)?.nombreCompleto ?? null,
       emailUsuario: mapaUsuarios.get(r.usuarioId)?.email ?? null,
       nombreInstitucion: mapaInst.get(r.institucionId)?.nombre ?? null,
     }))
+
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async deleteReview(id: string) {

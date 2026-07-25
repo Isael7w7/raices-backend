@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Put, Patch, Delete, Param, Body, UseGuards, HttpCode } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger'
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
+import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -35,9 +36,11 @@ export class AdminController {
 
   /* ── Instituciones ── */
   @Get('instituciones')
-  @ApiOperation({ summary: 'Todas las instituciones (admin)' })
-  @ApiResponse({ status: 200, description: 'Lista completa de instituciones con estado y verificación' })
-  institutions() { return this.svc.getAllInstitutions() }
+  @ApiOperation({ summary: 'Todas las instituciones (admin)', description: 'Lista paginada de instituciones' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiResponse({ status: 200, description: 'Lista paginada de instituciones con estado y verificación' })
+  institutions(@Query() paginacion: PaginacionDto) { return this.svc.getAllInstitutions(paginacion.pagina, paginacion.limite) }
 
   @Get('instituciones/pendientes')
   @ApiOperation({ summary: 'Instituciones pendientes de aprobación' })
@@ -68,9 +71,11 @@ export class AdminController {
 
   /* ── Usuarios ── */
   @Get('usuarios')
-  @ApiOperation({ summary: 'Todos los usuarios' })
-  @ApiResponse({ status: 200, description: 'Lista de usuarios con correo, nombre, rol, estado' })
-  users() { return this.svc.getUsers() }
+  @ApiOperation({ summary: 'Todos los usuarios', description: 'Lista paginada de usuarios' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiResponse({ status: 200, description: 'Lista paginada de usuarios con correo, nombre, rol, estado' })
+  users(@Query() paginacion: PaginacionDto) { return this.svc.getUsers(paginacion.pagina, paginacion.limite) }
 
   @Patch('usuarios/:id/activo')
   @ApiOperation({ summary: 'Activar/desactivar usuario' })
@@ -105,9 +110,11 @@ export class AdminController {
 
   /* ── Reseñas ── */
   @Get('resenas')
-  @ApiOperation({ summary: 'Moderar reseñas', description: 'Lista las últimas 100 reseñas con información de usuario e institución' })
-  @ApiResponse({ status: 200, description: 'Lista de reseñas para moderación' })
-  reviews() { return this.svc.getReviews() }
+  @ApiOperation({ summary: 'Moderar reseñas', description: 'Lista paginada de reseñas con información de usuario e institución' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiResponse({ status: 200, description: 'Lista paginada de reseñas para moderación' })
+  reviews(@Query() paginacion: PaginacionDto) { return this.svc.getReviews(paginacion.pagina, paginacion.limite) }
 
   @Delete('resenas/:id')
   @HttpCode(204)

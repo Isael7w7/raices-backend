@@ -4,12 +4,17 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { randomUUID } from 'crypto'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
 @Injectable()
 export class JobsService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string } = {}) {
+  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string; pagina?: number; limite?: number } = {}): Promise<RespuestaPaginada<any>> {
+    const pagina = filtros.pagina ?? 1
+    const limite = filtros.limite ?? 20
+
     let q = this.db.collection(COLECCIONES.vacantes).where('activa', '==', true)
     if (filtros.modalidad) q = q.where('modalidad', '==', filtros.modalidad)
 
@@ -31,7 +36,7 @@ export class JobsService {
       vacantes = vacantes.filter(v => (v.ciudad ?? '').toLowerCase().includes(termino))
     }
 
-    return vacantes.map(v => {
+    const todos = vacantes.map(v => {
       const inst = mapaInst.get(v.institucionId) ?? {}
       return {
         ...v,
@@ -41,6 +46,10 @@ export class JobsService {
         institucionVerificada: inst.verificada ?? false,
       }
     }).filter(v => mapaInst.has(v.institucionId) && (mapaInst.get(v.institucionId).activa ?? false))
+
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async findOne(id: string) {
@@ -80,7 +89,7 @@ export class JobsService {
     return { id, estado: 'pendiente' }
   }
 
-  async myApplications(usuarioId: string) {
+  async myApplications(usuarioId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('usuarioId', '==', usuarioId).get()
 
@@ -95,11 +104,15 @@ export class JobsService {
     const instIdsFromVacantes = [...new Set([...mapaVacantes.values()].map(v => v?.institucionId).filter(Boolean))] as string[]
     const mapaInst = await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIdsFromVacantes)
 
-    return postulaciones.map(p => {
+    const todos = postulaciones.map(p => {
       const vacante = mapaVacantes.get(p.vacanteId) ?? {}
       const inst = mapaInst.get(vacante.institucionId) ?? {}
       return { ...p, titulo: vacante.titulo, modalidad: vacante.modalidad, nombreInstitucion: inst.nombre ?? null }
     })
+
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getAppliedJobIds(usuarioId: string): Promise<string[]> {
@@ -145,5 +158,53 @@ export class JobsService {
       activa: true, fechaCreacion: new Date().toISOString(),
     })
     return this.findOne(id)
+  }
+
+  async update(id: string, user: CurrentUserPayload, dto: any) {
+    const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
+    if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
+    const vacante = doc.data() as any
+
+    // Validar que la vacante pertenezca a la institución del usuario
+    if (user.rol !== 'admin') {
+      const instSnap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (instSnap.empty || instSnap.docs[0].id !== vacante.institucionId) {
+        throw new ForbiddenException('No tienes permiso para editar esta vacante')
+      }
+    }
+
+    const camposActualizables: Record<string, any> = {}
+    const camposPermitidos = [
+      'titulo', 'descripcion', 'requisitos', 'modalidad', 'horario',
+      'rangoSalario', 'ciudad', 'estado', 'inclusivaDiscapacidad',
+      'tiposDiscapacidad', 'activa',
+    ]
+    for (const campo of camposPermitidos) {
+      if (dto[campo] !== undefined) camposActualizables[campo] = dto[campo]
+    }
+    if (Object.keys(camposActualizables).length === 0) return this.findOne(id)
+
+    camposActualizables.fechaActualizacion = new Date().toISOString()
+    await doc.ref.update(camposActualizables)
+    return this.findOne(id)
+  }
+
+  async remove(id: string, user: CurrentUserPayload) {
+    const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
+    if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
+    const vacante = doc.data() as any
+
+    // Validar propiedad o rol admin
+    if (user.rol !== 'admin') {
+      const instSnap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (instSnap.empty || instSnap.docs[0].id !== vacante.institucionId) {
+        throw new ForbiddenException('No tienes permiso para eliminar esta vacante')
+      }
+    }
+
+    await doc.ref.update({ activa: false, fechaEliminacion: new Date().toISOString() })
+    return { eliminado: true }
   }
 }

@@ -167,8 +167,9 @@ describe('AdminService', () => {
       })
 
       const result = await service.getUsers()
-      expect(result).toHaveLength(2)
-      expect(result[0].email).toBe('a@test.com')
+      expect(result.datos).toHaveLength(2)
+      expect(result.total).toBe(2)
+      expect(result.datos[0].email).toBe('a@test.com')
     })
   })
 

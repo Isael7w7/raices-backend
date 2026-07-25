@@ -74,8 +74,12 @@ describe('JobsService', () => {
 
       const result = await service.findAll()
 
-      expect(result).toHaveLength(2)
-      expect(result[0].nombreInstitucion).toBe('Centro Test')
+      expect(result.datos).toHaveLength(2)
+      expect(result.total).toBe(2)
+      expect(result.pagina).toBe(1)
+      expect(result.limite).toBe(20)
+      expect(result.totalPaginas).toBe(1)
+      expect(result.datos[0].nombreInstitucion).toBe('Centro Test')
     })
 
     it('should filter by ciudad', async () => {
@@ -90,8 +94,8 @@ describe('JobsService', () => {
 
       const result = await service.findAll({ ciudad: 'Mérida' })
 
-      expect(result).toHaveLength(1)
-      expect(result[0].ciudad).toBe('Mérida')
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].ciudad).toBe('Mérida')
     })
 
     it('should return empty array when no active vacancies', async () => {
@@ -99,7 +103,8 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) })
 
       const result = await service.findAll()
-      expect(result).toHaveLength(0)
+      expect(result.datos).toHaveLength(0)
+      expect(result.total).toBe(0)
     })
 
     it('should filter out vacancies from inactive institutions', async () => {
@@ -112,7 +117,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', activa: false }) }], size: 1 }) })
 
       const result = await service.findAll()
-      expect(result).toHaveLength(0)
+      expect(result.datos).toHaveLength(0)
     })
   })
 
@@ -232,6 +237,79 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) })
 
       await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' })).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── update ───────────────────────────────────────────────────────
+
+  describe('update', () => {
+    it('should update vacancy when user is institution owner', async () => {
+      const vacanteDoc = mockDoc({ id: 'v1', institucionId: 'inst1', titulo: 'Old' }, true, 'v1')
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+      const instDoc = mockDoc({ nombre: 'Centro', activa: true, verificada: true }, true, 'inst1')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc), update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(instDoc) }) })
+
+      const result = await service.update('v1', { id: 'user1', rol: 'institucion' } as any, { titulo: 'New Title' })
+      expect(result).toBeDefined()
+    })
+
+    it('should allow admin to update any vacancy', async () => {
+      const vacanteDoc = mockDoc({ id: 'v1', institucionId: 'inst1', titulo: 'Old' }, true, 'v1')
+      const instDoc = mockDoc({ nombre: 'Centro', activa: true, verificada: true }, true, 'inst1')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc), update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(instDoc) }) })
+
+      const result = await service.update('v1', { id: 'admin1', rol: 'admin' } as any, { titulo: 'Admin Update' })
+      expect(result).toBeDefined()
+    })
+
+    it('should throw NotFoundException when vacancy does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.update('nonexistent', { id: 'user1', rol: 'institucion' } as any, { titulo: 'X' })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when user does not own vacancy', async () => {
+      const vacanteDoc = mockDoc({ id: 'v1', institucionId: 'inst2' }, true, 'v1')
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
+
+      await expect(service.update('v1', { id: 'user1', rol: 'institucion' } as any, { titulo: 'X' })).rejects.toThrow(ForbiddenException)
+    })
+  })
+
+  // ── remove ───────────────────────────────────────────────────────
+
+  describe('remove', () => {
+    it('should deactivate vacancy when user is owner', async () => {
+      const vacanteDoc = mockDoc({ id: 'v1', institucionId: 'inst1' }, true, 'v1')
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc), update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
+
+      const result = await service.remove('v1', { id: 'user1', rol: 'institucion' } as any)
+      expect(result.eliminado).toBe(true)
+    })
+
+    it('should throw NotFoundException when vacancy does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.remove('nonexistent', { id: 'user1', rol: 'institucion' } as any)).rejects.toThrow(NotFoundException)
     })
   })
 })

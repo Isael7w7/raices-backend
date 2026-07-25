@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing'
+import { NotFoundException, ForbiddenException } from '@nestjs/common'
 import { ReviewsService } from './reviews.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 
 function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-doc-id') {
-  return { exists, id: docId, data: () => data, ref: { update: jest.fn().mockResolvedValue(undefined), set: jest.fn().mockResolvedValue(undefined) } }
+  return { exists, id: docId, data: () => data, ref: { update: jest.fn().mockResolvedValue(undefined), set: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) } }
 }
 
 describe('ReviewsService', () => {
@@ -30,8 +31,9 @@ describe('ReviewsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(userData, true, 'u1')) }) })
 
       const result = await service.findByInstitution('inst1')
-      expect(result).toHaveLength(1)
-      expect(result[0].nombreCompleto).toBe('Juan')
+      expect(result.datos).toHaveLength(1)
+      expect(result.total).toBe(1)
+      expect(result.datos[0].nombreCompleto).toBe('Juan')
     })
 
     it('should return empty array when no reviews', async () => {
@@ -39,7 +41,7 @@ describe('ReviewsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) })
 
       const result = await service.findByInstitution('inst1')
-      expect(result).toHaveLength(0)
+      expect(result.datos).toHaveLength(0)
     })
   })
 
@@ -91,8 +93,71 @@ describe('ReviewsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(instData, true, 'inst1')) }) })
 
       const result = await service.myReviews('user1')
-      expect(result).toHaveLength(1)
-      expect(result[0].nombreInstitucion).toBe('Centro Test')
+      expect(result.datos).toHaveLength(1)
+      expect(result.total).toBe(1)
+      expect(result.datos[0].nombreInstitucion).toBe('Centro Test')
+    })
+  })
+
+  describe('update', () => {
+    it('should update review when user is the author', async () => {
+      const resenaData = { id: 'r1', usuarioId: 'u1', institucionId: 'inst1', calificacion: 3, comentario: 'Old' }
+      const allReviewsSnap = { docs: [{ data: () => ({ calificacion: 5 }) }], size: 1 }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(resenaData, true, 'r1')), update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(allReviewsSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+
+      const result = await service.update('r1', 'u1', { calificacion: 5, comentario: 'Updated' })
+      expect(result.calificacion).toBe(5)
+    })
+
+    it('should throw NotFoundException when review does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.update('nonexistent', 'u1', { calificacion: 5 })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when user is not the author', async () => {
+      const resenaData = { id: 'r1', usuarioId: 'u2', institucionId: 'inst1' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(resenaData, true, 'r1')) }) })
+
+      await expect(service.update('r1', 'u1', { calificacion: 5 })).rejects.toThrow(ForbiddenException)
+    })
+  })
+
+  describe('remove', () => {
+    it('should delete review and recalculate average', async () => {
+      const resenaData = { id: 'r1', usuarioId: 'u1', institucionId: 'inst1', calificacion: 4 }
+      const allReviewsSnap = { docs: [{ data: () => ({ calificacion: 3 }) }], size: 1 }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(resenaData, true, 'r1')), delete: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(allReviewsSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+
+      const result = await service.remove('r1', 'u1')
+      expect(result.eliminado).toBe(true)
+    })
+
+    it('should throw NotFoundException when review does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.remove('nonexistent', 'u1')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when user is not the author', async () => {
+      const resenaData = { id: 'r1', usuarioId: 'u2', institucionId: 'inst1' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(resenaData, true, 'r1')) }) })
+
+      await expect(service.remove('r1', 'u1')).rejects.toThrow(ForbiddenException)
     })
   })
 })
