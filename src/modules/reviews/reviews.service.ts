@@ -1,6 +1,5 @@
 import { Injectable, Inject, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
@@ -55,7 +54,7 @@ export class ReviewsService {
       resenaId = snap.docs[0].id
       await snap.docs[0].ref.update({ calificacion, comentario })
     } else {
-      resenaId = uuid()
+      resenaId = this.db.collection(COLECCIONES.resenas).doc().id
       await this.db.collection(COLECCIONES.resenas).doc(resenaId).set({
         id: resenaId, usuarioId, institucionId,
         calificacion, comentario, fechaCreacion: new Date().toISOString(),

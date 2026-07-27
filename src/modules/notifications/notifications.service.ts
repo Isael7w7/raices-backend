@@ -1,7 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { Subject } from 'rxjs'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 
@@ -19,12 +18,12 @@ export class NotificationsService {
   }
 
   async crear(usuarioId: string, tipo: string, titulo: string, cuerpo: string, referenciaId?: string) {
-    const id = uuid()
-    await this.db.collection(COLECCIONES.notificaciones).doc(id).set({
-      id, usuarioId, tipo, titulo, cuerpo, referenciaId: referenciaId ?? null,
+    const ref = this.db.collection(COLECCIONES.notificaciones).doc()
+    await ref.set({
+      id: ref.id, usuarioId, tipo, titulo, cuerpo, referenciaId: referenciaId ?? null,
       leida: false, fechaCreacion: new Date().toISOString(),
     })
-    const notif = { id, usuarioId, tipo, titulo, cuerpo, referenciaId, leida: false, fechaCreacion: new Date().toISOString() }
+    const notif = { id: ref.id, usuarioId, tipo, titulo, cuerpo, referenciaId, leida: false, fechaCreacion: new Date().toISOString() }
     const stream = this.streams.get(usuarioId)
     if (stream) stream.next({ data: JSON.stringify(notif) })
     return notif

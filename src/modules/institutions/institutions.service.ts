@@ -1,6 +1,5 @@
 import { Injectable, Inject, NotFoundException, ForbiddenException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
@@ -115,9 +114,9 @@ export class InstitutionsService {
 
   // ─── Crear institución (autenticado) ───────────────────────────────
   async create(dto: CreateInstitucionDto, usuarioId: string) {
-    const id = uuid()
+    const ref = this.col(COLECCIONES.instituciones).doc()
     const documento = {
-      id,
+      id: ref.id,
       nombre: dto.nombre,
       descripcion: dto.descripcion ?? '',
       categoria: dto.categoria,
@@ -150,8 +149,8 @@ export class InstitutionsService {
       fechaCreacion: new Date().toISOString(),
     }
 
-    await this.col(COLECCIONES.instituciones).doc(id).set(documento)
-    return this.findOne(id)
+    await ref.set(documento)
+    return this.findOne(ref.id)
   }
 
   // ─── Actualizar mi institución (autenticado) ───────────────────────

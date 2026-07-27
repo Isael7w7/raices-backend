@@ -1,6 +1,5 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
@@ -133,8 +132,8 @@ export class UsersService {
     if (!existe.empty) {
       await this.col(COLECCIONES.perfilesExtendidos).doc(existe.docs[0].id).update(carga)
     } else {
-      const id = uuid()
-      await this.col(COLECCIONES.perfilesExtendidos).doc(id).set({ id, usuarioId, ...carga })
+      const ref = this.col(COLECCIONES.perfilesExtendidos).doc()
+      await ref.set({ id: ref.id, usuarioId, ...carga })
     }
 
     const perfilGuardado = {
@@ -166,9 +165,9 @@ export class UsersService {
   }
 
   async addDependent(usuarioId: string, datos: any) {
-    const id = uuid()
-    await this.col(COLECCIONES.dependientes).doc(id).set({
-      id, tutorId: usuarioId,
+    const ref = this.col(COLECCIONES.dependientes).doc()
+    await ref.set({
+      id: ref.id, tutorId: usuarioId,
       nombreCompleto: datos.nombreCompleto ?? 'Sin nombre',
       parentesco: datos.parentesco ?? 'familiar',
       datosPerfil: JSON.stringify({
@@ -179,7 +178,7 @@ export class UsersService {
       }),
       fechaCreacion: new Date().toISOString(),
     })
-    const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
+    const fila = await this.col(COLECCIONES.dependientes).doc(ref.id).get()
     return this.formatearDependiente({ id: fila.id, ...fila.data()! })
   }
 

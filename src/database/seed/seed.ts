@@ -6,7 +6,6 @@ import * as path from 'path'
 import { initializeApp, getApps, cert } from 'firebase-admin/app'
 import { getFirestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
-import { v4 as uuid } from 'uuid'
 
 const COLECCIONES = {
   perfiles: 'perfiles',
@@ -36,6 +35,7 @@ const FEATURES_POR_DEFECTO = {
   favoritos: true,
 }
 
+// ── Detección de Service Account ──────────────────────────────
 function tieneServiceAccountReal(): boolean {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) return true
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -61,12 +61,10 @@ if (getApps().length === 0) {
 const db = getFirestore()
 const auth = authDisponible ? getAuth() : null
 
-const UIDS_ESTATICOS = {
-  admin: 'admin-demo-uid',
-  user: 'user-demo-uid',
-  tutor: 'tutor-demo-uid',
-  pcdVinculada: 'pcd-vinculada-uid',
-} as const
+/** Genera un ID en formato Firebase (20 chars alfanuméricos) */
+function firestoreId(): string {
+  return db.collection('_').doc().id
+}
 
 async function limpiarColeccion(nombre: string) {
   const snap = await db.collection(nombre).get()
@@ -76,76 +74,64 @@ async function limpiarColeccion(nombre: string) {
   await lote.commit()
 }
 
+/**
+ * Inserta documentos en lote. Si el documento tiene un campo `id` explícito,
+ * se usa ese; si no, Firestore genera el ID automáticamente (formato Firebase).
+ * Siempre se guarda el `id` final en el documento.
+ */
 async function insertarLote(coleccion: string, documentos: Record<string, any>[]) {
   for (let i = 0; i < documentos.length; i += 500) {
     const lote = db.batch()
     const porcion = documentos.slice(i, i + 500)
-    for (const doc of porcion) {
-      const ref = db.collection(coleccion).doc(doc.id)
-      lote.set(ref, doc)
+    for (const datos of porcion) {
+      // Si YA tiene un ID (pre-generado), lo usamos; si no, Firestore lo genera
+      const ref = datos.id
+        ? db.collection(coleccion).doc(datos.id)
+        : db.collection(coleccion).doc()
+      lote.set(ref, { ...datos, id: ref.id })
     }
     await lote.commit()
   }
 }
 
-const usuariosDemo = [
-  {
-    email: 'admin@raices.mx',
-    password: 'Admin1234',
-    rol: 'admin',
-    nombreCompleto: 'Admin Raices',
-    ciudad: 'Merida',
-    estado: 'Yucatan',
-    uidEstatico: UIDS_ESTATICOS.admin,
-  },
-  {
-    email: 'demo@raices.mx',
-    password: 'Demo1234',
-    rol: 'pcd',
-    nombreCompleto: 'Luis Hernandez',
-    ciudad: 'Merida',
-    estado: 'Yucatan',
-    uidEstatico: UIDS_ESTATICOS.user,
-  },
-  {
-    email: 'tutor@raices.mx',
-    password: 'Tutor1234',
-    rol: 'tutor',
-    nombreCompleto: 'Ana Garcia',
-    ciudad: 'Merida',
-    estado: 'Yucatan',
-    uidEstatico: UIDS_ESTATICOS.tutor,
-  },
-  {
-    email: 'pcd-vinculada@raices.mx',
-    password: 'Pcd1234',
-    rol: 'pcd',
-    nombreCompleto: 'Carmen Lopez',
-    ciudad: 'Merida',
-    estado: 'Yucatan',
-    uidEstatico: UIDS_ESTATICOS.pcdVinculada,
-  },
-]
+// ── Cuenta única de administrador ─────────────────────────────
+const usuarioAdmin = {
+  email: 'admin@raices.mx',
+  password: 'Admin1234',
+  rol: 'admin',
+  nombreCompleto: 'Admin Raices',
+  ciudad: 'Merida',
+  estado: 'Yucatan',
+}
 
-async function asegurarUsuarioFirebase(usuarioDemo: typeof usuariosDemo[0]): Promise<string | null> {
+/**
+ * Crea o actualiza el usuario en Firebase Auth dejando que Firebase
+ * genere el UID automáticamente (formato: xMMeLtvh0mU2xe6LuypeMRcPus82).
+ */
+async function asegurarUsuarioFirebase(): Promise<string | null> {
   if (!auth) return null
+
   try {
-    const existente = await auth.getUserByEmail(usuarioDemo.email)
-    console.log(`  ⏭️  ${usuarioDemo.email} ya existe en Firebase Auth (uid: ${existente.uid})`)
-    await auth.updateUser(existente.uid, { password: usuarioDemo.password })
+    const existente = await auth.getUserByEmail(usuarioAdmin.email)
+    console.log(`  ⏭️  ${usuarioAdmin.email} ya existe en Firebase Auth (uid: ${existente.uid})`)
+    await auth.updateUser(existente.uid, { password: usuarioAdmin.password })
     return existente.uid
   } catch (e: any) {
     if (e?.code === 'auth/user-not-found') {
       try {
         const creado = await auth.createUser({
-          email: usuarioDemo.email,
-          password: usuarioDemo.password,
-          displayName: usuarioDemo.nombreCompleto,
+          email: usuarioAdmin.email,
+          password: usuarioAdmin.password,
+          displayName: usuarioAdmin.nombreCompleto,
         })
-        console.log(`  ✅ ${usuarioDemo.email} creado en Firebase Auth (uid: ${creado.uid})`)
+        console.log(`  ✅ ${usuarioAdmin.email} creado en Firebase Auth (uid: ${creado.uid})`)
         return creado.uid
-      } catch { return null }
+      } catch (err: any) {
+        console.error(`  ❌ Error al crear ${usuarioAdmin.email}: ${err.message}`)
+        return null
+      }
     }
+    console.error(`  ❌ Error al obtener usuario ${usuarioAdmin.email}: ${e.message}`)
     return null
   }
 }
@@ -154,6 +140,7 @@ async function seed() {
   const t0 = Date.now()
   console.log('🌱 Sembrando datos demo en Firestore...\n')
 
+  // ── Limpiar todas las colecciones ──────────────────────────────
   const coleccionesALimpiar = [
     COLECCIONES.perfiles, COLECCIONES.perfilesExtendidos, COLECCIONES.dependientes,
     COLECCIONES.favoritos, COLECCIONES.resenas, COLECCIONES.publicaciones, COLECCIONES.comentarios,
@@ -178,161 +165,53 @@ async function seed() {
 
   const ahora = new Date().toISOString()
 
-  let adminId: string = UIDS_ESTATICOS.admin
-  let demoId: string = UIDS_ESTATICOS.user
-  let tutorId: string = UIDS_ESTATICOS.tutor
-  let pcdVinculadaId: string = UIDS_ESTATICOS.pcdVinculada
+  // ── Sincronizar con Firebase Auth ──────────────────────────────
+  let adminId: string = firestoreId() // fallback: ID generado por Firestore
   let authSincronizado = false
 
   if (authDisponible) {
-    console.log('🔐 Sincronizando usuarios con Firebase Auth...')
-    const resultados = await Promise.all([
-      asegurarUsuarioFirebase(usuariosDemo[0]),
-      asegurarUsuarioFirebase(usuariosDemo[1]),
-      asegurarUsuarioFirebase(usuariosDemo[2]),
-      asegurarUsuarioFirebase(usuariosDemo[3]),
-    ])
-
-    if (resultados.every(Boolean)) {
-      adminId = resultados[0]!
-      demoId = resultados[1]!
-      tutorId = resultados[2]!
-      pcdVinculadaId = resultados[3]!
+    console.log('🔐 Sincronizando usuario administrador con Firebase Auth...')
+    const resultado = await asegurarUsuarioFirebase()
+    if (resultado) {
+      adminId = resultado
       authSincronizado = true
-      console.log('')
+      console.log(`   ✅ adminId final: ${adminId}\n`)
     } else {
-      console.log('⚠️  No se pudieron sincronizar usuarios en Firebase Auth mediante ADC')
-      console.log('   Usando UIDs estaticos para demo...')
-      console.log(`   admin  → ${adminId}`)
-      console.log(`   user   → ${demoId}`)
-      console.log(`   tutor  → ${tutorId}`)
-      console.log(`   PCD vinculada  → ${pcdVinculadaId}`)
-      console.log('')
+      console.log('   ⚠️  No se pudo sincronizar. Usando ID generado por Firestore...\n')
     }
   } else {
-    console.log('⚠️  No se detecto Service Account (FIREBASE_SERVICE_ACCOUNT / GOOGLE_APPLICATION_CREDENTIALS)')
-    console.log('   Firebase Auth no estara disponible. Usando UIDs estaticos para demo...')
-    console.log(`   admin  → ${adminId}`)
-    console.log(`   user   → ${demoId}`)
-    console.log(`   tutor  → ${tutorId}`)
-    console.log(`   PCD vinculada  → ${pcdVinculadaId}`)
-    console.log('')
+    console.log('⚠️  No se detectó Service Account (FIREBASE_SERVICE_ACCOUNT / GOOGLE_APPLICATION_CREDENTIALS)')
+    console.log('   Firebase Auth no estará disponible. Usando ID generado por Firestore...\n')
   }
 
-  await insertarLote(COLECCIONES.perfiles, [
-    {
-      id: adminId, email: 'admin@raices.mx', rol: 'admin',
-      nombreCompleto: 'Admin Raices', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true,
-      tutorId: null, features: { ...FEATURES_POR_DEFECTO },
-      fechaCreacion: ahora,
-    },
-    {
-      id: demoId, email: 'demo@raices.mx', rol: 'pcd',
-      nombreCompleto: 'Luis Hernandez', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true,
-      tutorId: null, features: { ...FEATURES_POR_DEFECTO },
-      fechaCreacion: ahora,
-    },
-    {
-      id: tutorId, email: 'tutor@raices.mx', rol: 'tutor',
-      nombreCompleto: 'Ana Garcia', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true,
-      tutorId: null, features: { ...FEATURES_POR_DEFECTO },
-      fechaCreacion: ahora,
-    },
-    {
-      id: pcdVinculadaId, email: 'pcd-vinculada@raices.mx', rol: 'pcd',
-      nombreCompleto: 'Carmen Lopez', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true,
-      tutorId: tutorId, features: { ...FEATURES_POR_DEFECTO, postulaciones: false },
-      fechaCreacion: ahora,
-    },
-  ])
-  console.log('👤 4 usuarios demo creados en Firestore (1 PCD vinculada al tutor)')
+  // ── Perfil del administrador ───────────────────────────────────
+  // Se crea con el UID real de Firebase Auth para que coincida el document ID
+  await db.collection(COLECCIONES.perfiles).doc(adminId).set({
+    id: adminId,
+    email: 'admin@raices.mx',
+    rol: 'admin',
+    nombreCompleto: 'Admin Raices',
+    ciudad: 'Merida',
+    estado: 'Yucatan',
+    urlAvatar: null,
+    activo: true,
+    verificado: true,
+    tutorId: null,
+    features: { ...FEATURES_POR_DEFECTO },
+    fechaCreacion: ahora,
+  })
+  console.log('👤 1 usuario administrador creado en Firestore')
 
-  await insertarLote(COLECCIONES.perfilesExtendidos, [
-    {
-      id: uuid(), usuarioId: demoId,
-      tiposDiscapacidad: JSON.stringify(['tea']),
-      severidadDiscapacidad: null,
-      modosComunicacion: JSON.stringify([]),
-      necesidadesMovilidad: JSON.stringify([]),
-      accesoTecnologia: JSON.stringify([]),
-      zonasPreferidas: JSON.stringify(['Centro', 'Norte']),
-      necesidades: JSON.stringify(['socializacion', 'aprendizaje']),
-      metasActuales: JSON.stringify(['escuela', 'actividades_sociales']),
-      areasApoyo: JSON.stringify(['integracion_social']),
-      historialEducacion: JSON.stringify({ escolarizado: true, tipo: 'regular', nivel: 'secundaria' }),
-      historialTerapia: JSON.stringify({ tomado: true, tipos: ['lenguaje'] }),
-      etapaVida: 'adolescencia',
-      preocupacionesActuales: 'Dificultades de socializacion en la escuela',
-      nivelApoyo: 'medio',
-    },
-    {
-      id: uuid(), usuarioId: tutorId,
-      tiposDiscapacidad: JSON.stringify([]),
-      severidadDiscapacidad: null,
-      modosComunicacion: JSON.stringify([]),
-      necesidadesMovilidad: JSON.stringify([]),
-      accesoTecnologia: JSON.stringify([]),
-      zonasPreferidas: JSON.stringify(['Sur', 'Oriente']),
-      necesidades: JSON.stringify(['informacion', 'acompanamiento']),
-      metasActuales: JSON.stringify(['encontrar_terapia_para_hijo', 'integracion_laboral']),
-      areasApoyo: JSON.stringify(['orientacion_familiar']),
-      historialEducacion: JSON.stringify({ escolarizado: true, tipo: 'regular', nivel: 'universidad' }),
-      historialTerapia: JSON.stringify({ tomado: false, tipos: [] }),
-      etapaVida: 'adulto',
-      preocupacionesActuales: 'Buscar opciones de terapia para mi hijo',
-      nivelApoyo: 'bajo',
-    },
-    {
-      id: uuid(), usuarioId: pcdVinculadaId,
-      tiposDiscapacidad: JSON.stringify(['motriz', 'visual']),
-      severidadDiscapacidad: null,
-      modosComunicacion: JSON.stringify(['verbal']),
-      necesidadesMovilidad: JSON.stringify(['silla_ruedas']),
-      accesoTecnologia: JSON.stringify(['smartphone', 'lector_pantalla']),
-      zonasPreferidas: JSON.stringify(['Centro', 'Sur']),
-      necesidades: JSON.stringify(['inclusion_laboral', 'transporte_accesible']),
-      metasActuales: JSON.stringify(['encontrar_empleo', 'vida_independiente']),
-      areasApoyo: JSON.stringify(['orientacion_laboral', 'asistencia_personal']),
-      historialEducacion: JSON.stringify({ escolarizado: true, tipo: 'regular', nivel: 'universidad' }),
-      historialTerapia: JSON.stringify({ tomado: true, tipos: ['fisioterapia'] }),
-      etapaVida: 'adulto_joven',
-      preocupacionesActuales: 'Buscar oportunidades laborales inclusivas',
-      nivelApoyo: 'medio',
-    },
-  ])
-  console.log('📋 3 perfiles de necesidades creados')
-
-  await insertarLote(COLECCIONES.dependientes, [
-    {
-      id: uuid(), tutorId: tutorId,
-      nombreCompleto: 'Mateo Garcia',
-      parentesco: 'hijo',
-      datosPerfil: JSON.stringify({
-        tiposDiscapacidad: ['tea'], rangoEdad: '6-12', etapaVida: 'infancia',
-        notas: 'Diagnostico TEA nivel 1. En terapia de lenguaje desde los 4 anios.',
-      }),
-      fechaCreacion: ahora,
-    },
-    {
-      id: uuid(), tutorId: tutorId,
-      nombreCompleto: 'Sofia Garcia',
-      parentesco: 'hija',
-      datosPerfil: JSON.stringify({
-        tiposDiscapacidad: ['intelectual'], rangoEdad: '3-5', etapaVida: 'primera_infancia',
-        notas: 'Rezago en el desarrollo del lenguaje. En estimulacion temprana.',
-      }),
-      fechaCreacion: ahora,
-    },
-  ])
-  console.log('👨‍👩‍👧 2 dependientes creados para el tutor')
-
+  // ── Instituciones ──────────────────────────────────────────────
+  // Pre-generamos IDs para que las vacantes puedan referenciarlos
+  const instIds = [
+    firestoreId(), firestoreId(), firestoreId(), firestoreId(),
+    firestoreId(), firestoreId(), firestoreId(), firestoreId(),
+    firestoreId(), firestoreId(), firestoreId(), firestoreId(),
+  ]
   const instituciones = [
     {
-      id: uuid(), nombre: 'Centro de Rehabilitacion DIF Merida',
+      id: instIds[0], nombre: 'Centro de Rehabilitacion DIF Merida',
       descripcion: 'Terapias fisicas, ocupacionales y de lenguaje para personas con discapacidad motriz y del neurodesarrollo.',
       categoria: 'funcional', subcategoria: 'terapias',
       direccion: 'Calle 50 x 65 #123', ciudad: 'Merida', estado: 'Yucatan',
@@ -344,7 +223,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'CREE Yucatan - IMSS',
+      id: instIds[1], nombre: 'CREE Yucatan - IMSS',
       descripcion: 'Centro de Rehabilitacion y Educacion Especial. Atencion medica y terapeutica integral del IMSS.',
       categoria: 'funcional', subcategoria: 'atencion_especializada',
       direccion: 'Av. Jacinto Canek S/N', ciudad: 'Merida', estado: 'Yucatan',
@@ -356,7 +235,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'CEDIS - Estimulacion Temprana',
+      id: instIds[2], nombre: 'CEDIS - Estimulacion Temprana',
       descripcion: 'Estimulacion temprana y atencion a ninos con rezago en el desarrollo de 0 a 6 anios.',
       categoria: 'funcional', subcategoria: 'terapias',
       direccion: 'Av. Prolongacion Montejo 480', ciudad: 'Merida', estado: 'Yucatan',
@@ -368,7 +247,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Clinica Voces - Fonoaudiologia',
+      id: instIds[3], nombre: 'Clinica Voces - Fonoaudiologia',
       descripcion: 'Terapia de lenguaje para ninos y adultos con tartamudez, dislexia, TEA y afasia.',
       categoria: 'funcional', subcategoria: 'terapias',
       direccion: 'Calle 17 x 28 #240', ciudad: 'Merida', estado: 'Yucatan',
@@ -380,7 +259,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Escuela de Educacion Especial No. 5',
+      id: instIds[4], nombre: 'Escuela de Educacion Especial No. 5',
       descripcion: 'Educacion especial y habilidades adaptativas para ninos y jovenes con discapacidad intelectual.',
       categoria: 'educativo', subcategoria: 'escuelas',
       direccion: 'Av. Itzaes 200', ciudad: 'Merida', estado: 'Yucatan',
@@ -392,7 +271,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Colegio Futuros Brillantes',
+      id: instIds[5], nombre: 'Colegio Futuros Brillantes',
       descripcion: 'Escuela privada con modelo de educacion inclusiva. Apoya TDAH, dislexia y TEA leve.',
       categoria: 'educativo', subcategoria: 'escuelas',
       direccion: 'Calle 13 x 22 #150 Altabrisa', ciudad: 'Merida', estado: 'Yucatan',
@@ -404,7 +283,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Talleres Inclusivos Yucatan',
+      id: instIds[6], nombre: 'Talleres Inclusivos Yucatan',
       descripcion: 'Capacitacion laboral para adultos con discapacidad: carpinteria, bisuteria, panaderia.',
       categoria: 'laboral', subcategoria: 'capacitacion',
       direccion: 'Calle 62 #400', ciudad: 'Merida', estado: 'Yucatan',
@@ -416,7 +295,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Tech Accesible MX',
+      id: instIds[7], nombre: 'Tech Accesible MX',
       descripcion: 'Bolsa de trabajo especializada en vacantes para personas con discapacidad en sector tecnologico.',
       categoria: 'laboral', subcategoria: 'insercion_laboral',
       direccion: 'Remoto / Col. Poligono 108', ciudad: 'Merida', estado: 'Yucatan',
@@ -428,7 +307,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Fundacion Alas y Raices Merida',
+      id: instIds[8], nombre: 'Fundacion Alas y Raices Merida',
       descripcion: 'Apoyo integral a personas con autismo: terapias ABA, integracion social y orientacion familiar.',
       categoria: 'social', subcategoria: 'centros_comunitarios',
       direccion: 'Calle 20 #300 Col. Garcia Gineres', ciudad: 'Merida', estado: 'Yucatan',
@@ -440,7 +319,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Grupo de Apoyo TEA Familias',
+      id: instIds[9], nombre: 'Grupo de Apoyo TEA Familias',
       descripcion: 'Red de familias con hijos con autismo. Reuniones quincenales, asesorias y apoyo emocional.',
       categoria: 'social', subcategoria: 'actividades',
       direccion: 'Sede rotativa', ciudad: 'Merida', estado: 'Yucatan',
@@ -452,7 +331,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'ASPADEM',
+      id: instIds[10], nombre: 'ASPADEM',
       descripcion: 'Talleres productivos, vivienda asistida y programa de vida independiente para discapacidad mental.',
       categoria: 'social', subcategoria: 'centros_comunitarios',
       direccion: 'Calle 29A x 46 #199', ciudad: 'Merida', estado: 'Yucatan',
@@ -464,7 +343,7 @@ async function seed() {
       tipoPlan: 'gratuito', creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Atletismo Paralimpico Yucatan',
+      id: instIds[11], nombre: 'Atletismo Paralimpico Yucatan',
       descripcion: 'Entrenamiento deportivo adaptado para personas con discapacidad motriz.',
       categoria: 'social', subcategoria: 'actividades',
       direccion: 'UADY Estadio Carlos Iturralde', ciudad: 'Merida', estado: 'Yucatan',
@@ -480,10 +359,10 @@ async function seed() {
   await insertarLote(COLECCIONES.instituciones, instituciones)
   console.log(`🏢 ${instituciones.length} instituciones insertadas`)
 
-  const vacantes = [
+  // ── Vacantes (referencian instituciones por sus IDs pre-generados) ─
+  const vacantesDatos = [
     {
-      id: uuid(), institucionId: instituciones[6].id,
-      titulo: 'Carpintero/a Artesanal',
+      institucionId: instIds[6], titulo: 'Carpintero/a Artesanal',
       descripcion: 'Taller de carpinteria artesanal para crear muebles y objetos decorativos. Capacitacion incluida.',
       requisitos: 'Interes en manualidades. No se requiere experiencia previa.',
       modalidad: 'presencial', horario: 'Lun-Vie 8:00-14:00',
@@ -493,8 +372,7 @@ async function seed() {
       activa: true, fechaCreacion: ahora,
     },
     {
-      id: uuid(), institucionId: instituciones[7].id,
-      titulo: 'Asistente de Soporte Tecnico',
+      institucionId: instIds[7], titulo: 'Asistente de Soporte Tecnico',
       descripcion: 'Soporte tecnico remoto para usuarios con discapacidad visual. Capacitacion en lectores de pantalla.',
       requisitos: 'Conocimientos basicos de computacion. Disponibilidad de equipo propio.',
       modalidad: 'remoto', horario: 'Lun-Vie 9:00-17:00',
@@ -504,8 +382,7 @@ async function seed() {
       activa: true, fechaCreacion: ahora,
     },
     {
-      id: uuid(), institucionId: instituciones[7].id,
-      titulo: 'Desarrollador/a Frontend Junior',
+      institucionId: instIds[7], titulo: 'Desarrollador/a Frontend Junior',
       descripcion: 'Desarrollo de interfaces web accesibles. Trabajo remoto con horario flexible.',
       requisitos: 'Conocimiento de HTML, CSS y JavaScript. Portafolio o proyectos personales.',
       modalidad: 'remoto', horario: 'Flexible',
@@ -515,8 +392,7 @@ async function seed() {
       activa: true, fechaCreacion: ahora,
     },
     {
-      id: uuid(), institucionId: instituciones[9].id,
-      titulo: 'Asistente Terapeutico',
+      institucionId: instIds[9], titulo: 'Asistente Terapeutico',
       descripcion: 'Apoyo en sesiones de terapia ABA para ninos con autismo. Se proporciona capacitacion.',
       requisitos: 'Paciencia, empatia y disposicion para trabajar con ninos. Estudiantes de psicologia o terapia son bienvenidos.',
       modalidad: 'presencial', horario: 'Lun-Vie 8:00-15:00',
@@ -526,8 +402,7 @@ async function seed() {
       activa: true, fechaCreacion: ahora,
     },
     {
-      id: uuid(), institucionId: instituciones[11].id,
-      titulo: 'Auxiliar de Cocina',
+      institucionId: instIds[11], titulo: 'Auxiliar de Cocina',
       descripcion: 'Apoyo en cocina comunitaria para talleres de capacitacion laboral.',
       requisitos: 'Interes en gastronomia. Entorno adaptado y supervisado.',
       modalidad: 'presencial', horario: 'Lun-Vie 7:00-13:00',
@@ -537,8 +412,7 @@ async function seed() {
       activa: true, fechaCreacion: ahora,
     },
     {
-      id: uuid(), institucionId: instituciones[8].id,
-      titulo: 'Educador/a de Estimulacion Temprana',
+      institucionId: instIds[8], titulo: 'Educador/a de Estimulacion Temprana',
       descripcion: 'Imparticion de sesiones de estimulacion temprana para ninos de 0 a 6 anios con rezago en desarrollo.',
       requisitos: 'Licenciatura en educacion especial, psicologia o afines. Experiencia minima de 1 anio.',
       modalidad: 'presencial', horario: 'Lun-Vie 8:00-14:00',
@@ -548,8 +422,7 @@ async function seed() {
       activa: true, fechaCreacion: ahora,
     },
     {
-      id: uuid(), institucionId: instituciones[0].id,
-      titulo: 'Terapeuta Ocupacional',
+      institucionId: instIds[0], titulo: 'Terapeuta Ocupacional',
       descripcion: 'Atencion terapeutica ocupacional para pacientes con discapacidad motriz y neurodesarrollo.',
       requisitos: 'Licenciatura en Terapia Ocupacional. Experiencia en centros de rehabilitacion deseable.',
       modalidad: 'presencial', horario: 'Lun-Vie 7:00-15:00',
@@ -560,36 +433,37 @@ async function seed() {
     },
   ]
 
-  await insertarLote(COLECCIONES.vacantes, vacantes)
-  console.log(`💼 ${vacantes.length} vacantes de empleo creadas`)
+  await insertarLote(COLECCIONES.vacantes, vacantesDatos)
+  console.log(`💼 ${vacantesDatos.length} vacantes de empleo creadas`)
 
+  // ── Grupos de comunidad ────────────────────────────────────────
   const grupos = [
     {
-      id: uuid(), nombre: 'Feed general',
+      nombre: 'Feed general',
       descripcion: 'Espacio abierto para todos los miembros de Raices.',
       categoria: 'social', tiposDiscapacidad: JSON.stringify([]),
       esPublico: true, cantidadMiembros: 0, creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'TEA - Primera infancia',
+      nombre: 'TEA - Primera infancia',
       descripcion: 'Familias con ninos con autismo de 0 a 6 anios. Intercambio de experiencias y recursos.',
       categoria: 'social', tiposDiscapacidad: JSON.stringify(['tea']),
       esPublico: true, cantidadMiembros: 0, creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Adultos con TDAH',
+      nombre: 'Adultos con TDAH',
       descripcion: 'Estrategias, apoyo y experiencias de vida para adultos diagnosticados con TDAH.',
       categoria: 'social', tiposDiscapacidad: JSON.stringify(['intelectual']),
       esPublico: true, cantidadMiembros: 0, creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Inclusion laboral',
+      nombre: 'Inclusion laboral',
       descripcion: 'Empleos, capacitacion y experiencias laborales inclusivas. Comparte ofertas y oportunidades.',
       categoria: 'laboral', tiposDiscapacidad: JSON.stringify([]),
       esPublico: true, cantidadMiembros: 0, creadoPor: adminId, fechaCreacion: ahora,
     },
     {
-      id: uuid(), nombre: 'Tramites y derechos',
+      nombre: 'Tramites y derechos',
       descripcion: 'Guia sobre derechos, IMSS, pensiones, credencial de discapacidad y tramites gubernamentales.',
       categoria: 'social', tiposDiscapacidad: JSON.stringify([]),
       esPublico: true, cantidadMiembros: 0, creadoPor: adminId, fechaCreacion: ahora,
@@ -599,68 +473,37 @@ async function seed() {
   await insertarLote(COLECCIONES.grupos, grupos)
   console.log(`👥 ${grupos.length} grupos de comunidad creados`)
 
-  const publicaciones = [
-    {
-      id: uuid(), grupoId: grupos[0].id, autorId: tutorId,
-      contenido: 'Hola a todos! Recien nos unimos a Raices y ya encontramos 3 opciones de terapia cerca de casa. Que increible plataforma!',
-      cantidadMeGustas: 5, fechaCreacion: ahora,
-    },
-    {
-      id: uuid(), grupoId: grupos[0].id, autorId: demoId,
-      contenido: 'Alguien tiene experiencia con el CREE Yucatan? Queremos llevar a mi hermano para evaluacion inicial.',
-      cantidadMeGustas: 2, fechaCreacion: ahora,
-    },
-    {
-      id: uuid(), grupoId: grupos[3].id, autorId: adminId,
-      contenido: 'Tech Accesible MX publico 2 nuevas vacantes remotas para desarrolladores front-end. Revisen la seccion de Empleo!',
-      cantidadMeGustas: 8, fechaCreacion: ahora,
-    },
-    {
-      id: uuid(), grupoId: grupos[1].id, autorId: tutorId,
-      contenido: 'Nuestro hijo fue diagnosticado TEA nivel 1 a los 5 anios. Hoy tiene 8 y va en 3er grado. La terapia ABA le cambio la vida. Si necesitan orientacion, estoy para ayudar.',
-      cantidadMeGustas: 12, fechaCreacion: ahora,
-    },
-    {
-      id: uuid(), grupoId: grupos[4].id, autorId: demoId,
-      contenido: 'Alguien sabe cuanto tarda en llegar la credencial de discapacidad por CONADIS? Ya hice el tramite hace 3 semanas.',
-      cantidadMeGustas: 3, fechaCreacion: ahora,
-    },
-  ]
-
-  await insertarLote(COLECCIONES.publicaciones, publicaciones)
-  console.log(`📝 ${publicaciones.length} posts de comunidad creados`)
-
+  // ── Configuraciones de plataforma ──────────────────────────────
   const configuraciones = [
-    { id: uuid(), clave: 'nombrePlataforma', valor: 'Raices para Florecer', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'emailSoporte', valor: 'soporte@raices.mx', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'permitirRegistro', valor: 'true', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'aprobacionInstitucionRequerida', valor: 'true', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'iaHabilitada', valor: 'true', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'modoMantenimiento', valor: 'false', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'maxResenasPorUsuario', valor: '10', fechaActualizacion: ahora },
-    { id: uuid(), clave: 'ciudadPorDefecto', valor: 'Merida', fechaActualizacion: ahora },
+    { clave: 'nombrePlataforma', valor: 'Raices para Florecer', fechaActualizacion: ahora },
+    { clave: 'emailSoporte', valor: 'soporte@raices.mx', fechaActualizacion: ahora },
+    { clave: 'permitirRegistro', valor: 'true', fechaActualizacion: ahora },
+    { clave: 'aprobacionInstitucionRequerida', valor: 'true', fechaActualizacion: ahora },
+    { clave: 'iaHabilitada', valor: 'true', fechaActualizacion: ahora },
+    { clave: 'modoMantenimiento', valor: 'false', fechaActualizacion: ahora },
+    { clave: 'maxResenasPorUsuario', valor: '10', fechaActualizacion: ahora },
+    { clave: 'ciudadPorDefecto', valor: 'Merida', fechaActualizacion: ahora },
   ]
 
   await insertarLote(COLECCIONES.configuraciones, configuraciones)
   console.log(`⚙️  ${configuraciones.length} configuraciones de plataforma creadas`)
 
+  // ── Resumen final ──────────────────────────────────────────────
   const tiempoTotal = ((Date.now() - t0) / 1000).toFixed(1)
   console.log(`\n✅ Seed completo en ${tiempoTotal}s`)
   console.log('')
-  console.log('👤 Usuarios demo:')
-  console.log('   Admin:     admin@raices.mx         / Admin1234   (rol: admin)')
-  console.log('   PCD:       demo@raices.mx          / Demo1234    (rol: pcd, independiente)')
-  console.log('   Tutor:     tutor@raices.mx         / Tutor1234   (rol: tutor)')
-  console.log('   PCD vinculada: pcd-vinculada@raices.mx / Pcd1234  (rol: pcd, vinculada al tutor)')
-  console.log(`   Auth:      ${authSincronizado ? 'Firebase Auth (reales)' : 'UIDs estaticos (sin Auth)'}`)
+  console.log('👤 Cuenta única de administrador:')
+  console.log('   Email:    admin@raices.mx')
+  console.log('   Password: Admin1234')
+  console.log('   Rol:      admin')
+  console.log(`   UID:      ${adminId} ${authSincronizado ? '(sincronizado con Firebase Auth)' : '(generado por Firestore, sin Auth)'}`)
   console.log('')
-  console.log(`🏛️  ${instituciones.length} instituciones de Merida`)
-  console.log(`💼 ${vacantes.length} vacantes de empleo inclusivo`)
+  console.log(`🏢 ${instituciones.length} instituciones de Merida`)
+  console.log(`💼 ${vacantesDatos.length} vacantes de empleo inclusivo`)
   console.log(`👥 ${grupos.length} grupos de comunidad`)
-  console.log(`📝 ${publicaciones.length} posts iniciales`)
-  console.log(`👨‍👩‍👧 2 dependientes del tutor`)
-  console.log(`🔗 1 PCD vinculada al tutor (con postulaciones=false)`)
   console.log(`⚙️  ${configuraciones.length} configuraciones de plataforma`)
+  // ── Nota: todos los IDs ahora son generados exclusivamente por Firestore ──
+  console.log('\n🔑 Todos los IDs de documentos fueron generados por Firestore (formato: xMMeLtvh0mU2xe6LuypeMRcPus82)')
 
   process.exit(0)
 }

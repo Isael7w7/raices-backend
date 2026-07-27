@@ -2,7 +2,6 @@ import { Injectable, Inject, ForbiddenException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
-import { randomUUID } from 'crypto'
 
 @Injectable()
 export class MessagesService {
@@ -66,9 +65,9 @@ export class MessagesService {
     const destinatario = await this.db.collection(COLECCIONES.perfiles).doc(destinatarioId).get()
     if (!destinatario.exists || !destinatario.data()?.activo) throw new ForbiddenException('Usuario destinatario no existe')
 
-    const id = randomUUID()
-    const msg = { id, remitenteId, destinatarioId, contenido, leido: false, fechaCreacion: new Date().toISOString() }
-    await this.db.collection(COLECCIONES.mensajesDirectos).doc(id).set(msg)
+    const ref = this.db.collection(COLECCIONES.mensajesDirectos).doc()
+    const msg = { id: ref.id, remitenteId, destinatarioId, contenido, leido: false, fechaCreacion: new Date().toISOString() }
+    await ref.set(msg)
     return msg
   }
 

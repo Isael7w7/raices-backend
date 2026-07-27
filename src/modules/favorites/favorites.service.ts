@@ -1,6 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
@@ -39,9 +38,9 @@ export class FavoritesService {
       await snap.docs[0].ref.delete()
       return { favorito: false }
     }
-    const favoritoId = uuid()
-    await this.db.collection(COLECCIONES.favoritos).doc(favoritoId).set({
-      id: favoritoId, usuarioId, institucionId,
+    const ref = this.db.collection(COLECCIONES.favoritos).doc()
+    await ref.set({
+      id: ref.id, usuarioId, institucionId,
       fechaCreacion: new Date().toISOString(),
     })
     return { favorito: true }

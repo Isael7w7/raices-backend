@@ -1,6 +1,5 @@
 import { Injectable, Inject, NotFoundException, ForbiddenException } from '@nestjs/common'
 import { Firestore, FieldValue, Query } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
@@ -104,27 +103,27 @@ export class CommunityService {
   }
 
   async createPost(autorId: string, contenido: string, grupoId?: string) {
-    const id = uuid()
-    await this.db.collection(COLECCIONES.publicaciones).doc(id).set({
-      id, autorId, contenido, grupoId: grupoId ?? null,
+    const ref = this.db.collection(COLECCIONES.publicaciones).doc()
+    await ref.set({
+      id: ref.id, autorId, contenido, grupoId: grupoId ?? null,
       cantidadMeGustas: 0, fechaCreacion: new Date().toISOString(),
     })
 
     const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
     const autor = autorDoc.data()
-    return { id, autorId, contenido, grupoId: grupoId ?? null, cantidadMeGustas: 0,
+    return { id: ref.id, autorId, contenido, grupoId: grupoId ?? null, cantidadMeGustas: 0,
       fechaCreacion: new Date().toISOString(), nombreCompleto: autor?.nombreCompleto ?? null,
       urlAvatar: autor?.urlAvatar ?? null, usuarioMeGusta: false }
   }
 
   async createComment(publicacionId: string, autorId: string, contenido: string) {
-    const id = uuid()
-    await this.db.collection(COLECCIONES.comentarios).doc(id).set({
-      id, publicacionId, autorId, contenido,
+    const ref = this.db.collection(COLECCIONES.comentarios).doc()
+    await ref.set({
+      id: ref.id, publicacionId, autorId, contenido,
       fechaCreacion: new Date().toISOString(),
     })
 
-    const doc = await this.db.collection(COLECCIONES.comentarios).doc(id).get()
+    const doc = await this.db.collection(COLECCIONES.comentarios).doc(ref.id).get()
     const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
     const autor = autorDoc.data()
     return { id: doc.id, ...doc.data()!, nombreCompleto: autor?.nombreCompleto ?? null, urlAvatar: autor?.urlAvatar ?? null }
@@ -144,8 +143,9 @@ export class CommunityService {
       return { meGusta: false }
     }
 
-    await this.db.collection(COLECCIONES.meGustas).doc(uuid()).set({
-      usuarioId, publicacionId,
+    const refLike = this.db.collection(COLECCIONES.meGustas).doc()
+    await refLike.set({
+      id: refLike.id, usuarioId, publicacionId,
     })
     await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
       cantidadMeGustas: FieldValue.increment(1),
@@ -176,18 +176,19 @@ export class CommunityService {
   }
 
   async createGroup(creadorId: string, dto: any) {
-    const id = uuid()
-    await this.db.collection(COLECCIONES.grupos).doc(id).set({
-      id, nombre: dto.nombre, descripcion: dto.descripcion ?? '',
+    const ref = this.db.collection(COLECCIONES.grupos).doc()
+    await ref.set({
+      id: ref.id, nombre: dto.nombre, descripcion: dto.descripcion ?? '',
       esPublico: dto.esPublico !== false, creadorId,
       cantidadMiembros: 1, fechaCreacion: new Date().toISOString(),
     })
-    await this.db.collection(COLECCIONES.miembrosGrupo).doc(uuid()).set({
-      grupoId: id, usuarioId: creadorId, rol: 'admin',
+    const refMiembro = this.db.collection(COLECCIONES.miembrosGrupo).doc()
+    await refMiembro.set({
+      id: refMiembro.id, grupoId: ref.id, usuarioId: creadorId, rol: 'admin',
       fechaCreacion: new Date().toISOString(),
     })
-    const doc = await this.db.collection(COLECCIONES.grupos).doc(id).get()
-    return { id, ...doc.data() } as any
+    const doc = await this.db.collection(COLECCIONES.grupos).doc(ref.id).get()
+    return { id: ref.id, ...doc.data() } as any
   }
 
   async joinGroup(grupoId: string, usuarioId: string) {
@@ -198,8 +199,9 @@ export class CommunityService {
       .where('grupoId', '==', grupoId).where('usuarioId', '==', usuarioId).limit(1).get()
     if (!existente.empty) return { yaMiembro: true }
 
-    await this.db.collection(COLECCIONES.miembrosGrupo).doc(uuid()).set({
-      grupoId, usuarioId, rol: 'miembro',
+    const refJoin = this.db.collection(COLECCIONES.miembrosGrupo).doc()
+    await refJoin.set({
+      id: refJoin.id, grupoId, usuarioId, rol: 'miembro',
       fechaCreacion: new Date().toISOString(),
     })
     await this.db.collection(COLECCIONES.grupos).doc(grupoId).update({

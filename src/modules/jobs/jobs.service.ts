@@ -2,7 +2,6 @@ import { Injectable, Inject, NotFoundException, ConflictException, ForbiddenExce
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
-import { randomUUID } from 'crypto'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
@@ -95,12 +94,12 @@ export class JobsService {
       .where('vacanteId', '==', vacanteId).where('usuarioId', '==', usuarioId).limit(1).get()
     if (!existente.empty) throw new ConflictException('Ya enviaste una solicitud para esta vacante')
 
-    const id = randomUUID()
-    await this.db.collection(COLECCIONES.postulaciones).doc(id).set({
-      id, vacanteId, usuarioId, cartaPresentacion, estado: 'pendiente',
+    const ref = this.db.collection(COLECCIONES.postulaciones).doc()
+    await ref.set({
+      id: ref.id, vacanteId, usuarioId, cartaPresentacion, estado: 'pendiente',
       fechaCreacion: new Date().toISOString(),
     })
-    return { id, estado: 'pendiente' }
+    return { id: ref.id, estado: 'pendiente' }
   }
 
   async myApplications(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
@@ -169,9 +168,9 @@ export class JobsService {
   }
 
   async createJob(institucionId: string, dto: any) {
-    const id = randomUUID()
-    await this.db.collection(COLECCIONES.vacantes).doc(id).set({
-      id, institucionId, titulo: dto.titulo, descripcion: dto.descripcion ?? '',
+    const ref = this.db.collection(COLECCIONES.vacantes).doc()
+    await ref.set({
+      id: ref.id, institucionId, titulo: dto.titulo, descripcion: dto.descripcion ?? '',
       requisitos: dto.requisitos ?? '', modalidad: dto.modalidad ?? 'presencial',
       horario: dto.horario ?? '', rangoSalario: dto.rangoSalario ?? '',
       ciudad: dto.ciudad ?? '', estado: dto.estado ?? '',
@@ -181,7 +180,7 @@ export class JobsService {
         : parsearTiposDiscapacidad(dto.tiposDiscapacidad),
       activa: true, fechaCreacion: new Date().toISOString(),
     })
-    return this.findOne(id)
+    return this.findOne(ref.id)
   }
 
   async update(id: string, user: CurrentUserPayload, dto: any) {

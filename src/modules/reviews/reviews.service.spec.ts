@@ -52,6 +52,7 @@ describe('ReviewsService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'auto-gen-firestore-id', set: jest.fn().mockResolvedValue(undefined) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(allReviewsSnap) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })

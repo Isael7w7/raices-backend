@@ -1,6 +1,5 @@
 import { Injectable, ConflictException, UnauthorizedException, Inject, Logger, Optional } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
 import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
