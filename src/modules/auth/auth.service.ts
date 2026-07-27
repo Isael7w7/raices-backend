@@ -6,6 +6,7 @@ import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
+import { FEATURES_POR_DEFECTO } from '../../common/interfaces/feature-flags.interface'
 import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
@@ -54,6 +55,8 @@ export class AuthService {
 
     const uid = firebaseUser.uid
 
+    const features = dto.features ?? { ...FEATURES_POR_DEFECTO }
+
     await this.db.collection(COLECCIONES.perfiles).doc(uid).set({
       id: uid,
       email: dto.email,
@@ -64,6 +67,8 @@ export class AuthService {
       urlAvatar: null,
       activo: true,
       verificado: false,
+      tutorId: dto.tutorId ?? null,
+      features,
       fechaCreacion: new Date().toISOString(),
     })
 
@@ -89,6 +94,8 @@ export class AuthService {
       email: dto.email,
       rol: dto.rol,
       nombreCompleto: dto.nombreCompleto,
+      tutorId: dto.tutorId ?? null,
+      features,
     }
 
     await this.analytics?.incrementar('totalUsuarios')
@@ -151,6 +158,8 @@ export class AuthService {
         email: datosUsuario.email,
         rol: datosUsuario.rol,
         nombreCompleto: datosUsuario.nombreCompleto,
+        tutorId: datosUsuario.tutorId ?? null,
+        features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
       },
     }
   }
@@ -183,6 +192,8 @@ export class AuthService {
           email: datosUsuario.email,
           rol: datosUsuario.rol,
           nombreCompleto: datosUsuario.nombreCompleto,
+          tutorId: datosUsuario.tutorId ?? null,
+          features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
         },
       }
     } catch (e: any) {
@@ -205,6 +216,8 @@ export class AuthService {
       estado: d.estado,
       urlAvatar: d.urlAvatar,
       verificado: d.verificado,
+      tutorId: d.tutorId ?? null,
+      features: d.features ?? { ...FEATURES_POR_DEFECTO },
     }
   }
 }

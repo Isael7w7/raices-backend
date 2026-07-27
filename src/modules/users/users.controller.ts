@@ -6,7 +6,10 @@ import { StorageService } from '../storage/storage.service'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
+import { UpdateFeaturesDto } from './dto/update-features.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { RolesGuard } from '../../common/guards/roles.guard'
+import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
@@ -122,5 +125,47 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   deleteDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
     return this.svc.deleteDependent(user.id, id)
+  }
+
+  // ─── Endpoints de vinculación y features ────────────────────────────
+
+  @Post('vincular-pcd/:pcdUserId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Vincular PCD a tutor', description: 'Vincula una cuenta PCD existente a la cuenta del tutor autenticado.' })
+  @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD a vincular' })
+  @ApiResponse({ status: 201, description: 'PCD vinculada exitosamente' })
+  @ApiResponse({ status: 400, description: 'La cuenta ya está vinculada o no es una PCD' })
+  @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
+  linkPcdToTutor(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string) {
+    return this.svc.linkPcdToTutor(user.id, pcdUserId)
+  }
+
+  @Put('dependientes/:id/features')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Configurar features de dependiente', description: 'Activa/desactiva funcionalidades para un dependiente plano.' })
+  @ApiParam({ name: 'id', description: 'ID del dependiente' })
+  @ApiBody({ type: UpdateFeaturesDto })
+  @ApiResponse({ status: 200, description: 'Features actualizadas' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  updateDependentFeatures(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: UpdateFeaturesDto) {
+    return this.svc.updateDependentFeatures(user.id, id, dto)
+  }
+
+  @Put('pcd-vinculado/:pcdUserId/features')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Configurar features de PCD vinculada', description: 'Activa/desactiva funcionalidades para una cuenta PCD vinculada al tutor.' })
+  @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD vinculada' })
+  @ApiBody({ type: UpdateFeaturesDto })
+  @ApiResponse({ status: 200, description: 'Features actualizadas' })
+  @ApiResponse({ status: 403, description: 'La PCD no está vinculada a tu cuenta' })
+  @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
+  updateLinkedPcdFeatures(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string, @Body() dto: UpdateFeaturesDto) {
+    return this.svc.updateLinkedPcdFeatures(user.id, pcdUserId, dto)
   }
 }

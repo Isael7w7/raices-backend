@@ -2,6 +2,8 @@ import { Controller, Get, Post, Param, UseGuards } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { FavoritesService } from './favorites.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FeatureGuard } from '../../common/guards/feature.guard'
+import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
@@ -23,9 +25,12 @@ export class FavoritesController {
   getIds(@CurrentUser() user: CurrentUserPayload) { return this.svc.getFavoriteIds(user.id) }
 
   @Post(':institutionId/alternar')
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('favoritos')
   @ApiOperation({ summary: 'Agregar/quitar de favoritos', description: 'Alterna el estado de favorito. Si ya existe lo elimina, si no existe lo crea.' })
   @ApiParam({ name: 'institutionId', description: 'ID de la institución' })
   @ApiResponse({ status: 200, description: 'Estado actualizado: { favorito: boolean }' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de favoritos desactivada para tu cuenta' })
   toggle(@Param('institutionId') institutionId: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.toggle(user.id, institutionId)
   }

@@ -5,6 +5,8 @@ import { EnviarResenaDto } from './dto/enviar-resena.dto'
 import { ActualizarResenaDto } from './dto/actualizar-resena.dto'
 import { PaginacionDto, EJEMPLO_RESPUESTA_PAGINADA } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FeatureGuard } from '../../common/guards/feature.guard'
+import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
@@ -56,11 +58,13 @@ export class ReviewsController {
   }
 
   @Post('institucion/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('resenas')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Crear o actualizar reseña', description: 'Un usuario solo puede tener 1 reseña por institución (se actualiza si ya existe)' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiResponse({ status: 200, description: 'Reseña guardada' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de reseñas desactivada para tu cuenta' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   submit(@Param('id') id: string, @Body() dto: EnviarResenaDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.submit(user.id, id, dto.calificacion, dto.comentario ?? '')

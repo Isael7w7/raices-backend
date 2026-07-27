@@ -1,3 +1,5 @@
+import { FeatureFlags, FEATURES_POR_DEFECTO } from './feature-flags.interface'
+
 /**
  * Payload del usuario autenticado que se inyecta via @CurrentUser().
  *
@@ -10,4 +12,11 @@ export interface CurrentUserPayload {
   rol: 'pcd' | 'tutor' | 'institucion' | 'admin'
   nombreCompleto: string
   verificado: boolean
+  /** Si el usuario es una PCD vinculada a un tutor, aquí está el ID del tutor */
+  tutorId?: string | null
+  /** Banderas de funcionalidades (por defecto todas true) */
+  features: FeatureFlags
 }
+
+/** Valor por defecto para usar en guards / servicios cuando no hay perfil */
+export const CURRENT_USER_DEFAULT_FEATURES: FeatureFlags = { ...FEATURES_POR_DEFECTO }

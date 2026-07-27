@@ -1,8 +1,9 @@
-import { Injectable, Inject, NotFoundException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 
@@ -226,6 +227,7 @@ export class UsersService {
       rangoEdad: p.rangoEdad ?? null,
       etapaVida: p.etapaVida ?? null,
       notas: p.notas ?? '',
+      features: d.features ?? { ...FEATURES_POR_DEFECTO },
       fechaCreacion: d.fechaCreacion,
     }
   }
@@ -241,5 +243,64 @@ export class UsersService {
   private parsearObjeto(valor: any) {
     if (!valor) return {}
     try { const p = JSON.parse(valor); return p && typeof p === 'object' ? p : {} } catch { return {} }
+  }
+
+  // ─── Vinculación PCD ↔ Tutor ───────────────────────────────────────
+
+  /**
+   * Vincula una cuenta PCD existente a un Tutor.
+   * Solo el tutor puede vincular. La PCD no debe estar ya vinculada a otro tutor.
+   */
+  async linkPcdToTutor(tutorId: string, pcdUserId: string) {
+    const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdUserId).get()
+    if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+
+    const pcd = pcdDoc.data()!
+    if (pcd.rol !== 'pcd') {
+      throw new BadRequestException('Solo se pueden vincular cuentas con rol PCD')
+    }
+    if (pcd.tutorId) {
+      throw new BadRequestException('Esta cuenta PCD ya está vinculada a un tutor')
+    }
+
+    await this.col(COLECCIONES.perfiles).doc(pcdUserId).update({ tutorId })
+    return { vinculado: true, pcdUserId, tutorId }
+  }
+
+  // ─── Features de dependiente ────────────────────────────────────────
+
+  /**
+   * Actualiza las banderas de funcionalidades de un dependiente plano.
+   */
+  async updateDependentFeatures(usuarioId: string, dependienteId: string, features: Partial<FeatureFlags>) {
+    const doc = await this.col(COLECCIONES.dependientes).doc(dependienteId).get()
+    if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
+      throw new NotFoundException('Dependiente no encontrado')
+    }
+
+    const existentes: FeatureFlags = doc.data()?.features ?? { ...FEATURES_POR_DEFECTO }
+    const actualizados: FeatureFlags = { ...existentes, ...features }
+
+    await this.col(COLECCIONES.dependientes).doc(dependienteId).update({ features: actualizados })
+    return { id: dependienteId, features: actualizados }
+  }
+
+  /**
+   * Actualiza las banderas de funcionalidades de una PCD vinculada al tutor.
+   */
+  async updateLinkedPcdFeatures(tutorId: string, pcdUserId: string, features: Partial<FeatureFlags>) {
+    const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdUserId).get()
+    if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+
+    const pcd = pcdDoc.data()!
+    if (pcd.tutorId !== tutorId) {
+      throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como tutor')
+    }
+
+    const existentes: FeatureFlags = pcd.features ?? { ...FEATURES_POR_DEFECTO }
+    const actualizados: FeatureFlags = { ...existentes, ...features }
+
+    await this.col(COLECCIONES.perfiles).doc(pcdUserId).update({ features: actualizados })
+    return { id: pcdUserId, features: actualizados }
   }
 }

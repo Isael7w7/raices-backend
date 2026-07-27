@@ -7,7 +7,9 @@ import { PaginacionDto, EJEMPLO_RESPUESTA_PAGINADA } from '../../common/dto/pagi
 import { PostulacionDto } from './dto/postulacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
+import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
+import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
@@ -98,11 +100,13 @@ export class JobsController {
   }
 
   @Post(':id/postularse')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('postulaciones')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Postularse a vacante', description: 'Envía una solicitud con carta de presentación. Un usuario solo puede postularse una vez por vacante.' })
   @ApiParam({ name: 'id', description: 'ID de la vacante' })
   @ApiResponse({ status: 201, description: 'Postulación enviada con éxito' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de postulaciones desactivada para tu cuenta' })
   @ApiResponse({ status: 409, description: 'Ya enviaste una solicitud para esta vacante' })
   @ApiResponse({ status: 404, description: 'Vacante no encontrada o inactiva' })
   apply(@Param('id') id: string, @Body() dto: PostulacionDto, @CurrentUser() user: CurrentUserPayload) {

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { FIRESTORE } from '../../database/firebase.provider';
 import { StorageService } from '../storage/storage.service';
@@ -472,6 +472,7 @@ describe('UsersService', () => {
         rangoEdad: '6-12',
         etapaVida: 'infancia',
         notas: 'Requiere acompañamiento',
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
         fechaCreacion: '2024-01-01T00:00:00.000Z',
       })
     })
@@ -830,6 +831,171 @@ describe('UsersService', () => {
 
       const result: any = await service.updateProfile('user1', {})
       expect(result.nombreCompleto).toBe('Original')
+    })
+  })
+
+  // ── linkPcdToTutor ───────────────────────────────────────────────────
+
+  describe('linkPcdToTutor', () => {
+    it('should link a PCD user to a tutor', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(pcdData)),
+          update: updateMock,
+        }),
+      })
+
+      const result = await service.linkPcdToTutor('tutor1', 'pcd1')
+
+      expect(updateMock).toHaveBeenCalledWith({ tutorId: 'tutor1' })
+      expect(result).toEqual({ vinculado: true, pcdUserId: 'pcd1', tutorId: 'tutor1' })
+    })
+
+    it('should throw NotFoundException when PCD user does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+        }),
+      })
+
+      await expect(service.linkPcdToTutor('tutor1', 'nonexistent')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw BadRequestException when user is not PCD role', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst1', rol: 'institution' })),
+          update: jest.fn().mockResolvedValue(undefined),
+        }),
+      })
+
+      await expect(service.linkPcdToTutor('tutor1', 'inst1')).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when PCD already has a tutor', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', rol: 'pcd', tutorId: 'existing-tutor' })),
+          update: jest.fn().mockResolvedValue(undefined),
+        }),
+      })
+
+      await expect(service.linkPcdToTutor('tutor1', 'pcd1')).rejects.toThrow(BadRequestException)
+    })
+  })
+
+  // ── updateDependentFeatures ──────────────────────────────────────────
+
+  describe('updateDependentFeatures', () => {
+    it('should update features of a dependent', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const depData = {
+        id: 'dep1', tutorId: 'user1',
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(depData)),
+          update: updateMock,
+        }),
+      })
+
+      const result = await service.updateDependentFeatures('user1', 'dep1', { postulaciones: false, chat: false })
+
+      expect(updateMock).toHaveBeenCalled()
+      expect(result.id).toBe('dep1')
+      expect(result.features.postulaciones).toBe(false)
+      expect(result.features.chat).toBe(false)
+      expect(result.features.comunidad).toBe(true)
+    })
+
+    it('should throw NotFoundException when dependent does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+        }),
+      })
+
+      await expect(service.updateDependentFeatures('user1', 'nonexistent', { chat: false })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when dependent belongs to another user', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'other-user' })),
+        }),
+      })
+
+      await expect(service.updateDependentFeatures('user1', 'dep1', { chat: false })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should use default features when dependent has no existing features', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'user1' })), // no features field
+          update: updateMock,
+        }),
+      })
+
+      const result = await service.updateDependentFeatures('user1', 'dep1', { comunidad: false })
+
+      expect(updateMock).toHaveBeenCalled()
+      expect(result.features.comunidad).toBe(false)
+      expect(result.features.chat).toBe(true) // from defaults
+    })
+  })
+
+  // ── updateLinkedPcdFeatures ──────────────────────────────────────────
+
+  describe('updateLinkedPcdFeatures', () => {
+    it('should update features of a linked PCD', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const pcdData = {
+        id: 'pcd1', tutorId: 'tutor1',
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(pcdData)),
+          update: updateMock,
+        }),
+      })
+
+      const result = await service.updateLinkedPcdFeatures('tutor1', 'pcd1', { resenas: false, descubrimiento: false })
+
+      expect(updateMock).toHaveBeenCalled()
+      expect(result.id).toBe('pcd1')
+      expect(result.features.resenas).toBe(false)
+      expect(result.features.descubrimiento).toBe(false)
+      expect(result.features.chat).toBe(true)
+    })
+
+    it('should throw NotFoundException when PCD user does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+        }),
+      })
+
+      await expect(service.updateLinkedPcdFeatures('tutor1', 'nonexistent', { chat: false })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when PCD is not linked to the tutor', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', tutorId: 'other-tutor' })),
+          update: jest.fn().mockResolvedValue(undefined),
+        }),
+      })
+
+      await expect(service.updateLinkedPcdFeatures('tutor1', 'pcd1', { chat: false })).rejects.toThrow(ForbiddenException)
     })
   })
 });

@@ -3,6 +3,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@ne
 import { MessagesService } from './messages.service'
 import { EnviarDto } from './dto/enviar.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FeatureGuard } from '../../common/guards/feature.guard'
+import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
@@ -36,10 +38,12 @@ export class MessagesController {
   }
 
   @Post('enviar/:userId')
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('chat')
   @ApiOperation({ summary: 'Enviar mensaje' })
   @ApiParam({ name: 'userId', description: 'ID del usuario destinatario' })
   @ApiResponse({ status: 201, description: 'Mensaje enviado con éxito' })
-  @ApiResponse({ status: 403, description: 'No puedes enviarte mensajes a ti mismo o usuario no existe' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de chat desactivada para tu cuenta, o no puedes enviarte mensajes a ti mismo, o usuario destino no existe' })
   send(@Param('userId') destinatarioId: string, @Body() dto: EnviarDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.sendMessage(user.id, destinatarioId, dto.contenido)
   }

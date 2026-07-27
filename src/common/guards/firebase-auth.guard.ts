@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { FEATURES_POR_DEFECTO } from '../interfaces/feature-flags.interface'
 
 @Injectable()
 export class FirebaseAuthGuard implements CanActivate {
@@ -40,6 +41,8 @@ export class FirebaseAuthGuard implements CanActivate {
         rol: perfil.rol ?? 'user',
         nombreCompleto: perfil.nombreCompleto ?? decodedToken.name ?? '',
         verificado: perfil.verificado ?? false,
+        tutorId: perfil.tutorId ?? null,
+        features: perfil.features ?? { ...FEATURES_POR_DEFECTO },
       }
 
       return true

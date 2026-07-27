@@ -93,6 +93,15 @@ describe('FirebaseAuthGuard', () => {
         rol: 'pcd',
         nombreCompleto: 'Test User',
         verificado: false,
+        tutorId: null,
+        features: {
+          chat: true,
+          postulaciones: true,
+          comunidad: true,
+          resenas: true,
+          descubrimiento: true,
+          favoritos: true,
+        },
       })
     })
 

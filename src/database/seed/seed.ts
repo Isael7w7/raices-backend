@@ -27,6 +27,15 @@ const COLECCIONES = {
   configuraciones: 'configuraciones',
 }
 
+const FEATURES_POR_DEFECTO = {
+  chat: true,
+  postulaciones: true,
+  comunidad: true,
+  resenas: true,
+  descubrimiento: true,
+  favoritos: true,
+}
+
 function tieneServiceAccountReal(): boolean {
   if (process.env.FIREBASE_SERVICE_ACCOUNT) return true
   if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
@@ -56,6 +65,7 @@ const UIDS_ESTATICOS = {
   admin: 'admin-demo-uid',
   user: 'user-demo-uid',
   tutor: 'tutor-demo-uid',
+  pcdVinculada: 'pcd-vinculada-uid',
 } as const
 
 async function limpiarColeccion(nombre: string) {
@@ -105,6 +115,15 @@ const usuariosDemo = [
     ciudad: 'Merida',
     estado: 'Yucatan',
     uidEstatico: UIDS_ESTATICOS.tutor,
+  },
+  {
+    email: 'pcd-vinculada@raices.mx',
+    password: 'Pcd1234',
+    rol: 'pcd',
+    nombreCompleto: 'Carmen Lopez',
+    ciudad: 'Merida',
+    estado: 'Yucatan',
+    uidEstatico: UIDS_ESTATICOS.pcdVinculada,
   },
 ]
 
@@ -162,6 +181,7 @@ async function seed() {
   let adminId: string = UIDS_ESTATICOS.admin
   let demoId: string = UIDS_ESTATICOS.user
   let tutorId: string = UIDS_ESTATICOS.tutor
+  let pcdVinculadaId: string = UIDS_ESTATICOS.pcdVinculada
   let authSincronizado = false
 
   if (authDisponible) {
@@ -170,12 +190,14 @@ async function seed() {
       asegurarUsuarioFirebase(usuariosDemo[0]),
       asegurarUsuarioFirebase(usuariosDemo[1]),
       asegurarUsuarioFirebase(usuariosDemo[2]),
+      asegurarUsuarioFirebase(usuariosDemo[3]),
     ])
 
     if (resultados.every(Boolean)) {
       adminId = resultados[0]!
       demoId = resultados[1]!
       tutorId = resultados[2]!
+      pcdVinculadaId = resultados[3]!
       authSincronizado = true
       console.log('')
     } else {
@@ -184,6 +206,7 @@ async function seed() {
       console.log(`   admin  → ${adminId}`)
       console.log(`   user   → ${demoId}`)
       console.log(`   tutor  → ${tutorId}`)
+      console.log(`   PCD vinculada  → ${pcdVinculadaId}`)
       console.log('')
     }
   } else {
@@ -192,6 +215,7 @@ async function seed() {
     console.log(`   admin  → ${adminId}`)
     console.log(`   user   → ${demoId}`)
     console.log(`   tutor  → ${tutorId}`)
+    console.log(`   PCD vinculada  → ${pcdVinculadaId}`)
     console.log('')
   }
 
@@ -199,20 +223,33 @@ async function seed() {
     {
       id: adminId, email: 'admin@raices.mx', rol: 'admin',
       nombreCompleto: 'Admin Raices', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true, fechaCreacion: ahora,
+      urlAvatar: null, activo: true, verificado: true,
+      tutorId: null, features: { ...FEATURES_POR_DEFECTO },
+      fechaCreacion: ahora,
     },
     {
       id: demoId, email: 'demo@raices.mx', rol: 'pcd',
       nombreCompleto: 'Luis Hernandez', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true, fechaCreacion: ahora,
+      urlAvatar: null, activo: true, verificado: true,
+      tutorId: null, features: { ...FEATURES_POR_DEFECTO },
+      fechaCreacion: ahora,
     },
     {
       id: tutorId, email: 'tutor@raices.mx', rol: 'tutor',
       nombreCompleto: 'Ana Garcia', ciudad: 'Merida', estado: 'Yucatan',
-      urlAvatar: null, activo: true, verificado: true, fechaCreacion: ahora,
+      urlAvatar: null, activo: true, verificado: true,
+      tutorId: null, features: { ...FEATURES_POR_DEFECTO },
+      fechaCreacion: ahora,
+    },
+    {
+      id: pcdVinculadaId, email: 'pcd-vinculada@raices.mx', rol: 'pcd',
+      nombreCompleto: 'Carmen Lopez', ciudad: 'Merida', estado: 'Yucatan',
+      urlAvatar: null, activo: true, verificado: true,
+      tutorId: tutorId, features: { ...FEATURES_POR_DEFECTO, postulaciones: false },
+      fechaCreacion: ahora,
     },
   ])
-  console.log('👤 3 usuarios demo creados en Firestore')
+  console.log('👤 4 usuarios demo creados en Firestore (1 PCD vinculada al tutor)')
 
   await insertarLote(COLECCIONES.perfilesExtendidos, [
     {
@@ -249,8 +286,25 @@ async function seed() {
       preocupacionesActuales: 'Buscar opciones de terapia para mi hijo',
       nivelApoyo: 'bajo',
     },
+    {
+      id: uuid(), usuarioId: pcdVinculadaId,
+      tiposDiscapacidad: JSON.stringify(['motriz', 'visual']),
+      severidadDiscapacidad: null,
+      modosComunicacion: JSON.stringify(['verbal']),
+      necesidadesMovilidad: JSON.stringify(['silla_ruedas']),
+      accesoTecnologia: JSON.stringify(['smartphone', 'lector_pantalla']),
+      zonasPreferidas: JSON.stringify(['Centro', 'Sur']),
+      necesidades: JSON.stringify(['inclusion_laboral', 'transporte_accesible']),
+      metasActuales: JSON.stringify(['encontrar_empleo', 'vida_independiente']),
+      areasApoyo: JSON.stringify(['orientacion_laboral', 'asistencia_personal']),
+      historialEducacion: JSON.stringify({ escolarizado: true, tipo: 'regular', nivel: 'universidad' }),
+      historialTerapia: JSON.stringify({ tomado: true, tipos: ['fisioterapia'] }),
+      etapaVida: 'adulto_joven',
+      preocupacionesActuales: 'Buscar oportunidades laborales inclusivas',
+      nivelApoyo: 'medio',
+    },
   ])
-  console.log('📋 2 perfiles de necesidades creados')
+  console.log('📋 3 perfiles de necesidades creados')
 
   await insertarLote(COLECCIONES.dependientes, [
     {
@@ -594,16 +648,18 @@ async function seed() {
   console.log(`\n✅ Seed completo en ${tiempoTotal}s`)
   console.log('')
   console.log('👤 Usuarios demo:')
-  console.log('   Admin:  admin@raices.mx  / Admin1234  (rol: admin)')
-  console.log('   PCD:    demo@raices.mx   / Demo1234   (rol: pcd)')
-  console.log('   Tutor:  tutor@raices.mx  / Tutor1234  (rol: tutor)')
-  console.log(`   Auth:   ${authSincronizado ? 'Firebase Auth (reales)' : 'UIDs estaticos (sin Auth)'}`)
+  console.log('   Admin:     admin@raices.mx         / Admin1234   (rol: admin)')
+  console.log('   PCD:       demo@raices.mx          / Demo1234    (rol: pcd, independiente)')
+  console.log('   Tutor:     tutor@raices.mx         / Tutor1234   (rol: tutor)')
+  console.log('   PCD vinculada: pcd-vinculada@raices.mx / Pcd1234  (rol: pcd, vinculada al tutor)')
+  console.log(`   Auth:      ${authSincronizado ? 'Firebase Auth (reales)' : 'UIDs estaticos (sin Auth)'}`)
   console.log('')
   console.log(`🏛️  ${instituciones.length} instituciones de Merida`)
   console.log(`💼 ${vacantes.length} vacantes de empleo inclusivo`)
   console.log(`👥 ${grupos.length} grupos de comunidad`)
   console.log(`📝 ${publicaciones.length} posts iniciales`)
   console.log(`👨‍👩‍👧 2 dependientes del tutor`)
+  console.log(`🔗 1 PCD vinculada al tutor (con postulaciones=false)`)
   console.log(`⚙️  ${configuraciones.length} configuraciones de plataforma`)
 
   process.exit(0)
