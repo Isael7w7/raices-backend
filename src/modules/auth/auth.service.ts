@@ -56,20 +56,20 @@ export class AuthService {
 
     const features = dto.features ?? { ...FEATURES_POR_DEFECTO }
 
-    await this.db.collection(COLECCIONES.perfiles).doc(uid).set({
+    const perfilData: Record<string, any> = {
       id: uid,
       email: dto.email,
       nombreCompleto: dto.nombreCompleto,
       rol: dto.rol,
-      ciudad: dto.ciudad ?? null,
-      estado: dto.estado ?? null,
-      urlAvatar: null,
       activo: true,
       verificado: false,
-      tutorId: dto.tutorId ?? null,
       features,
       fechaCreacion: new Date().toISOString(),
-    })
+      ...(dto.ciudad && { ciudad: dto.ciudad }),
+      ...(dto.estado && { estado: dto.estado }),
+      ...(dto.tutorId && { tutorId: dto.tutorId }),
+    }
+    await this.db.collection(COLECCIONES.perfiles).doc(uid).set(perfilData)
 
     let idToken: string
     let tokenRefresco: string
@@ -211,9 +211,9 @@ export class AuthService {
       email: d.email,
       rol: d.rol,
       nombreCompleto: d.nombreCompleto,
-      ciudad: d.ciudad,
-      estado: d.estado,
-      urlAvatar: d.urlAvatar,
+      ciudad: d.ciudad ?? null,
+      estado: d.estado ?? null,
+      urlAvatar: d.urlAvatar ?? null,
       verificado: d.verificado,
       tutorId: d.tutorId ?? null,
       features: d.features ?? { ...FEATURES_POR_DEFECTO },
