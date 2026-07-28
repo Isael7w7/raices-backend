@@ -94,44 +94,41 @@ async function insertarLote(coleccion: string, documentos: Record<string, any>[]
   }
 }
 
-// ── Cuenta única de administrador ─────────────────────────────
-const usuarioAdmin = {
-  email: 'admin@raices.mx',
-  password: 'Admin1234',
-  rol: 'admin',
-  nombreCompleto: 'Admin Raices',
-  ciudad: 'Merida',
-  estado: 'Yucatan',
-}
+// ── Cuentas de usuario ───────────────────────────────────────
+const USUARIOS = [
+  { email: 'admin@raices.mx',    password: 'Admin1234',   rol: 'admin',        nombreCompleto: 'Admin Raices',        ciudad: 'Merida', estado: 'Yucatan' },
+  { email: 'tutor@raices.mx',    password: 'Tutor1234',   rol: 'tutor',        nombreCompleto: 'Tutor Raices',        ciudad: 'Merida', estado: 'Yucatan' },
+  { email: 'usuario@raices.com', password: 'Usuario1234', rol: 'beneficiario', nombreCompleto: 'Usuario Raices',      ciudad: 'Merida', estado: 'Yucatan' },
+]
 
 /**
- * Crea o actualiza el usuario en Firebase Auth dejando que Firebase
+ * Crea o actualiza un usuario en Firebase Auth dejando que Firebase
  * genere el UID automáticamente (formato: xMMeLtvh0mU2xe6LuypeMRcPus82).
  */
-async function asegurarUsuarioFirebase(): Promise<string | null> {
+async function asegurarUsuarioFirebase(usuario: { email: string; password: string; nombreCompleto: string }): Promise<string | null> {
   if (!auth) return null
 
   try {
-    const existente = await auth.getUserByEmail(usuarioAdmin.email)
-    console.log(`  ⏭️  ${usuarioAdmin.email} ya existe en Firebase Auth (uid: ${existente.uid})`)
-    await auth.updateUser(existente.uid, { password: usuarioAdmin.password })
+    const existente = await auth.getUserByEmail(usuario.email)
+    console.log(`  ⏭️  ${usuario.email} ya existe en Firebase Auth (uid: ${existente.uid})`)
+    await auth.updateUser(existente.uid, { password: usuario.password })
     return existente.uid
   } catch (e: any) {
     if (e?.code === 'auth/user-not-found') {
       try {
         const creado = await auth.createUser({
-          email: usuarioAdmin.email,
-          password: usuarioAdmin.password,
-          displayName: usuarioAdmin.nombreCompleto,
+          email: usuario.email,
+          password: usuario.password,
+          displayName: usuario.nombreCompleto,
         })
-        console.log(`  ✅ ${usuarioAdmin.email} creado en Firebase Auth (uid: ${creado.uid})`)
+        console.log(`  ✅ ${usuario.email} creado en Firebase Auth (uid: ${creado.uid})`)
         return creado.uid
       } catch (err: any) {
-        console.error(`  ❌ Error al crear ${usuarioAdmin.email}: ${err.message}`)
+        console.error(`  ❌ Error al crear ${usuario.email}: ${err.message}`)
         return null
       }
     }
-    console.error(`  ❌ Error al obtener usuario ${usuarioAdmin.email}: ${e.message}`)
+    console.error(`  ❌ Error al obtener usuario ${usuario.email}: ${e.message}`)
     return null
   }
 }
@@ -166,41 +163,59 @@ async function seed() {
   const ahora = new Date().toISOString()
 
   // ── Sincronizar con Firebase Auth ──────────────────────────────
-  let adminId: string = firestoreId() // fallback: ID generado por Firestore
+  // Mapa rol → uid obtenido de Auth (o generado por Firestore como fallback)
+  const userIds: Record<string, string> = {}
   let authSincronizado = false
 
-  if (authDisponible) {
-    console.log('🔐 Sincronizando usuario administrador con Firebase Auth...')
-    const resultado = await asegurarUsuarioFirebase()
-    if (resultado) {
-      adminId = resultado
-      authSincronizado = true
-      console.log(`   ✅ adminId final: ${adminId}\n`)
+  for (const usuario of USUARIOS) {
+    let uid: string = firestoreId() // fallback
+
+    if (authDisponible) {
+      console.log(`🔐 Sincronizando ${usuario.email} con Firebase Auth...`)
+      const resultado = await asegurarUsuarioFirebase(usuario)
+      if (resultado) {
+        uid = resultado
+        authSincronizado = true
+        console.log(`   ✅ ${usuario.email} → uid: ${uid}`)
+      } else {
+        console.log(`   ⚠️  No se pudo sincronizar ${usuario.email}. Usando ID generado por Firestore...`)
+      }
     } else {
-      console.log('   ⚠️  No se pudo sincronizar. Usando ID generado por Firestore...\n')
+      console.log(`   ⚠️  Usando ID generado por Firestore para ${usuario.email} (sin Auth)...`)
     }
-  } else {
-    console.log('⚠️  No se detectó Service Account (FIREBASE_SERVICE_ACCOUNT / GOOGLE_APPLICATION_CREDENTIALS)')
-    console.log('   Firebase Auth no estará disponible. Usando ID generado por Firestore...\n')
+
+    userIds[usuario.rol] = uid
   }
 
-  // ── Perfil del administrador ───────────────────────────────────
-  // Se crea con el UID real de Firebase Auth para que coincida el document ID
-  await db.collection(COLECCIONES.perfiles).doc(adminId).set({
-    id: adminId,
-    email: 'admin@raices.mx',
-    rol: 'admin',
-    nombreCompleto: 'Admin Raices',
-    ciudad: 'Merida',
-    estado: 'Yucatan',
-    urlAvatar: null,
-    activo: true,
-    verificado: true,
-    tutorId: null,
-    features: { ...FEATURES_POR_DEFECTO },
-    fechaCreacion: ahora,
-  })
-  console.log('👤 1 usuario administrador creado en Firestore')
+  if (!authDisponible) {
+    console.log('⚠️  No se detectó Service Account (FIREBASE_SERVICE_ACCOUNT / GOOGLE_APPLICATION_CREDENTIALS)')
+    console.log('   Firebase Auth no estará disponible. Usando IDs generados por Firestore.\n')
+  }
+
+  // IDs para cada rol
+  const adminId = userIds['admin']
+  const tutorId = userIds['tutor']
+  const beneficiarioId = userIds['beneficiario']
+
+  // ── Perfiles en Firestore ──────────────────────────────────────
+  for (const usuario of USUARIOS) {
+    const uid = userIds[usuario.rol]
+    await db.collection(COLECCIONES.perfiles).doc(uid).set({
+      id: uid,
+      email: usuario.email,
+      rol: usuario.rol,
+      nombreCompleto: usuario.nombreCompleto,
+      ciudad: usuario.ciudad,
+      estado: usuario.estado,
+      urlAvatar: null,
+      activo: true,
+      verificado: usuario.rol === 'admin',
+      tutorId: null,
+      features: { ...FEATURES_POR_DEFECTO },
+      fechaCreacion: ahora,
+    })
+    console.log(`👤 Perfil creado: ${usuario.email} (${usuario.rol}) → ${uid}`)
+  }
 
   // ── Instituciones ──────────────────────────────────────────────
   // Pre-generamos IDs para que las vacantes puedan referenciarlos
@@ -473,6 +488,203 @@ async function seed() {
   await insertarLote(COLECCIONES.grupos, grupos)
   console.log(`👥 ${grupos.length} grupos de comunidad creados`)
 
+  // ── Obtener IDs generados automáticamente ───────────────────────
+  const gruposSnap = await db.collection(COLECCIONES.grupos).get()
+  const grupoIds = gruposSnap.docs.map(doc => doc.id)
+  const vacantesSnap = await db.collection(COLECCIONES.vacantes).get()
+  const vacanteIds = vacantesSnap.docs.map(doc => doc.id)
+
+  // ── Miembros de grupo ───────────────────────────────────────────
+  const miembrosGrupo = grupoIds.map(grupoId => ({
+    id: firestoreId(),
+    grupoId,
+    usuarioId: adminId,
+    rol: 'admin',
+    fechaUnificacion: ahora,
+  }))
+  await insertarLote(COLECCIONES.miembrosGrupo, miembrosGrupo)
+  console.log(`👤 ${miembrosGrupo.length} miembros de grupo asignados`)
+
+  // ── Publicaciones ───────────────────────────────────────────────
+  const pubIds = [firestoreId(), firestoreId(), firestoreId()]
+  const publicaciones = [
+    {
+      id: pubIds[0],
+      usuarioId: adminId,
+      grupoId: grupoIds[0],
+      contenido: 'Bienvenidos a Raices para Florecer! Este es un espacio para compartir experiencias, recursos y apoyarnos mutuamente.',
+      cantidadMeGusta: 1,
+      cantidadComentarios: 1,
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: pubIds[1],
+      usuarioId: adminId,
+      grupoId: grupoIds[1],
+      contenido: 'Comparto recursos sobre terapias ABA para ninos con TEA en la primera infancia. Alguien tiene recomendaciones de centros en Merida?',
+      cantidadMeGusta: 1,
+      cantidadComentarios: 1,
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: pubIds[2],
+      usuarioId: adminId,
+      grupoId: grupoIds[3],
+      contenido: 'Recordatorio: El proximo jueves hay feria de empleo inclusivo en el Centro de Convenciones Siglo XXI. No falten!',
+      cantidadMeGusta: 1,
+      cantidadComentarios: 1,
+      activa: true,
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.publicaciones, publicaciones)
+  console.log(`📝 ${publicaciones.length} publicaciones creadas`)
+
+  // ── Comentarios ─────────────────────────────────────────────────
+  const comentarios = [
+    {
+      id: firestoreId(),
+      publicacionId: pubIds[0],
+      usuarioId: adminId,
+      contenido: 'Que gran iniciativa! Espero que este espacio sea de gran ayuda para todos.',
+      fechaCreacion: ahora,
+    },
+    {
+      id: firestoreId(),
+      publicacionId: pubIds[1],
+      usuarioId: adminId,
+      contenido: 'Yo conozco el CRI Merida, tienen buen programa de atencion temprana. Recomiendo agendar una cita de valoracion.',
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.comentarios, comentarios)
+  console.log(`💬 ${comentarios.length} comentarios agregados`)
+
+  // ── Me gustas ───────────────────────────────────────────────────
+  const meGustas = [
+    {
+      id: firestoreId(),
+      publicacionId: pubIds[0],
+      usuarioId: adminId,
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.meGustas, meGustas)
+  console.log(`❤️ ${meGustas.length} me gusta registrado`)
+
+  // ── Resenas ─────────────────────────────────────────────────────
+  const resenas = [
+    {
+      id: firestoreId(),
+      institucionId: instIds[0],
+      usuarioId: adminId,
+      calificacion: 5,
+      comentario: 'Excelente centro de rehabilitacion. El personal es muy atento y las instalaciones estan bien equipadas. Totalmente recomendado.',
+      verificada: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: firestoreId(),
+      institucionId: instIds[0],
+      usuarioId: adminId,
+      calificacion: 5,
+      comentario: 'Ofrecen terapias de lenguaje, fisica y ocupacional. Mi experiencia ha sido muy positiva.',
+      verificada: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: firestoreId(),
+      institucionId: instIds[1],
+      usuarioId: adminId,
+      calificacion: 5,
+      comentario: 'Atencion integral del IMSS. Cuentan con especialistas en rehabilitacion y equipo multidisciplinario.',
+      verificada: true,
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.resenas, resenas)
+  console.log(`⭐ ${resenas.length} resenas registradas`)
+
+  // ── Favoritos ───────────────────────────────────────────────────
+  const favoritos = [
+    {
+      id: firestoreId(),
+      usuarioId: adminId,
+      institucionId: instIds[0],
+      fechaCreacion: ahora,
+    },
+    {
+      id: firestoreId(),
+      usuarioId: adminId,
+      institucionId: instIds[2],
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.favoritos, favoritos)
+  console.log(`⭐ ${favoritos.length} favoritos agregados`)
+
+  // ── Postulaciones ───────────────────────────────────────────────
+  const postulaciones = [
+    {
+      id: firestoreId(),
+      vacanteId: vacanteIds[0],
+      usuarioId: adminId,
+      estado: 'pendiente',
+      mensaje: 'Me interesa mucho esta oportunidad. Tengo experiencia en carpinteria artesanal y muchas ganas de aprender.',
+      fechaCreacion: ahora,
+    },
+    {
+      id: firestoreId(),
+      vacanteId: vacanteIds[1],
+      usuarioId: adminId,
+      estado: 'pendiente',
+      mensaje: 'Cuento con conocimientos basicos de computacion y estoy interesado en desarrollar habilidades en soporte tecnico.',
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.postulaciones, postulaciones)
+  console.log(`📋 ${postulaciones.length} postulaciones registradas`)
+
+  // ── Mensajes Directos ───────────────────────────────────────────
+  const mensajesDirectos = [
+    {
+      id: firestoreId(),
+      remitenteId: adminId,
+      destinatarioId: adminId,
+      contenido: 'Bienvenido a Raices para Florecer! Este es tu panel de administracion. Explora las secciones para gestionar la plataforma.',
+      leido: true,
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.mensajesDirectos, mensajesDirectos)
+  console.log(`✉️ ${mensajesDirectos.length} mensaje directo creado`)
+
+  // ── Notificaciones ──────────────────────────────────────────────
+  const notificaciones = [
+    {
+      id: firestoreId(),
+      usuarioId: adminId,
+      titulo: 'Bienvenido a Raices',
+      mensaje: 'Gracias por ser parte de Raices para Florecer. Revisa las nuevas instituciones registradas en la plataforma.',
+      leida: false,
+      tipo: 'sistema',
+      fechaCreacion: ahora,
+    },
+    {
+      id: firestoreId(),
+      usuarioId: adminId,
+      titulo: 'Nueva institucion pendiente',
+      mensaje: 'Hay instituciones que requieren revision y aprobacion. Accede al panel de administracion para gestionarlas.',
+      leida: false,
+      tipo: 'sistema',
+      fechaCreacion: ahora,
+    },
+  ]
+  await insertarLote(COLECCIONES.notificaciones, notificaciones)
+  console.log(`🔔 ${notificaciones.length} notificaciones creadas`)
+
   // ── Configuraciones de plataforma ──────────────────────────────
   const configuraciones = [
     { clave: 'nombrePlataforma', valor: 'Raices para Florecer', fechaActualizacion: ahora },
@@ -492,15 +704,25 @@ async function seed() {
   const tiempoTotal = ((Date.now() - t0) / 1000).toFixed(1)
   console.log(`\n✅ Seed completo en ${tiempoTotal}s`)
   console.log('')
-  console.log('👤 Cuenta única de administrador:')
-  console.log('   Email:    admin@raices.mx')
-  console.log('   Password: Admin1234')
-  console.log('   Rol:      admin')
-  console.log(`   UID:      ${adminId} ${authSincronizado ? '(sincronizado con Firebase Auth)' : '(generado por Firestore, sin Auth)'}`)
+  console.log(`👤 ${USUARIOS.length} cuentas de usuario:`)
+  for (const usuario of USUARIOS) {
+    const uid = userIds[usuario.rol]
+    const sincro = authDisponible ? '(sincronizado con Firebase Auth)' : '(generado por Firestore, sin Auth)'
+    console.log(`   ${usuario.email} (${usuario.rol})  password: ${usuario.password}  → UID: ${uid} ${sincro}`)
+  }
   console.log('')
   console.log(`🏢 ${instituciones.length} instituciones de Merida`)
   console.log(`💼 ${vacantesDatos.length} vacantes de empleo inclusivo`)
   console.log(`👥 ${grupos.length} grupos de comunidad`)
+  console.log(`👤 ${miembrosGrupo.length} miembros de grupo`)
+  console.log(`📝 ${publicaciones.length} publicaciones`)
+  console.log(`💬 ${comentarios.length} comentarios`)
+  console.log(`❤️ ${meGustas.length} me gusta`)
+  console.log(`⭐ ${resenas.length} resenas`)
+  console.log(`⭐ ${favoritos.length} favoritos`)
+  console.log(`📋 ${postulaciones.length} postulaciones`)
+  console.log(`✉️ ${mensajesDirectos.length} mensaje directo`)
+  console.log(`🔔 ${notificaciones.length} notificaciones`)
   console.log(`⚙️  ${configuraciones.length} configuraciones de plataforma`)
   // ── Nota: todos los IDs ahora son generados exclusivamente por Firestore ──
   console.log('\n🔑 Todos los IDs de documentos fueron generados por Firestore (formato: xMMeLtvh0mU2xe6LuypeMRcPus82)')
