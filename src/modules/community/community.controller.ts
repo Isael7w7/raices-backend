@@ -149,4 +149,13 @@ export class CommunityController {
   stats() {
     return this.svc.getStats()
   }
+
+  @Get('miembros')
+  @ApiOperation({ summary: 'Miembros/testimonios públicos', description: 'Retorna perfiles activos con bio para la sección de testimonios de la comunidad. Endpoint público, sin autenticación.' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiResponse({ status: 200, description: 'Lista paginada de miembros con testimonios', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  members(@Query() paginacion: PaginacionDto) {
+    return this.svc.getMembers(paginacion.pagina, paginacion.limite)
+  }
 }

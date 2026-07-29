@@ -18,4 +18,8 @@ export class RegisterDto {
   @IsOptional() @IsString() tutorId?: string
   @ApiPropertyOptional({ description: 'Banderas de funcionalidades (por defecto todas activas)' })
   @IsOptional() features?: Record<string, boolean>
+  @ApiPropertyOptional({ description: 'Profesión o rol descriptivo del usuario', example: 'Madre de familia' })
+  @IsOptional() @IsString() profesion?: string
+  @ApiPropertyOptional({ description: 'Biografía corta del usuario', example: 'Mamá de Santiago (8 años, TEA).' })
+  @IsOptional() @IsString() bio?: string
 }

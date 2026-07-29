@@ -33,4 +33,20 @@ export class ActualizarPerfilDto {
   @IsOptional()
   @IsString()
   urlAvatar?: string
+
+  @ApiPropertyOptional({
+    description: 'Profesión o rol descriptivo que se muestra en la tarjeta de comunidad',
+    example: 'Madre de familia',
+  })
+  @IsOptional()
+  @IsString()
+  profesion?: string
+
+  @ApiPropertyOptional({
+    description: 'Biografía corta del usuario (se muestra en la sección de miembros de la comunidad)',
+    example: 'Mamá de Santiago (8 años, TEA). Comparte experiencias sobre terapia ABA y escuela inclusiva.',
+  })
+  @IsOptional()
+  @IsString()
+  bio?: string
 }

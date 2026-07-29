@@ -68,6 +68,8 @@ export class AuthService {
       ...(dto.ciudad && { ciudad: dto.ciudad }),
       ...(dto.estado && { estado: dto.estado }),
       ...(dto.tutorId && { tutorId: dto.tutorId }),
+      ...(dto.profesion && { profesion: dto.profesion }),
+      ...(dto.bio && { bio: dto.bio }),
     }
     await this.db.collection(COLECCIONES.perfiles).doc(uid).set(perfilData)
 

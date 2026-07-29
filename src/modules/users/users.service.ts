@@ -96,7 +96,7 @@ export class UsersService {
 
   async updateProfile(usuarioId: string, datos: any) {
     const datosSeguros = datos ?? {}
-    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar']
+    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio']
     const carga: Record<string, any> = {}
     for (const campo of camposActualizables) {
       if (datosSeguros[campo] !== undefined) {

@@ -240,4 +240,38 @@ export class CommunityService {
       totalComentarios: comentariosSnap.size,
     }
   }
+
+  /**
+   * Devuelve miembros/testimonios públicos de la comunidad.
+   * Solo usuarios activos que tengan una bio configurada.
+   */
+  async getMembers(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+    const snap = await this.db.collection(COLECCIONES.perfiles)
+      .where('activo', '==', true)
+      .get()
+
+    let miembros = snap.docs.map(d => {
+      const data = d.data()
+      return {
+        id: d.id,
+        nombreCompleto: data.nombreCompleto ?? null,
+        rol: data.rol ?? null,
+        profesion: data.profesion ?? null,
+        bio: data.bio ?? null,
+        ciudad: data.ciudad ?? null,
+        estado: data.estado ?? null,
+        urlAvatar: data.urlAvatar ?? null,
+      }
+    })
+
+    // Solo usuarios que tengan bio (testimonios)
+    miembros = miembros.filter(m => m.bio)
+
+    // Aleatorizar para que la sección se sienta dinámica
+    miembros.sort(() => Math.random() - 0.5)
+
+    const total = miembros.length
+    const inicio = (pagina - 1) * limite
+    return paginar(miembros.slice(inicio, inicio + limite), total, pagina, limite)
+  }
 }
