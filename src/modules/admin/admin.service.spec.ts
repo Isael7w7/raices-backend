@@ -106,7 +106,7 @@ describe('AdminService', () => {
 
       await service.approveInstitution('inst1')
 
-      expect(updateMock).toHaveBeenCalledWith({ activa: true })
+      expect(updateMock).toHaveBeenCalledWith({ verificada: true })
       expect(emailMock.sendInstitutionApproved).toHaveBeenCalledWith('c@test.com', 'Centro')
     })
   })

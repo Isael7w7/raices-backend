@@ -47,7 +47,9 @@ export class AdminService {
       this.col(COLECCIONES.perfiles).where('activo', '==', true).get(),
       this.col(COLECCIONES.instituciones).get(),
       this.col(COLECCIONES.instituciones).where('verificada', '==', true).get(),
-      this.col(COLECCIONES.instituciones).where('activa', '==', false).get(),
+      this.col(COLECCIONES.instituciones)
+        .where('activa', '==', true)
+        .where('verificada', '==', false).get(),
       this.col(COLECCIONES.resenas).get(),
       this.col(COLECCIONES.publicaciones).get(),
       this.col(COLECCIONES.grupos).get(),
@@ -267,15 +269,18 @@ export class AdminService {
   }
 
   async getPendingInstitutions() {
-    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const snap = await this.col(COLECCIONES.instituciones).where('activa', '==', false).get()
+    // Buscamos instituciones activas pero NO verificadas (pendientes de aprobación)
+    const snap = await this.col(COLECCIONES.instituciones)
+      .where('activa', '==', true)
+      .where('verificada', '==', false)
+      .get()
     const instituciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     instituciones.sort((a: any, b: any) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
     return instituciones
   }
 
   async approveInstitution(id: string) {
-    await this.col(COLECCIONES.instituciones).doc(id).update({ activa: true })
+    await this.col(COLECCIONES.instituciones).doc(id).update({ verificada: true })
     const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
     if (doc.exists) {
       const inst = doc.data()!

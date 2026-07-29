@@ -19,7 +19,9 @@ export class InstitutionsService {
     const page = Math.max(1, Number(filtros.page) || 1)
     const limit = Math.min(50, Math.max(1, Number(filtros.limit) || 10))
 
-    let q = this.col(COLECCIONES.instituciones).where('activa', '==', true)
+    let q = this.col(COLECCIONES.instituciones)
+      .where('activa', '==', true)
+      .where('verificada', '==', true)
     if (filtros.categoria) q = q.where('categoria', '==', filtros.categoria)
 
     const snap = await q.get()
