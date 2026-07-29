@@ -1,105 +1,142 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException } from '@nestjs/common'
-import { Firestore, FieldValue, Query } from 'firebase-admin/firestore'
+import { Injectable, Inject, Logger, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Firestore, FieldValue, Query, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
+/** Objeto de autor por defecto cuando el autor no existe o está deshabilitado */
+const AUTOR_NO_DISPONIBLE = Object.freeze({
+  nombreCompleto: 'Usuario no disponible',
+  urlAvatar: null,
+})
+
+/** Spread seguro de un snapshot de Firestore; retorna objeto vacío si data() es undefined */
+function extraerDoc<T = Record<string, any>>(d: { id: string; data(): DocumentData | undefined }): T & { id: string } {
+  return { id: d.id, ...(d.data() ?? {}) } as T & { id: string }
+}
+
+/** Filtra valores falsy (null / undefined / '') de un array y retorna string[] limpio */
+function idsValidos(ids: (string | undefined | null)[]): string[] {
+  return ids.filter((id): id is string => !!id)
+}
+
 @Injectable()
 export class CommunityService {
+  private readonly logger = new Logger(CommunityService.name)
+
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
   async getGroups(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
-    const snap = await this.db.collection(COLECCIONES.grupos)
-      .where('esPublico', '==', true).get()
+    try {
+      const snap = await this.db.collection(COLECCIONES.grupos)
+        .where('esPublico', '==', true).get()
 
-    let grupos = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[]
+      let grupos = snap.docs.map(d => extraerDoc(d))
 
-    if (buscar) {
-      const termino = buscar.toLowerCase()
-      grupos = grupos.filter(g =>
-        (g.nombre ?? '').toLowerCase().includes(termino) ||
-        (g.descripcion ?? '').toLowerCase().includes(termino)
-      )
+      if (buscar) {
+        const termino = buscar.toLowerCase()
+        grupos = grupos.filter(g =>
+          (g.nombre ?? '').toLowerCase().includes(termino) ||
+          (g.descripcion ?? '').toLowerCase().includes(termino)
+        )
+      }
+
+      if (ordenarPor) {
+        grupos = ordenar(grupos, ordenarPor, direccion ?? 'desc')
+      } else {
+        grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
+      }
+
+      const total = grupos.length
+      const inicio = (pagina - 1) * limite
+      return paginar(grupos.slice(inicio, inicio + limite), total, pagina, limite)
+    } catch (error) {
+      this.logger.error(`Error al obtener grupos: ${(error as Error).message}`, (error as Error).stack)
+      return paginar([], 0, pagina, limite)
     }
-
-    if (ordenarPor) {
-      grupos = ordenar(grupos, ordenarPor, direccion ?? 'desc')
-    } else {
-      grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
-    }
-
-    const total = grupos.length
-    const inicio = (pagina - 1) * limite
-    return paginar(grupos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getPosts(grupoId?: string, usuarioId?: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
-    let q: Query = this.db.collection(COLECCIONES.publicaciones)
-    if (grupoId) q = q.where('grupoId', '==', grupoId)
+    try {
+      let q: Query = this.db.collection(COLECCIONES.publicaciones)
+      if (grupoId) q = q.where('grupoId', '==', grupoId)
 
-    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const publicacionSnap = await q.get()
-    let publicaciones = publicacionSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+      const publicacionSnap = await q.get()
+      let publicaciones = publicacionSnap.docs.map(d => extraerDoc(d))
 
-    if (buscar) {
-      const termino = buscar.toLowerCase()
-      const autoresIdsBusqueda = [...new Set(publicaciones.map(p => p.autorId))]
-      const mapaAutoresBusqueda = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
-      publicaciones = publicaciones.filter(p =>
-        (p.contenido ?? '').toLowerCase().includes(termino) ||
-        (mapaAutoresBusqueda.get(p.autorId)?.nombreCompleto ?? '').toLowerCase().includes(termino)
-      )
+      if (buscar) {
+        const termino = buscar.toLowerCase()
+        const autoresIdsBusqueda = idsValidos(publicaciones.map(p => p.autorId))
+        const mapaAutoresBusqueda = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
+        publicaciones = publicaciones.filter(p =>
+          (p.contenido ?? '').toLowerCase().includes(termino) ||
+          (mapaAutoresBusqueda.get(p.autorId)?.nombreCompleto ?? '').toLowerCase().includes(termino)
+        )
+      }
+
+      publicaciones = ordenar(publicaciones, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
+
+      // Batch lookup de autores con IDs válidos únicamente
+      const autoresIds = idsValidos([...new Set(publicaciones.map(p => p.autorId))])
+      const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+
+      const enriquecidas = publicaciones.map(p => {
+        const autor = mapaAutores.get(p.autorId) ?? AUTOR_NO_DISPONIBLE
+        return {
+          ...p,
+          nombreCompleto: autor.nombreCompleto,
+          urlAvatar: autor.urlAvatar ?? null,
+        }
+      })
+
+      let conMeGusta: any[]
+      if (usuarioId) {
+        const likedSnap = await this.db.collection(COLECCIONES.meGustas)
+          .where('usuarioId', '==', usuarioId).get()
+        const likedSet = new Set(likedSnap.docs.map(l => l.data().publicacionId))
+        conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: likedSet.has(p.id) }))
+      } else {
+        conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: false }))
+      }
+
+      const total = conMeGusta.length
+      const inicio = (pagina - 1) * limite
+      return paginar(conMeGusta.slice(inicio, inicio + limite), total, pagina, limite)
+    } catch (error) {
+      this.logger.error(`Error al obtener publicaciones: ${(error as Error).message}`, (error as Error).stack)
+      return paginar([], 0, pagina, limite)
     }
-
-    publicaciones = ordenar(publicaciones, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
-
-    // Batch lookup de autores en lugar de N+1 queries
-    const autoresIds = [...new Set(publicaciones.map(p => p.autorId))]
-    const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
-
-    const enriquecidas = publicaciones.map(p => ({
-      ...p,
-      nombreCompleto: mapaAutores.get(p.autorId)?.nombreCompleto ?? null,
-      urlAvatar: mapaAutores.get(p.autorId)?.urlAvatar ?? null,
-    }))
-
-    let conMeGusta: any[]
-    if (usuarioId) {
-      const likedSnap = await this.db.collection(COLECCIONES.meGustas)
-        .where('usuarioId', '==', usuarioId).get()
-      const likedSet = new Set(likedSnap.docs.map(l => l.data().publicacionId))
-      conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: likedSet.has(p.id) }))
-    } else {
-      conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: false }))
-    }
-
-    const total = conMeGusta.length
-    const inicio = (pagina - 1) * limite
-    return paginar(conMeGusta.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getComments(publicacionId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
-    const snap = await this.db.collection(COLECCIONES.comentarios)
-      .where('publicacionId', '==', publicacionId).get()
+    try {
+      const snap = await this.db.collection(COLECCIONES.comentarios)
+        .where('publicacionId', '==', publicacionId).get()
 
-    // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const comentarios = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
-    comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
+      let comentarios = snap.docs.map(d => extraerDoc(d))
+      comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
 
-    // Batch lookup de autores en lugar de N+1 queries
-    const autoresIds = [...new Set(comentarios.map(c => c.autorId))]
-    const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+      // Batch lookup de autores con IDs válidos únicamente
+      const autoresIds = idsValidos([...new Set(comentarios.map(c => c.autorId))])
+      const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
 
-    const todos = comentarios.map(c => ({
-      ...c,
-      nombreCompleto: mapaAutores.get(c.autorId)?.nombreCompleto ?? null,
-      urlAvatar: mapaAutores.get(c.autorId)?.urlAvatar ?? null,
-    }))
+      const todos = comentarios.map(c => {
+        const autor = mapaAutores.get(c.autorId) ?? AUTOR_NO_DISPONIBLE
+        return {
+          ...c,
+          nombreCompleto: autor.nombreCompleto,
+          urlAvatar: autor.urlAvatar ?? null,
+        }
+      })
 
-    const total = todos.length
-    const inicio = (pagina - 1) * limite
-    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
+      const total = todos.length
+      const inicio = (pagina - 1) * limite
+      return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
+    } catch (error) {
+      this.logger.error(`Error al obtener comentarios: ${(error as Error).message}`, (error as Error).stack)
+      return paginar([], 0, pagina, limite)
+    }
   }
 
   async createPost(autorId: string, contenido: string, grupoId?: string) {
@@ -110,10 +147,14 @@ export class CommunityService {
     })
 
     const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
-    const autor = autorDoc.data()
-    return { id: ref.id, autorId, contenido, grupoId: grupoId ?? null, cantidadMeGustas: 0,
-      fechaCreacion: new Date().toISOString(), nombreCompleto: autor?.nombreCompleto ?? null,
-      urlAvatar: autor?.urlAvatar ?? null, usuarioMeGusta: false }
+    const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null
+    return {
+      id: ref.id, autorId, contenido, grupoId: grupoId ?? null, cantidadMeGustas: 0,
+      fechaCreacion: new Date().toISOString(),
+      nombreCompleto: autor?.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
+      urlAvatar: autor?.urlAvatar ?? null,
+      usuarioMeGusta: false,
+    }
   }
 
   async createComment(publicacionId: string, autorId: string, contenido: string) {
@@ -125,8 +166,12 @@ export class CommunityService {
 
     const doc = await this.db.collection(COLECCIONES.comentarios).doc(ref.id).get()
     const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
-    const autor = autorDoc.data()
-    return { id: doc.id, ...doc.data()!, nombreCompleto: autor?.nombreCompleto ?? null, urlAvatar: autor?.urlAvatar ?? null }
+    const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null
+    return {
+      id: doc.id, ...(doc.data() ?? {}),
+      nombreCompleto: autor?.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
+      urlAvatar: autor?.urlAvatar ?? null,
+    }
   }
 
   async toggleLike(usuarioId: string, publicacionId: string) {
@@ -188,7 +233,7 @@ export class CommunityService {
       fechaCreacion: new Date().toISOString(),
     })
     const doc = await this.db.collection(COLECCIONES.grupos).doc(ref.id).get()
-    return { id: ref.id, ...doc.data() } as any
+    return { id: ref.id, ...(doc.data() ?? {}) } as any
   }
 
   async joinGroup(grupoId: string, usuarioId: string) {
@@ -246,32 +291,37 @@ export class CommunityService {
    * Solo usuarios activos que tengan una bio configurada.
    */
   async getMembers(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
-    const snap = await this.db.collection(COLECCIONES.perfiles)
-      .where('activo', '==', true)
-      .get()
+    try {
+      const snap = await this.db.collection(COLECCIONES.perfiles)
+        .where('activo', '==', true)
+        .get()
 
-    let miembros = snap.docs.map(d => {
-      const data = d.data()
-      return {
-        id: d.id,
-        nombreCompleto: data.nombreCompleto ?? null,
-        rol: data.rol ?? null,
-        profesion: data.profesion ?? null,
-        bio: data.bio ?? null,
-        ciudad: data.ciudad ?? null,
-        estado: data.estado ?? null,
-        urlAvatar: data.urlAvatar ?? null,
-      }
-    })
+      let miembros = snap.docs.map(d => {
+        const data = d.data() ?? {}
+        return {
+          id: d.id,
+          nombreCompleto: data.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
+          rol: data.rol ?? null,
+          profesion: data.profesion ?? null,
+          bio: data.bio ?? null,
+          ciudad: data.ciudad ?? null,
+          estado: data.estado ?? null,
+          urlAvatar: data.urlAvatar ?? null,
+        }
+      })
 
-    // Solo usuarios que tengan bio (testimonios)
-    miembros = miembros.filter(m => m.bio)
+      // Solo usuarios que tengan bio (testimonios)
+      miembros = miembros.filter(m => m.bio)
 
-    // Aleatorizar para que la sección se sienta dinámica
-    miembros.sort(() => Math.random() - 0.5)
+      // Aleatorizar para que la sección se sienta dinámica
+      miembros.sort(() => Math.random() - 0.5)
 
-    const total = miembros.length
-    const inicio = (pagina - 1) * limite
-    return paginar(miembros.slice(inicio, inicio + limite), total, pagina, limite)
+      const total = miembros.length
+      const inicio = (pagina - 1) * limite
+      return paginar(miembros.slice(inicio, inicio + limite), total, pagina, limite)
+    } catch (error) {
+      this.logger.error(`Error al obtener miembros/testimonios: ${(error as Error).message}`, (error as Error).stack)
+      return paginar([], 0, pagina, limite)
+    }
   }
 }
