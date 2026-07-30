@@ -43,6 +43,7 @@ export class JobsService {
         nombreInstitucion: inst.nombre ?? null,
         ciudadInstitucion: inst.ciudad ?? null,
         institucionVerificada: inst.verificada ?? false,
+        institucionOwnerId: inst.creadoPor ?? null,
       }
     }).filter(v => mapaInst.has(v.institucionId) && (mapaInst.get(v.institucionId).activa ?? false))
 
@@ -83,6 +84,7 @@ export class JobsService {
       emailInstitucion: inst.email ?? null,
       sitioWebInstitucion: inst.sitioWeb ?? null,
       institucionVerificada: inst.verificada ?? false,
+      institucionOwnerId: inst.creadoPor ?? null,
     }
   }
 
@@ -120,7 +122,7 @@ export class JobsService {
     const todos = postulaciones.map(p => {
       const vacante = mapaVacantes.get(p.vacanteId) ?? {}
       const inst = mapaInst.get(vacante.institucionId) ?? {}
-      return { ...p, titulo: vacante.titulo, modalidad: vacante.modalidad, nombreInstitucion: inst.nombre ?? null }
+      return { ...p, titulo: vacante.titulo, modalidad: vacante.modalidad, nombreInstitucion: inst.nombre ?? null, institucionId: vacante.institucionId ?? null, institucionOwnerId: inst.creadoPor ?? null }
     })
 
     let resultado = todos
