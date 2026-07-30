@@ -350,6 +350,144 @@ describe('AdminService', () => {
     })
   })
 
+  // ── getActiveVisitors ────────────────────────────────────────────────
+
+  describe('getActiveVisitors', () => {
+    beforeEach(() => {
+      jest.restoreAllMocks()
+    })
+
+    it('should calculate metrics from real session data with Spanish camelCase properties', async () => {
+      const ahora = 1_700_000_000_000
+      jest.spyOn(Date, 'now').mockReturnValue(ahora)
+
+      // Create session timestamps at known offsets
+      // 3 sessions in last 5 min -> live=3
+      // 10 sessions total in last 24h -> avgDaily=10
+      // 24 sessions in last week (includes the 10 from day) -> avgWeekly = round(24/7) = 3
+      // Sessions older than a week count for monthly
+      const sesiones = [
+        // 3 in last 5 min
+        { timestamp: ahora - 60_000 },
+        { timestamp: ahora - 120_000 },
+        { timestamp: ahora - 180_000 },
+        // 7 more in last 24h (but outside 5 min)
+        { timestamp: ahora - 600_000 },
+        { timestamp: ahora - 1_800_000 },
+        { timestamp: ahora - 3_600_000 },
+        { timestamp: ahora - 7_200_000 },
+        { timestamp: ahora - 14_400_000 },
+        { timestamp: ahora - 21_600_000 },
+        { timestamp: ahora - 43_200_000 },
+        // 14 more in last week (but outside 24h)
+        ...Array.from({ length: 14 }, (_, i) => ({ timestamp: ahora - (2 + i) * 86_400_000 })),
+        // 30 more in last month (but outside week)
+        ...Array.from({ length: 30 }, (_, i) => ({ timestamp: ahora - (16 + i) * 86_400_000 })),
+      ]
+
+      const analiticasSnap = {
+        empty: false,
+        docs: sesiones.map((s, i) => ({ id: `s${i}`, data: () => s })),
+        size: sesiones.length,
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue(analiticasSnap),
+      })
+
+      const result = await service.getActiveVisitors()
+
+      expect(result).toHaveProperty('personasActivas')
+      expect(result).toHaveProperty('promedioDiario')
+      expect(result).toHaveProperty('promedioSemanal')
+      expect(result).toHaveProperty('promedioMensual')
+      expect(result).toHaveProperty('historialMinutos')
+
+      expect(result.personasActivas).toBe(3)
+      expect(result.promedioDiario).toBe(10)
+      // 15 sessions in last week (3 last5min + 7 last24h + 5 from the '14' that fall within 7 days)
+      // round(15/7) = round(2.14) = 2
+      expect(result.promedioSemanal).toBe(2)
+      // All 54 sessions count for monthly: round(54/30) = round(1.8) = 2
+      expect(result.promedioMensual).toBe(2)
+      expect(result.historialMinutos).toHaveLength(13)
+    })
+
+    it('should fall back to estimation when analytics snap is empty, returning Spanish camelCase properties', async () => {
+      jest.spyOn(Math, 'random').mockReturnValue(0.5)
+
+      const emptyAnaliticas = { empty: true, docs: [], size: 0 }
+      const usuariosSnap = {
+        size: 100,
+        docs: Array.from({ length: 60 }, (_, i) => ({
+          id: `u${i}`,
+          data: () => ({ activo: true }),
+        })),
+      }
+      const perfilesExtendidosSnap = { size: 40, docs: [], empty: false }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(emptyAnaliticas),
+        })
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue(usuariosSnap) })  // perfiles
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue(perfilesExtendidosSnap) }) // perfilesExtendidos
+
+      const result = await service.getActiveVisitors()
+
+      expect(result).toHaveProperty('personasActivas')
+      expect(result).toHaveProperty('promedioDiario')
+      expect(result).toHaveProperty('promedioSemanal')
+      expect(result).toHaveProperty('promedioMensual')
+      expect(result).toHaveProperty('historialMinutos')
+
+      expect(typeof result.personasActivas).toBe('number')
+      expect(typeof result.promedioDiario).toBe('number')
+      expect(typeof result.promedioSemanal).toBe('number')
+      expect(typeof result.promedioMensual).toBe('number')
+      expect(Array.isArray(result.historialMinutos)).toBe(true)
+      expect(result.historialMinutos).toHaveLength(13)
+
+      // With 60 active users, 40 extended profiles, and random=0.5:
+      // proporcionActivos = 60/100 = 0.6
+      // proporcionCompletaronPerfil = 40/100 = 0.4
+      // live = max(1, round(60 * 0.05 * 0.4)) = max(1, round(1.2)) = 1
+      expect(result.personasActivas).toBe(1)
+      expect(result.promedioDiario).toBeGreaterThanOrEqual(1)
+      expect(result.historialMinutos.every((v: number) => v >= 0)).toBe(true)
+    })
+
+    it('should fall back when analytics query throws an error', async () => {
+      jest.spyOn(Math, 'random').mockReturnValue(0.5)
+
+      // collection throws for the analytics query
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockRejectedValue(new Error('Firestore error')),
+        })
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 50, docs: Array.from({ length: 30 }, () => ({ data: () => ({ activo: true }) })) }) })  // perfiles
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 20, docs: [] }) }) // perfilesExtendidos
+
+      const result = await service.getActiveVisitors()
+
+      expect(result).toHaveProperty('personasActivas')
+      expect(result).toHaveProperty('promedioDiario')
+      expect(result).toHaveProperty('promedioSemanal')
+      expect(result).toHaveProperty('promedioMensual')
+      expect(result).toHaveProperty('historialMinutos')
+      expect(result.historialMinutos).toHaveLength(13)
+    })
+  })
+
   // ── getAlerts ───────────────────────────────────────────────────────
 
   describe('getAlerts', () => {

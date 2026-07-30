@@ -77,6 +77,7 @@ async function bootstrap() {
     .addTag("Administración", "Panel administrativo")
     .addTag("Inteligencia Artificial", "Chat y recomendaciones con IA")
     .addTag("Empleo", "Bolsa de trabajo inclusiva")
+    .addTag("Catálogos", "Catálogos de referencia (parentescos, discapacidades, etc.)")
     .addTag("Mensajes", "Mensajería directa entre usuarios")
     .build();
 

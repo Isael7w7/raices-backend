@@ -34,6 +34,11 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Análisis de cobertura con hallazgos' })
   needsIntelligence() { return this.svc.getNeedsIntelligence() }
 
+  @Get('visitantes-activos')
+  @ApiOperation({ summary: 'Visitantes activos en tiempo real', description: 'Métricas de visitantes actuales y promedios históricos: personasActivas, promedioDiario, promedioSemanal, promedioMensual, historialMinutos (últimos 13 min). Intenta calcular con datos reales de sesiones; si no hay, estima con base en usuarios activos.' })
+  @ApiResponse({ status: 200, description: 'Métricas de visitantes activos', example: { personasActivas: 3, promedioDiario: 5, promedioSemanal: 4, promedioMensual: 10, historialMinutos: [25, 45, 48, 28, 12, 36, 48, 38, 48, 45, 38, 34, 40] } })
+  activeVisitors() { return this.svc.getActiveVisitors() }
+
   /* ── Instituciones ── */
   @Get('instituciones')
   @ApiOperation({ summary: 'Todas las instituciones (admin)', description: 'Lista paginada de instituciones' })
