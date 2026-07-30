@@ -19,6 +19,20 @@ export interface CatalogoCategoria {
 
 @Injectable()
 export class CatalogsService {
+  /**
+   * Retorna todos los catálogos combinados en un solo objeto.
+   * Útil para el frontend cuando necesita cargar todos los catálogos de una vez.
+   */
+  getAll() {
+    return {
+      parentescos: this.getParentescos(),
+      discapacidades: this.getDiscapacidades(),
+      etapasVida: this.getEtapasVida(),
+      features: this.getFeatures(),
+      categorias: this.getCategorias(),
+    }
+  }
+
   getParentescos(): string[] {
     return [
       'Hijo/a',

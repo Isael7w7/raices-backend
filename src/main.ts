@@ -40,7 +40,13 @@ async function bootstrap() {
     exposedHeaders: ["Content-Type", "ETag"],
   });
 
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    transformOptions: {
+      enableImplicitConversion: true,
+    },
+  }));
   app.setGlobalPrefix("api");
 
   // Swagger configuration

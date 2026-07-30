@@ -7,6 +7,13 @@ import { CatalogsService } from './catalogs.service'
 export class CatalogsController {
   constructor(private readonly svc: CatalogsService) {}
 
+  @Get()
+  @ApiOperation({ summary: 'Todos los catálogos', description: 'Retorna todos los catálogos de la plataforma en un solo objeto (parentescos, discapacidades, etapas de vida, features, categorías)' })
+  @ApiResponse({ status: 200, description: 'Objeto con todos los catálogos disponibles' })
+  getAll() {
+    return this.svc.getAll()
+  }
+
   @Get('parentescos')
   @ApiOperation({ summary: 'Catálogo de parentescos', description: 'Lista de opciones de parentesco para dependientes' })
   @ApiResponse({ status: 200, description: 'Arreglo de parentescos disponibles', example: ['Hijo/a', 'Hermano/a', 'Nieto/a'] })

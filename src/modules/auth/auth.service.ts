@@ -73,6 +73,24 @@ export class AuthService {
     }
     await this.db.collection(COLECCIONES.perfiles).doc(uid).set(perfilData)
 
+    // Si el rol es 'institution', también crear documento en colección 'instituciones'
+    // para que aparezca en los listados públicos del directorio.
+    if (dto.rol === 'institution') {
+      const institucionData: Record<string, any> = {
+        id: uid,
+        nombre: dto.nombreCompleto,
+        emailContacto: dto.email,
+        ciudad: dto.ciudad ?? null,
+        estado: dto.estado ?? null,
+        activa: true,
+        verificada: false,
+        calificacionPromedio: 0,
+        cantidadCalificaciones: 0,
+        fechaCreacion: new Date().toISOString(),
+      }
+      await this.db.collection(COLECCIONES.instituciones).doc(uid).set(institucionData)
+    }
+
     let idToken: string
     let tokenRefresco: string
     try {

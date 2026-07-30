@@ -66,20 +66,29 @@ export class CommunityService {
       let publicaciones = publicacionSnap.docs.map(d => extraerDoc(d))
 
       if (buscar) {
-        const termino = buscar.toLowerCase()
-        const autoresIdsBusqueda = idsValidos(publicaciones.map(p => p.autorId))
-        const mapaAutoresBusqueda = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
-        publicaciones = publicaciones.filter(p =>
-          (p.contenido ?? '').toLowerCase().includes(termino) ||
-          (mapaAutoresBusqueda.get(p.autorId)?.nombreCompleto ?? '').toLowerCase().includes(termino)
-        )
+        try {
+          const termino = buscar.toLowerCase()
+          const autoresIdsBusqueda = idsValidos(publicaciones.map(p => p.autorId))
+          const mapaAutoresBusqueda = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
+          publicaciones = publicaciones.filter(p =>
+            (p.contenido ?? '').toLowerCase().includes(termino) ||
+            (mapaAutoresBusqueda.get(p.autorId)?.nombreCompleto ?? '').toLowerCase().includes(termino)
+          )
+        } catch (searchErr) {
+          this.logger.error(`Error al buscar publicaciones: ${(searchErr as Error).message}`, (searchErr as Error).stack)
+        }
       }
 
       publicaciones = ordenar(publicaciones, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
 
       // Batch lookup de autores con IDs válidos únicamente
-      const autoresIds = idsValidos([...new Set(publicaciones.map(p => p.autorId))])
-      const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+      let mapaAutores = new Map<string, any>()
+      try {
+        const autoresIds = idsValidos([...new Set(publicaciones.map(p => p.autorId))])
+        mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+      } catch (authorsErr) {
+        this.logger.error(`Error al obtener autores de publicaciones: ${(authorsErr as Error).message}`, (authorsErr as Error).stack)
+      }
 
       const enriquecidas = publicaciones.map(p => {
         const autor = mapaAutores.get(p.autorId) ?? AUTOR_NO_DISPONIBLE
@@ -91,12 +100,17 @@ export class CommunityService {
       })
 
       let conMeGusta: any[]
-      if (usuarioId) {
-        const likedSnap = await this.db.collection(COLECCIONES.meGustas)
-          .where('usuarioId', '==', usuarioId).get()
-        const likedSet = new Set(likedSnap.docs.map(l => l.data().publicacionId))
-        conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: likedSet.has(p.id) }))
-      } else {
+      try {
+        if (usuarioId) {
+          const likedSnap = await this.db.collection(COLECCIONES.meGustas)
+            .where('usuarioId', '==', usuarioId).get()
+          const likedSet = new Set(likedSnap.docs.map(l => l.data().publicacionId))
+          conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: likedSet.has(p.id) }))
+        } else {
+          conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: false }))
+        }
+      } catch (likesErr) {
+        this.logger.error(`Error al obtener me gustas: ${(likesErr as Error).message}`, (likesErr as Error).stack)
         conMeGusta = enriquecidas.map(p => ({ ...p, usuarioMeGusta: false }))
       }
 

@@ -170,6 +170,7 @@ export class UsersService {
       id: ref.id, tutorId: usuarioId,
       nombreCompleto: datos.nombreCompleto ?? 'Sin nombre',
       parentesco: datos.parentesco ?? 'familiar',
+      rol: 'discapacitado',
       datosPerfil: JSON.stringify({
         tiposDiscapacidad: datos.tiposDiscapacidad ?? [],
         rangoEdad: datos.rangoEdad ?? null,
