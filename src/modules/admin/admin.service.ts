@@ -363,8 +363,11 @@ export class AdminService {
 
     // 2. Eliminar datos relacionados en paralelo
     await Promise.all([
-      // Dependientes
+      // Dependientes (cuando el eliminado es tutor)
       this.eliminarDocsEnLote(COLECCIONES.dependientes, 'tutorId', id),
+      // Relación dependiente↔tutor cuando el eliminado es una PCD vinculada
+      // (el documento de relación usa el mismo ID que el perfil PCD)
+      this.col(COLECCIONES.dependientes).doc(id).delete(),
       // Perfil extendido de necesidades
       this.eliminarDocsEnLote(COLECCIONES.perfilesExtendidos, 'usuarioId', id),
       // Favoritos

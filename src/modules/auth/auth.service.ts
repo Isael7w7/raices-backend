@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException, Inject, Logger, Optional } from '@nestjs/common'
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Inject, Logger, Optional } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
@@ -33,6 +33,19 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto) {
+    // Si se indica un tutor, validar que la relación sea coherente:
+    // solo cuentas PCD pueden vincularse y el tutor debe existir y estar activo.
+    if (dto.tutorId) {
+      if (dto.rol !== 'pcd') {
+        throw new BadRequestException('Solo las cuentas con rol PCD pueden estar vinculadas a un tutor')
+      }
+      const tutorDoc = await this.db.collection(COLECCIONES.perfiles).doc(dto.tutorId).get()
+      const tutor = tutorDoc.exists ? tutorDoc.data() : null
+      if (!tutor || tutor.rol !== 'tutor' || tutor.activo === false) {
+        throw new BadRequestException('El tutor indicado no existe o no está activo')
+      }
+    }
+
     const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
@@ -72,6 +85,22 @@ export class AuthService {
       ...(dto.bio && { bio: dto.bio }),
     }
     await this.db.collection(COLECCIONES.perfiles).doc(uid).set(perfilData)
+
+    // Si es una PCD dada de alta por un tutor, registrar la relación en 'dependientes'
+    // para que la persona aparezca en la lista de personas bajo cuidado del tutor.
+    if (dto.rol === 'pcd' && dto.tutorId) {
+      await this.db.collection(COLECCIONES.dependientes).doc(uid).set({
+        id: uid,
+        tutorId: dto.tutorId,
+        pcdUserId: uid,
+        esCuentaVinculada: true,
+        rol: 'pcd',
+        nombreCompleto: dto.nombreCompleto,
+        parentesco: null,
+        datosPerfil: '{}',
+        fechaCreacion: perfilData.fechaCreacion,
+      })
+    }
 
     // Si el rol es 'institution', también crear documento en colección 'instituciones'
     // para que aparezca en los listados públicos del directorio.

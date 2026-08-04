@@ -5,6 +5,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
+import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class UsersService {
@@ -160,6 +161,20 @@ export class UsersService {
       .where('tutorId', '==', usuarioId).get()
 
     const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
+
+    // Las cuentas PCD vinculadas guardan sus features reales en su perfil;
+    // enriquecerlas para que la lista refleje el estado actualizado.
+    const pcdIds = dependientes.filter(d => d.esCuentaVinculada).map(d => d.id)
+    if (pcdIds.length > 0) {
+      const mapaPerfiles = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, pcdIds)
+      for (const dep of dependientes) {
+        if (dep.esCuentaVinculada) {
+          const perfil = mapaPerfiles.get(dep.id)
+          if (perfil?.features) dep.features = { ...FEATURES_POR_DEFECTO, ...perfil.features }
+        }
+      }
+    }
+
     dependientes.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
     return dependientes
   }
@@ -207,12 +222,30 @@ export class UsersService {
     if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
       throw new NotFoundException('Dependiente no encontrado')
     }
-    return this.formatearDependiente({ id: doc.id, ...doc.data()! })
+    const dependiente = this.formatearDependiente({ id: doc.id, ...doc.data()! })
+
+    // Para cuentas PCD vinculadas, los features reales viven en su perfil
+    if (dependiente.esCuentaVinculada) {
+      const perfil = await this.col(COLECCIONES.perfiles).doc(dependiente.pcdUserId ?? id).get()
+      if (perfil.exists && perfil.data()?.features) {
+        dependiente.features = { ...FEATURES_POR_DEFECTO, ...perfil.data()!.features }
+      }
+    }
+    return dependiente
   }
 
   async deleteDependent(usuarioId: string, id: string) {
     const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
     if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
+
+    // Si es una cuenta PCD vinculada, desvincular también su perfil real
+    // para no dejar la relación a medias.
+    if (existente.data()?.esCuentaVinculada || existente.data()?.pcdUserId) {
+      await this.col(COLECCIONES.perfiles)
+        .doc(existente.data()?.pcdUserId ?? id)
+        .update({ tutorId: null })
+    }
+
     await this.col(COLECCIONES.dependientes).doc(id).delete()
   }
 
@@ -222,11 +255,13 @@ export class UsersService {
     return {
       id: d.id,
       nombreCompleto: d.nombreCompleto,
-      parentesco: d.parentesco,
+      parentesco: d.parentesco ?? null,
       tiposDiscapacidad: Array.isArray(p.tiposDiscapacidad) ? p.tiposDiscapacidad : [],
       rangoEdad: p.rangoEdad ?? null,
       etapaVida: p.etapaVida ?? null,
       notas: p.notas ?? '',
+      esCuentaVinculada: d.esCuentaVinculada === true || !!d.pcdUserId,
+      pcdUserId: d.pcdUserId ?? null,
       features: d.features ?? { ...FEATURES_POR_DEFECTO },
       fechaCreacion: d.fechaCreacion,
     }
@@ -264,7 +299,26 @@ export class UsersService {
     }
 
     await this.col(COLECCIONES.perfiles).doc(pcdUserId).update({ tutorId })
+    await this.crearRegistroDependienteVinculado(tutorId, pcdUserId, pcd.nombreCompleto)
     return { vinculado: true, pcdUserId, tutorId }
+  }
+
+  /**
+   * Registra la relación tutor ↔ PCD en la colección 'dependientes' para que
+   * la persona vinculada aparezca en la lista de personas bajo cuidado del tutor.
+   */
+  private async crearRegistroDependienteVinculado(tutorId: string, pcdUserId: string, nombreCompleto?: string) {
+    await this.col(COLECCIONES.dependientes).doc(pcdUserId).set({
+      id: pcdUserId,
+      tutorId,
+      pcdUserId,
+      esCuentaVinculada: true,
+      rol: 'pcd',
+      nombreCompleto: nombreCompleto ?? 'Sin nombre',
+      parentesco: null,
+      datosPerfil: '{}',
+      fechaCreacion: new Date().toISOString(),
+    }, { merge: true })
   }
 
   // ─── Features de dependiente ────────────────────────────────────────
@@ -276,6 +330,12 @@ export class UsersService {
     const doc = await this.col(COLECCIONES.dependientes).doc(dependienteId).get()
     if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
       throw new NotFoundException('Dependiente no encontrado')
+    }
+
+    // Si es una cuenta PCD vinculada, los features viven en su perfil real:
+    // delegar para mantener una única fuente de verdad.
+    if (doc.data()?.esCuentaVinculada || doc.data()?.pcdUserId) {
+      return this.updateLinkedPcdFeatures(usuarioId, doc.data()?.pcdUserId ?? dependienteId, features)
     }
 
     const existentes: FeatureFlags = doc.data()?.features ?? { ...FEATURES_POR_DEFECTO }

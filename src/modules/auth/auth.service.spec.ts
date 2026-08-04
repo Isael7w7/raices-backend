@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { ConflictException, UnauthorizedException } from '@nestjs/common'
+import { ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common'
 import { AuthService } from './auth.service'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { EmailService } from '../email/email.service'
@@ -148,6 +148,73 @@ describe('AuthService', () => {
         })
 
       await expect(service.register(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should link the PCD to the tutor and create the dependiente record when tutorId is provided', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
+      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ // 1. Validación del tutor
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: true })),
+          }),
+        })
+        .mockReturnValueOnce({ // 2. Email check
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(emailCheckSnap),
+        })
+        .mockReturnValueOnce({ // 3. Perfil set
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false, 'new-uid-123')),
+        })
+        .mockReturnValueOnce({ // 4. Registro de dependiente vinculado
+          doc: jest.fn().mockReturnValue({ set: dependienteSetMock }),
+        })
+
+      const result = await service.register(dtoConTutor)
+
+      expect(result.usuario.tutorId).toBe('tutor-1')
+      expect(dependienteSetMock).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'new-uid-123',
+        tutorId: 'tutor-1',
+        pcdUserId: 'new-uid-123',
+        esCuentaVinculada: true,
+      }))
+    })
+
+    it('should throw BadRequestException when tutorId is provided for a non-PCD role', async () => {
+      const dtoTutor = { ...dto, rol: 'tutor' as const, tutorId: 'tutor-1' }
+      await expect(service.register(dtoTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the tutor does not exist', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'ghost-tutor' }
+      firestoreMock.collection.mockReturnValueOnce({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+      await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the tutor is inactive', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
+      firestoreMock.collection.mockReturnValueOnce({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: false })),
+        }),
+      })
+      await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the tutorId points to a non-tutor account', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'inst-1' }
+      firestoreMock.collection.mockReturnValueOnce({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst-1', rol: 'institution', activo: true })),
+        }),
+      })
+      await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
     })
 
     it('should use custom token as fallback when sign-in fails after register', async () => {

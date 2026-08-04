@@ -472,6 +472,8 @@ describe('UsersService', () => {
         rangoEdad: '6-12',
         etapaVida: 'infancia',
         notas: 'Requiere acompañamiento',
+        esCuentaVinculada: false,
+        pcdUserId: null,
         features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
         fechaCreacion: '2024-01-01T00:00:00.000Z',
       })
@@ -505,6 +507,31 @@ describe('UsersService', () => {
       })
 
       await expect(service.getDependent('user1', 'dep2')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should enrich features of a linked account from its real profile', async () => {
+      const depData = {
+        id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1',
+        nombreCompleto: 'Ana', parentesco: null, fechaCreacion: '2024-01-01T00:00:00.000Z', datosPerfil: '{}',
+      }
+      const perfilData = {
+        features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ // dependiente doc
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
+        })
+        .mockReturnValueOnce({ // perfil real de la PCD
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(perfilData)) }),
+        })
+
+      const result: any = await service.getDependent('user1', 'pcd1')
+
+      expect(result.esCuentaVinculada).toBe(true)
+      expect(result.pcdUserId).toBe('pcd1')
+      expect(result.features.chat).toBe(false)
+      expect(result.features.postulaciones).toBe(true)
     })
   })
 
@@ -661,6 +688,35 @@ describe('UsersService', () => {
       expect(result[0].id).toBe('dep1')
       expect(result[1].id).toBe('dep2')
     })
+
+    it('should enrich features of linked PCD accounts from their real profile', async () => {
+      const deps = [
+        { id: 'pcd1', data: () => ({ id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1', nombreCompleto: 'Ana', fechaCreacion: '2024-01-01', datosPerfil: '{}' }) },
+      ]
+      const perfilesSnap = {
+        docs: [{
+          id: 'pcd1',
+          data: () => ({ features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } }),
+        }],
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ // dependientes query
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: deps }),
+        })
+        .mockReturnValueOnce({ // perfiles query (enriquecimiento de features)
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(perfilesSnap),
+        })
+
+      const result: any[] = await service.getDependents('user1')
+      expect(result).toHaveLength(1)
+      expect(result[0].esCuentaVinculada).toBe(true)
+      expect(result[0].pcdUserId).toBe('pcd1')
+      expect(result[0].features.chat).toBe(false)
+      expect(result[0].features.postulaciones).toBe(true)
+    })
   })
 
   // ── addDependent ─────────────────────────────────────────────────────
@@ -800,6 +856,24 @@ describe('UsersService', () => {
 
       await expect(service.deleteDependent('user1', 'dep1')).rejects.toThrow(NotFoundException)
     })
+
+    it('should unlink the PCD profile when deleting a linked account', async () => {
+      const deleteMock = jest.fn().mockResolvedValue(undefined)
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1' })),
+          delete: deleteMock,
+          update: updateMock,
+        }),
+      })
+
+      await service.deleteDependent('user1', 'pcd1')
+
+      expect(updateMock).toHaveBeenCalledWith({ tutorId: null })
+      expect(deleteMock).toHaveBeenCalled()
+    })
   })
 
   // ── updateProfile ────────────────────────────────────────────────────
@@ -837,20 +911,28 @@ describe('UsersService', () => {
   // ── linkPcdToTutor ───────────────────────────────────────────────────
 
   describe('linkPcdToTutor', () => {
-    it('should link a PCD user to a tutor', async () => {
+    it('should link a PCD user to a tutor and create the dependiente relation record', async () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
-      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null }
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null, nombreCompleto: 'PCD Uno' }
 
       firestoreMock.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(mockDoc(pcdData)),
           update: updateMock,
+          set: setMock,
         }),
       })
 
       const result = await service.linkPcdToTutor('tutor1', 'pcd1')
 
       expect(updateMock).toHaveBeenCalledWith({ tutorId: 'tutor1' })
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'pcd1',
+        tutorId: 'tutor1',
+        pcdUserId: 'pcd1',
+        esCuentaVinculada: true,
+      }), { merge: true })
       expect(result).toEqual({ vinculado: true, pcdUserId: 'pcd1', tutorId: 'tutor1' })
     })
 
@@ -880,6 +962,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', rol: 'pcd', tutorId: 'existing-tutor' })),
           update: jest.fn().mockResolvedValue(undefined),
+          set: jest.fn().mockResolvedValue(undefined),
         }),
       })
 
@@ -948,6 +1031,28 @@ describe('UsersService', () => {
       expect(updateMock).toHaveBeenCalled()
       expect(result.features.comunidad).toBe(false)
       expect(result.features.chat).toBe(true) // from defaults
+    })
+
+    it('should delegate to the real PCD profile when the dependiente is a linked account', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const linkedDep = {
+        id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1',
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(linkedDep)),
+          update: updateMock,
+        }),
+      })
+
+      const result: any = await service.updateDependentFeatures('user1', 'pcd1', { chat: false })
+
+      // Se actualizó el perfil real de la PCD (no el documento dependiente)
+      expect(updateMock).toHaveBeenCalledWith({ features: expect.objectContaining({ chat: false }) })
+      expect(result.id).toBe('pcd1')
+      expect(result.features.chat).toBe(false)
     })
   })
 
