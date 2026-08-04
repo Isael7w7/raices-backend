@@ -26,6 +26,7 @@ uploads/
 
 # Debug logs
 npm-debug.log*
+firebase-debug.log
 
 # Reglas locales de agentes IA
 AGENTS.md

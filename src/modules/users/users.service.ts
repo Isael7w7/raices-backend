@@ -5,7 +5,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
-import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado } from '../../common/utils/firestore-helpers'
+import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class UsersService {
@@ -62,6 +62,9 @@ export class UsersService {
         id: instDoc.id,
         nombre: instDoc.data()?.nombre ?? null,
         categoria: instDoc.data()?.categoria ?? null,
+        descripcion: instDoc.data()?.descripcion ?? null,
+        telefono: instDoc.data()?.telefono ?? null,
+        tiposDiscapacidad: parsearTiposDiscapacidad(instDoc.data()?.tiposDiscapacidad),
         ciudad: instDoc.data()?.ciudad ?? null,
         estado: instDoc.data()?.estado ?? null,
         urlLogo: instDoc.data()?.urlLogo ?? null,

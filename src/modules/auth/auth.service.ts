@@ -6,7 +6,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
 import { FEATURES_POR_DEFECTO } from '../../common/interfaces/feature-flags.interface'
-import { registrarDependienteVinculado } from '../../common/utils/firestore-helpers'
+import { registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
@@ -315,6 +315,9 @@ export class AuthService {
           id: instDoc.id,
           nombre: i.nombre ?? null,
           categoria: i.categoria ?? null,
+          descripcion: i.descripcion ?? null,
+          telefono: i.telefono ?? null,
+          tiposDiscapacidad: parsearTiposDiscapacidad(i.tiposDiscapacidad),
           ciudad: i.ciudad ?? null,
           estado: i.estado ?? null,
           urlLogo: i.urlLogo ?? null,

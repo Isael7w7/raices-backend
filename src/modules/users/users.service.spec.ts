@@ -199,7 +199,11 @@ describe('UsersService', () => {
 
     it('should attach institution data for institution users', async () => {
       const profileData = { id: 'inst1', rol: 'institucion', nombreCompleto: 'Centro Test' }
-      const instData = { nombre: 'Centro Test', categoria: 'funcional', verificada: true, activa: true }
+      const instData = {
+        nombre: 'Centro Test', categoria: 'funcional',
+        descripcion: 'Terapias físicas', telefono: '9999990001', tiposDiscapacidad: ['tea'],
+        verificada: true, activa: true,
+      }
 
       firestoreMock.collection
         .mockReturnValueOnce(mockCollection(mockDoc(profileData))) // perfil
@@ -216,6 +220,9 @@ describe('UsersService', () => {
       expect(result.institucion).not.toBeNull()
       expect(result.institucion.nombre).toBe('Centro Test')
       expect(result.institucion.categoria).toBe('funcional')
+      expect(result.institucion.descripcion).toBe('Terapias físicas')
+      expect(result.institucion.telefono).toBe('9999990001')
+      expect(result.institucion.tiposDiscapacidad).toEqual(['tea'])
       expect(result.institucion.verificada).toBe(true)
     })
 

@@ -578,6 +578,9 @@ describe('AuthService', () => {
         id: 'inst-1',
         nombre: 'Centro Test',
         categoria: 'funcional',
+        descripcion: 'Terapias físicas y ocupacionales',
+        telefono: '9999990001',
+        tiposDiscapacidad: ['tea', 'motriz'],
         activa: true,
         verificada: false,
         calificacionPromedio: 0,
@@ -598,6 +601,9 @@ describe('AuthService', () => {
       expect(result!.institucion).not.toBeNull()
       expect(result!.institucion.nombre).toBe('Centro Test')
       expect(result!.institucion.categoria).toBe('funcional')
+      expect(result!.institucion.descripcion).toBe('Terapias físicas y ocupacionales')
+      expect(result!.institucion.telefono).toBe('9999990001')
+      expect(result!.institucion.tiposDiscapacidad).toEqual(['tea', 'motriz'])
     })
 
     it('should fall back to the institution created by creadoPor for legacy institution users', async () => {
