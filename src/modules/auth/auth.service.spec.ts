@@ -273,7 +273,12 @@ describe('AuthService', () => {
     })
 
     it('should create profile and institution docs atomically (batch) for institution role', async () => {
-      const dtoInst = { ...dto, rol: 'institucion' as const, ciudad: 'Mérida', estado: 'Yucatán' }
+      const dtoInst = {
+        ...dto, rol: 'institucion' as const,
+        ciudad: 'Mérida', estado: 'Yucatán', categoria: 'funcional',
+        descripcion: 'Terapias físicas y ocupacionales', telefono: '9999990001',
+        tiposDiscapacidad: ['tea', 'motriz'],
+      }
       const emailCheckSnap = { empty: true, docs: [], size: 0 }
       const batchSet = jest.fn()
       const batchCommit = jest.fn().mockResolvedValue(undefined)
@@ -307,6 +312,10 @@ describe('AuthService', () => {
         id: 'new-uid-123',
         creadoPor: 'new-uid-123',
         usuarioId: 'new-uid-123',
+        categoria: 'funcional',
+        descripcion: 'Terapias físicas y ocupacionales',
+        telefono: '9999990001',
+        tiposDiscapacidad: ['tea', 'motriz'],
       }))
       expect(batchCommit).toHaveBeenCalled()
       expect(result.usuario.rol).toBe('institucion')
@@ -314,7 +323,7 @@ describe('AuthService', () => {
     })
 
     it('should rollback the Firebase user when the Firestore batch commit fails', async () => {
-      const dtoInst = { ...dto, rol: 'institucion' as const }
+      const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional' }
       const emailCheckSnap = { empty: true, docs: [], size: 0 }
       const batchCommit = jest.fn().mockRejectedValue(new Error('commit failed'))
       firestoreMock.batch.mockReturnValue({ set: jest.fn(), commit: batchCommit })
@@ -334,6 +343,13 @@ describe('AuthService', () => {
 
       await expect(service.register(dtoInst)).rejects.toThrow('commit failed')
       expect(authMock.deleteUser).toHaveBeenCalledWith('new-uid-123')
+    })
+
+    it('should throw BadRequestException when registering an institution without categoria', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const }
+      await expect(service.register(dtoInst)).rejects.toThrow(BadRequestException)
+      // No se debe crear el usuario en Firebase Auth si la validación falla
+      expect(authMock.createUser).not.toHaveBeenCalled()
     })
 
     it('should use custom token as fallback when sign-in fails after register', async () => {

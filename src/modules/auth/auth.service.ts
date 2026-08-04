@@ -47,6 +47,12 @@ export class AuthService {
       }
     }
 
+    // La categoría es obligatoria al registrar una institución: es el campo
+    // que permite filtrar el directorio por categoría (funcional, educativo...).
+    if (dto.rol === 'institucion' && !dto.categoria) {
+      throw new BadRequestException('La categoría es obligatoria para registrar una institución')
+    }
+
     const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
@@ -98,6 +104,10 @@ export class AuthService {
         emailContacto: dto.email,
         ciudad: dto.ciudad ?? null,
         estado: dto.estado ?? null,
+        categoria: dto.categoria ?? null,
+        descripcion: dto.descripcion ?? '',
+        telefono: dto.telefono ?? '',
+        tiposDiscapacidad: Array.isArray(dto.tiposDiscapacidad) ? dto.tiposDiscapacidad : [],
         activa: true,
         verificada: false,
         calificacionPromedio: 0,

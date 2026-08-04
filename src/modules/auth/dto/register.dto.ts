@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsIn, IsOptional } from 'class-validator'
+import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class RegisterDto {
@@ -14,6 +14,14 @@ export class RegisterDto {
   @IsOptional() @IsString() ciudad?: string
   @ApiPropertyOptional({ description: 'Estado', example: 'Yucatán' })
   @IsOptional() @IsString() estado?: string
+  @ApiPropertyOptional({ description: 'Categoría de la institución (obligatoria si rol = institucion)', example: 'funcional', enum: ['funcional', 'educativo', 'laboral', 'social'] })
+  @IsOptional() @IsIn(['funcional', 'educativo', 'laboral', 'social']) categoria?: string
+  @ApiPropertyOptional({ description: 'Descripción de la institución', example: 'Terapias físicas y ocupacionales para personas con discapacidad.' })
+  @IsOptional() @IsString() descripcion?: string
+  @ApiPropertyOptional({ description: 'Teléfono de contacto de la institución', example: '9999990001' })
+  @IsOptional() @IsString() telefono?: string
+  @ApiPropertyOptional({ description: 'Tipos de discapacidad que atiende la institución', example: ['tea', 'motriz'], type: [String] })
+  @IsOptional() @IsArray() @IsString({ each: true }) tiposDiscapacidad?: string[]
   @ApiPropertyOptional({ description: 'ID del tutor si esta PCD está vinculada a un tutor', example: 'tutor-demo-uid' })
   @IsOptional() @IsString() tutorId?: string
   @ApiPropertyOptional({ description: 'Banderas de funcionalidades (por defecto todas activas)' })
