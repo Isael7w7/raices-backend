@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -69,6 +69,13 @@ export class InstitutionsService {
 
   // ─── Mi institución (autenticado) ──────────────────────────────────
   async findMine(usuarioId: string) {
+    // 1) Intentar con el documento canónico (id = UID, creado en el registro)
+    const canonico = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
+    if (canonico.exists && canonico.data()?.activa !== false) {
+      return this.parsear({ id: canonico.id, ...canonico.data()! })
+    }
+
+    // 2) Fallback: instituciones creadas vía POST /instituciones (id aleatorio)
     try {
       const snap = await this.col(COLECCIONES.instituciones)
         .where('creadoPor', '==', usuarioId)
@@ -116,6 +123,16 @@ export class InstitutionsService {
 
   // ─── Crear institución (autenticado) ───────────────────────────────
   async create(dto: CreateInstitucionDto, usuarioId: string) {
+    // Guard anti-duplicado: el usuario no puede tener más de una institución
+    const [canonico, existente] = await Promise.all([
+      this.col(COLECCIONES.instituciones).doc(usuarioId).get(),
+      this.col(COLECCIONES.instituciones)
+        .where('creadoPor', '==', usuarioId).limit(1).get(),
+    ])
+    if (canonico.exists || !existente.empty) {
+      throw new BadRequestException('Ya tienes una institución registrada')
+    }
+
     const ref = this.col(COLECCIONES.instituciones).doc()
     const documento = {
       id: ref.id,

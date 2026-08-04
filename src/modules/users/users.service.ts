@@ -5,7 +5,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
-import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
+import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado } from '../../common/utils/firestore-helpers'
 
 @Injectable()
 export class UsersService {
@@ -21,13 +21,13 @@ export class UsersService {
   async getProfile(usuarioId: string) {
     const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
-    const perfil = { id: doc.id, ...doc.data()! }
+    const perfil: Record<string, any> = { id: doc.id, ...doc.data()! }
 
     const perfilExtendidoSnap = await this.col(COLECCIONES.perfilesExtendidos)
       .where('usuarioId', '==', usuarioId).limit(1).get()
     const perfilExtendido = perfilExtendidoSnap.empty ? null : perfilExtendidoSnap.docs[0].data()
 
-    return {
+    const resultado: Record<string, any> = {
       ...perfil,
       perfilNecesidades: perfilExtendido ? {
         tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
@@ -46,6 +46,33 @@ export class UsersService {
         nivelApoyo: perfilExtendido.nivelApoyo ?? null,
       } : null,
     }
+
+    // Para usuarios institución, adjuntar los datos básicos de su institución.
+    // Se busca primero el documento canónico (id = UID) y, si no existe,
+    // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
+    if (perfil.rol === 'institucion') {
+      let instDoc = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
+      if (!instDoc.exists) {
+        const porCreador = await this.col(COLECCIONES.instituciones)
+          .where('creadoPor', '==', usuarioId).limit(1).get()
+        instDoc = porCreador.empty ? null : porCreador.docs[0]
+      }
+      resultado.institucionId = instDoc ? instDoc.id : (perfil.institucionId ?? null)
+      resultado.institucion = instDoc ? {
+        id: instDoc.id,
+        nombre: instDoc.data()?.nombre ?? null,
+        categoria: instDoc.data()?.categoria ?? null,
+        ciudad: instDoc.data()?.ciudad ?? null,
+        estado: instDoc.data()?.estado ?? null,
+        urlLogo: instDoc.data()?.urlLogo ?? null,
+        activa: instDoc.data()?.activa ?? false,
+        verificada: instDoc.data()?.verificada ?? false,
+        calificacionPromedio: instDoc.data()?.calificacionPromedio ?? 0,
+        cantidadCalificaciones: instDoc.data()?.cantidadCalificaciones ?? 0,
+      } : null
+    }
+
+    return resultado
   }
 
   async deleteAvatar(usuarioId: string) {
@@ -108,7 +135,36 @@ export class UsersService {
       return this.getProfile(usuarioId)
     }
     await this.col(COLECCIONES.perfiles).doc(usuarioId).update(carga)
+
+    // Si el usuario institución cambia su nombre, propagar el cambio al
+    // documento de 'instituciones' para mantener el directorio sincronizado.
+    if (carga.nombreCompleto) {
+      await this.sincronizarNombreInstitucion(usuarioId, carga.nombreCompleto)
+    }
+
     return this.getProfile(usuarioId)
+  }
+
+  /**
+   * Propaga el nombre actualizado de un usuario institución a su documento
+   * en 'instituciones' (canónico por UID o creado vía POST /instituciones).
+   */
+  private async sincronizarNombreInstitucion(usuarioId: string, nombre: string) {
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    if (!perfilDoc.exists) return
+    const rol = perfilDoc.data()?.rol
+    if (rol !== 'institucion' && rol !== 'institution') return
+
+    const canonico = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
+    if (canonico.exists) {
+      await canonico.ref.update({ nombre })
+      return
+    }
+    const porCreador = await this.col(COLECCIONES.instituciones)
+      .where('creadoPor', '==', usuarioId).limit(1).get()
+    if (!porCreador.empty) {
+      await porCreador.docs[0].ref.update({ nombre })
+    }
   }
 
   async saveProfilingData(usuarioId: string, datos: any) {
@@ -162,15 +218,25 @@ export class UsersService {
 
     const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
 
-    // Las cuentas PCD vinculadas guardan sus features reales en su perfil;
-    // enriquecerlas para que la lista refleje el estado actualizado.
-    const pcdIds = dependientes.filter(d => d.esCuentaVinculada).map(d => d.id)
+    // Las cuentas PCD vinculadas guardan sus features y perfil de necesidades
+    // en sus propios documentos; enriquecer la lista con esa información real.
+    const pcdIds = dependientes.filter(d => d.esCuentaVinculada).map(d => d.pcdUserId ?? d.id)
     if (pcdIds.length > 0) {
-      const mapaPerfiles = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, pcdIds)
+      const [mapaPerfiles, mapaExtendidos] = await Promise.all([
+        obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, pcdIds),
+        obtenerDocumentosPorCampo(this.db, COLECCIONES.perfilesExtendidos, 'usuarioId', pcdIds),
+      ])
       for (const dep of dependientes) {
-        if (dep.esCuentaVinculada) {
-          const perfil = mapaPerfiles.get(dep.id)
-          if (perfil?.features) dep.features = { ...FEATURES_POR_DEFECTO, ...perfil.features }
+        if (!dep.esCuentaVinculada) continue
+        const pcdId = dep.pcdUserId ?? dep.id
+        const perfil = mapaPerfiles.get(pcdId)
+        if (perfil?.features) dep.features = { ...FEATURES_POR_DEFECTO, ...perfil.features }
+        const ext = mapaExtendidos.get(pcdId)
+        if (ext) {
+          const tipos = this.parsearCampoJson(ext.tiposDiscapacidad)
+          dep.tiposDiscapacidad = Array.isArray(tipos) ? tipos : []
+          dep.discapacidad = ext.severidadDiscapacidad ?? null
+          dep.etapaVida = ext.etapaVida ?? dep.etapaVida ?? null
         }
       }
     }
@@ -224,11 +290,22 @@ export class UsersService {
     }
     const dependiente = this.formatearDependiente({ id: doc.id, ...doc.data()! })
 
-    // Para cuentas PCD vinculadas, los features reales viven en su perfil
+    // Para cuentas PCD vinculadas, features y discapacidad reales viven en su perfil
     if (dependiente.esCuentaVinculada) {
-      const perfil = await this.col(COLECCIONES.perfiles).doc(dependiente.pcdUserId ?? id).get()
+      const pcdId = dependiente.pcdUserId ?? id
+      const [perfil, extSnap] = await Promise.all([
+        this.col(COLECCIONES.perfiles).doc(pcdId).get(),
+        this.col(COLECCIONES.perfilesExtendidos).where('usuarioId', '==', pcdId).limit(1).get(),
+      ])
       if (perfil.exists && perfil.data()?.features) {
         dependiente.features = { ...FEATURES_POR_DEFECTO, ...perfil.data()!.features }
+      }
+      if (!extSnap.empty) {
+        const ext = extSnap.docs[0].data()
+        const tipos = this.parsearCampoJson(ext.tiposDiscapacidad)
+        dependiente.tiposDiscapacidad = Array.isArray(tipos) ? tipos : []
+        dependiente.discapacidad = ext.severidadDiscapacidad ?? null
+        dependiente.etapaVida = ext.etapaVida ?? dependiente.etapaVida ?? null
       }
     }
     return dependiente
@@ -260,6 +337,7 @@ export class UsersService {
       rangoEdad: p.rangoEdad ?? null,
       etapaVida: p.etapaVida ?? null,
       notas: p.notas ?? '',
+      discapacidad: null,
       esCuentaVinculada: d.esCuentaVinculada === true || !!d.pcdUserId,
       pcdUserId: d.pcdUserId ?? null,
       features: d.features ?? { ...FEATURES_POR_DEFECTO },
@@ -299,26 +377,41 @@ export class UsersService {
     }
 
     await this.col(COLECCIONES.perfiles).doc(pcdUserId).update({ tutorId })
-    await this.crearRegistroDependienteVinculado(tutorId, pcdUserId, pcd.nombreCompleto)
+    // Registrar la relación evitando duplicados (promueve dependientes planos)
+    await registrarDependienteVinculado(this.db, COLECCIONES.dependientes, tutorId, pcdUserId, pcd.nombreCompleto)
     return { vinculado: true, pcdUserId, tutorId }
   }
 
   /**
-   * Registra la relación tutor ↔ PCD en la colección 'dependientes' para que
-   * la persona vinculada aparezca en la lista de personas bajo cuidado del tutor.
+   * Desvincula una cuenta PCD de su tutor de forma atómica:
+   * limpia `tutorId` del perfil y elimina las relaciones en 'dependientes'.
+   * Solo el tutor dueño (o un administrador) puede desvincular.
    */
-  private async crearRegistroDependienteVinculado(tutorId: string, pcdUserId: string, nombreCompleto?: string) {
-    await this.col(COLECCIONES.dependientes).doc(pcdUserId).set({
-      id: pcdUserId,
-      tutorId,
-      pcdUserId,
-      esCuentaVinculada: true,
-      rol: 'pcd',
-      nombreCompleto: nombreCompleto ?? 'Sin nombre',
-      parentesco: null,
-      datosPerfil: '{}',
-      fechaCreacion: new Date().toISOString(),
-    }, { merge: true })
+  async unlinkPcdFromTutor(actorId: string, actorRol: string, pcdUserId: string) {
+    const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdUserId).get()
+    if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+
+    const pcd = pcdDoc.data()!
+    const tutorId = pcd.tutorId
+    if (!tutorId) throw new BadRequestException('Esta cuenta PCD no está vinculada a ningún tutor')
+    if (actorRol !== 'admin' && tutorId !== actorId) {
+      throw new ForbiddenException('Solo el tutor dueño puede desvincular esta cuenta')
+    }
+
+    // Buscar todas las relaciones tutor ↔ PCD (incluye registros promovidos)
+    const relSnap = await this.col(COLECCIONES.dependientes)
+      .where('tutorId', '==', tutorId)
+      .where('pcdUserId', '==', pcdUserId)
+      .get()
+
+    const batch = this.db.batch()
+    batch.update(this.col(COLECCIONES.perfiles).doc(pcdUserId), { tutorId: null })
+    for (const doc of relSnap.docs) {
+      batch.delete(doc.ref)
+    }
+    await batch.commit()
+
+    return { desvinculado: true, pcdUserId, tutorId }
   }
 
   // ─── Features de dependiente ────────────────────────────────────────

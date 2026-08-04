@@ -35,10 +35,14 @@ export class FirebaseAuthGuard implements CanActivate {
         throw new UnauthorizedException('Cuenta desactivada')
       }
 
+      // Normalizar rol legacy 'institution' (inglés) → 'institucion' (canónico)
+      const rolCrudo = perfil.rol ?? 'user'
+      const rol = rolCrudo === 'institution' ? 'institucion' : rolCrudo
+
       request.user = {
         id: decodedToken.uid,
         email: perfil.email ?? decodedToken.email ?? '',
-        rol: perfil.rol ?? 'user',
+        rol,
         nombreCompleto: perfil.nombreCompleto ?? decodedToken.name ?? '',
         verificado: perfil.verificado ?? false,
         tutorId: perfil.tutorId ?? null,

@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { NotFoundException, ForbiddenException } from '@nestjs/common'
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { InstitutionsService } from './institutions.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 
@@ -159,13 +159,27 @@ describe('InstitutionsService', () => {
   // ── findMine ────────────────────────────────────────────────────────
 
   describe('findMine', () => {
-    it('should return the institution created by the user', async () => {
+    it('should return the canonical institution (doc id = UID) directly without extra queries', async () => {
+      const instData = { nombre: 'Mi Centro', creadoPor: 'user1', activa: true }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(instData, true, 'user1')) }),
+      })
+
+      const result: any = await service.findMine('user1')
+
+      expect(result.nombre).toBe('Mi Centro')
+      expect(result.id).toBe('user1')
+    })
+
+    it('should fall back to the institution created by the user (creadoPor)', async () => {
       const instData = { nombre: 'Mi Centro', creadoPor: 'user1', activa: true }
       const mockDocRef = { id: 'inst-1', data: () => instData }
 
       const orderByMock = jest.fn().mockReturnThis()
 
       firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user1')) }),
         where: jest.fn().mockReturnThis(),
         orderBy: orderByMock,
         limit: jest.fn().mockReturnThis(),
@@ -181,6 +195,7 @@ describe('InstitutionsService', () => {
 
     it('should throw NotFoundException if user has no institution', async () => {
       firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user-no-inst')) }),
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
@@ -200,6 +215,7 @@ describe('InstitutionsService', () => {
 
       // Simular que Firestore ordena y devuelve primero el más reciente
       const dbQueryMock = {
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user1')) }),
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
@@ -223,6 +239,7 @@ describe('InstitutionsService', () => {
       const newest = { nombre: 'Centro Nuevo', creadoPor: 'user1', activa: true, fechaCreacion: '2025-01-01T00:00:00Z' }
 
       const collectionMock = {
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user1')) }),
         where: jest.fn().mockReturnThis(),
         orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
@@ -253,7 +270,7 @@ describe('InstitutionsService', () => {
   // ── create ──────────────────────────────────────────────────────────
 
   describe('create', () => {
-    it('should create a new institution', async () => {
+    it('should create a new institution when the user has none', async () => {
       const dto = {
         nombre: 'Nueva Institución',
         categoria: 'funcional',
@@ -272,13 +289,14 @@ describe('InstitutionsService', () => {
       }
 
       firestoreMock.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({
-          set: setMock,
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'new-id', ...createdDocData })),
+        doc: jest.fn().mockImplementation((docId?: string) => {
+          if (docId === 'user1') return { get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user1')) }
+          if (!docId) return { set: setMock, get: jest.fn().mockResolvedValue(mockDoc({ id: 'new-id', ...createdDocData }, true, 'new-id')) }
+          return { get: jest.fn().mockResolvedValue(mockDoc({ id: docId, ...createdDocData }, true, docId)) }
         }),
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
-        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'new-id', data: () => createdDocData }] }),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
       })
 
       const result: any = await service.create(dto, 'user1')
@@ -286,6 +304,32 @@ describe('InstitutionsService', () => {
       expect(setMock).toHaveBeenCalled()
       expect(result.nombre).toBe('Nueva Institución')
       expect(result.creadoPor).toBe('user1')
+    })
+
+    it('should throw BadRequestException when the user already has a canonical institution', async () => {
+      const dto = { nombre: 'Otra Institución', categoria: 'funcional' }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1', nombre: 'Ya existente' }, true, 'user1')) }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      await expect(service.create(dto, 'user1')).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the user already has an institution by creadoPor', async () => {
+      const dto = { nombre: 'Otra Institución', categoria: 'funcional' }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user1')) }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'inst-aleatoria', data: () => ({ nombre: 'Existente' }) }] }),
+      })
+
+      await expect(service.create(dto, 'user1')).rejects.toThrow(BadRequestException)
     })
   })
 

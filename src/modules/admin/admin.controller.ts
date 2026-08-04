@@ -94,7 +94,7 @@ export class AdminController {
   @Patch('usuarios/:id/rol')
   @ApiOperation({ summary: 'Cambiar rol de usuario', description: 'Roles válidos: pcd, tutor, institución, administrador' })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
-  @ApiBody({ schema: { properties: { role: { type: 'string', enum: ['pcd', 'tutor', 'institution', 'admin'] } } } })
+  @ApiBody({ schema: { properties: { role: { type: 'string', enum: ['pcd', 'tutor', 'institucion', 'admin'] } } } })
   @ApiResponse({ status: 200, description: 'Rol actualizado' })
   @ApiResponse({ status: 400, description: 'Rol inválido o intento de cambiar propio rol' })
   changeRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: CurrentUserPayload) {

@@ -59,7 +59,7 @@ async function bootstrap() {
         "## Roles\n" +
         "- **pcd**: Persona con discapacidad\n" +
         "- **tutor**: Tutor o cuidador\n" +
-        "- **institution**: Institución proveedora\n" +
+        "- **institucion**: Institución proveedora\n" +
         "- **admin**: Administrador de la plataforma",
     )
     .setVersion("1.0.0")

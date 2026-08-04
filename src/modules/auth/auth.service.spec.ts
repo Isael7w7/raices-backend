@@ -38,11 +38,18 @@ describe('AuthService', () => {
   beforeEach(async () => {
     process.env.FIREBASE_API_KEY = 'test-api-key'
 
-    firestoreMock = { collection: jest.fn() }
+    firestoreMock = {
+      collection: jest.fn(),
+      batch: jest.fn().mockReturnValue({
+        set: jest.fn(),
+        commit: jest.fn().mockResolvedValue(undefined),
+      }),
+    }
     authMock = {
       createUser: jest.fn().mockResolvedValue({ uid: 'new-uid-123' }),
       createCustomToken: jest.fn().mockResolvedValue('custom-token-abc'),
       verifyIdToken: jest.fn().mockResolvedValue({ uid: 'user-uid-123', email: 'test@test.com' }),
+      deleteUser: jest.fn().mockResolvedValue(undefined),
     }
     emailMock = {
       sendWelcome: jest.fn().mockResolvedValue(undefined),
@@ -155,23 +162,27 @@ describe('AuthService', () => {
       const emailCheckSnap = { empty: true, docs: [], size: 0 }
       const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
 
-      firestoreMock.collection
-        .mockReturnValueOnce({ // 1. Validación del tutor
-          doc: jest.fn().mockReturnValue({
-            get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: true })),
-          }),
-        })
-        .mockReturnValueOnce({ // 2. Email check
-          where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockReturnThis(),
-          get: jest.fn().mockResolvedValue(emailCheckSnap),
-        })
-        .mockReturnValueOnce({ // 3. Perfil set
-          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false, 'new-uid-123')),
-        })
-        .mockReturnValueOnce({ // 4. Registro de dependiente vinculado
-          doc: jest.fn().mockReturnValue({ set: dependienteSetMock }),
-        })
+      // perfiles: validación del tutor (doc.get), email check (where.get), perfil set (doc.set)
+      const perfilesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: true })),
+          set: jest.fn().mockResolvedValue(undefined),
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue(emailCheckSnap),
+      }
+      // dependientes: canónico no existe (doc.get), previos vacío (where.get) → crear (doc.set)
+      const dependientesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+          set: dependienteSetMock,
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      }
+      firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
 
       const result = await service.register(dtoConTutor)
 
@@ -182,6 +193,50 @@ describe('AuthService', () => {
         pcdUserId: 'new-uid-123',
         esCuentaVinculada: true,
       }))
+    })
+
+    it('should promote an existing flat dependiente of the tutor instead of creating a duplicate', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
+      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const promoteUpdate = jest.fn().mockResolvedValue(undefined)
+      const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
+
+      const perfilesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: true })),
+          set: jest.fn().mockResolvedValue(undefined),
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue(emailCheckSnap),
+      }
+      const dependientesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+          set: dependienteSetMock,
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          empty: false,
+          docs: [{
+            id: 'dep-plano-1',
+            ref: { update: promoteUpdate },
+            data: () => ({ id: 'dep-plano-1', tutorId: 'tutor-1', nombreCompleto: dto.nombreCompleto }),
+          }],
+        }),
+      }
+      firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
+
+      const result = await service.register(dtoConTutor)
+
+      expect(result.usuario.tutorId).toBe('tutor-1')
+      expect(promoteUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        pcdUserId: 'new-uid-123',
+        esCuentaVinculada: true,
+        rol: 'pcd',
+      }))
+      expect(dependienteSetMock).not.toHaveBeenCalled()
     })
 
     it('should throw BadRequestException when tutorId is provided for a non-PCD role', async () => {
@@ -211,10 +266,74 @@ describe('AuthService', () => {
       const dtoConTutor = { ...dto, tutorId: 'inst-1' }
       firestoreMock.collection.mockReturnValueOnce({
         doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst-1', rol: 'institution', activo: true })),
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst-1', rol: 'institucion', activo: true })),
         }),
       })
       await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should create profile and institution docs atomically (batch) for institution role', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const, ciudad: 'Mérida', estado: 'Yucatán' }
+      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const batchSet = jest.fn()
+      const batchCommit = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.batch.mockReturnValue({ set: batchSet, commit: batchCommit })
+
+      const perfilDocRef = { ref: 'perfil-ref' }
+      const instDocRef = { ref: 'inst-ref' }
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(emailCheckSnap),
+            doc: jest.fn().mockReturnValue(perfilDocRef),
+          }
+        }
+        if (name === 'instituciones') return { doc: jest.fn().mockReturnValue(instDocRef) }
+        return {}
+      })
+
+      const result = await service.register(dtoInst)
+
+      // Ambos documentos se escriben en un solo batch atómico
+      expect(batchSet).toHaveBeenCalledTimes(2)
+      expect(batchSet).toHaveBeenCalledWith(perfilDocRef, expect.objectContaining({
+        rol: 'institucion',
+        institucionId: 'new-uid-123',
+      }))
+      expect(batchSet).toHaveBeenCalledWith(instDocRef, expect.objectContaining({
+        id: 'new-uid-123',
+        creadoPor: 'new-uid-123',
+        usuarioId: 'new-uid-123',
+      }))
+      expect(batchCommit).toHaveBeenCalled()
+      expect(result.usuario.rol).toBe('institucion')
+      expect(result.usuario.institucionId).toBe('new-uid-123')
+    })
+
+    it('should rollback the Firebase user when the Firestore batch commit fails', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const }
+      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const batchCommit = jest.fn().mockRejectedValue(new Error('commit failed'))
+      firestoreMock.batch.mockReturnValue({ set: jest.fn(), commit: batchCommit })
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(emailCheckSnap),
+            doc: jest.fn().mockReturnValue({ ref: 'perfil-ref' }),
+          }
+        }
+        if (name === 'instituciones') return { doc: jest.fn().mockReturnValue({ ref: 'inst-ref' }) }
+        return {}
+      })
+
+      await expect(service.register(dtoInst)).rejects.toThrow('commit failed')
+      expect(authMock.deleteUser).toHaveBeenCalledWith('new-uid-123')
     })
 
     it('should use custom token as fallback when sign-in fails after register', async () => {
@@ -429,6 +548,69 @@ describe('AuthService', () => {
       const result = await service.me('nonexistent')
 
       expect(result).toBeNull()
+    })
+
+    it('should attach the institution object for institution users', async () => {
+      const profileData = {
+        id: 'inst-1',
+        email: 'centro@test.com',
+        rol: 'institucion',
+        nombreCompleto: 'Centro Test',
+        verificado: false,
+      }
+      const instData = {
+        id: 'inst-1',
+        nombre: 'Centro Test',
+        categoria: 'funcional',
+        activa: true,
+        verificada: false,
+        calificacionPromedio: 0,
+        cantidadCalificaciones: 0,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'inst-1')),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(instData, true, 'inst-1')),
+        })
+
+      const result = await service.me('inst-1')
+
+      expect(result!.institucionId).toBe('inst-1')
+      expect(result!.institucion).not.toBeNull()
+      expect(result!.institucion.nombre).toBe('Centro Test')
+      expect(result!.institucion.categoria).toBe('funcional')
+    })
+
+    it('should fall back to the institution created by creadoPor for legacy institution users', async () => {
+      const profileData = {
+        id: 'legacy-1',
+        email: 'legacy@test.com',
+        rol: 'institucion',
+        nombreCompleto: 'Centro Legacy',
+      }
+      const instData = { nombre: 'Centro Legacy', activa: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'legacy-1')),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false, 'legacy-1')),
+        })
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'inst-aleatoria', data: () => instData }] }),
+        })
+
+      const result = await service.me('legacy-1')
+
+      expect(result!.institucionId).toBe('inst-aleatoria')
+      expect(result!.institucion).not.toBeNull()
+      expect(result!.institucion.nombre).toBe('Centro Legacy')
     })
   })
 })

@@ -114,15 +114,51 @@ describe('AdminService', () => {
   // ── rejectInstitution ───────────────────────────────────────────────
 
   describe('rejectInstitution', () => {
-    it('should delete the institution', async () => {
-      const deleteMock = jest.fn().mockResolvedValue(undefined)
+    it('should delete the institution and its vacancies atomically', async () => {
+      const vacantesSnap = { empty: false, docs: [{ ref: { id: 'v1' } }, { ref: { id: 'v2' } }], size: 2 }
+      const batch = { delete: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
+      firestoreMock.batch.mockReturnValue(batch)
 
-      firestoreMock.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({ delete: deleteMock }),
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'vacantes') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(vacantesSnap) }
+        }
+        if (name === 'instituciones') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) }
+        }
+        return {}
       })
 
       await service.rejectInstitution('inst1')
-      expect(deleteMock).toHaveBeenCalled()
+
+      expect(batch.commit).toHaveBeenCalled()
+      // 2 vacantes + 1 institución
+      expect(batch.delete).toHaveBeenCalledTimes(3)
+    })
+
+    it('should deactivate the linked user profile when rejecting a registered institution', async () => {
+      const instDoc = mockDoc({ usuarioId: 'user-inst', nombre: 'Centro' }, true, 'inst1')
+      const profileUpdate = jest.fn().mockResolvedValue(undefined)
+      const batch = { delete: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
+      firestoreMock.batch.mockReturnValue(batch)
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'instituciones') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(instDoc) }) }
+        }
+        if (name === 'vacantes') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }) }
+        }
+        if (name === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ update: profileUpdate }) }
+        }
+        return {}
+      })
+
+      await service.rejectInstitution('inst1')
+
+      expect(profileUpdate).toHaveBeenCalledWith({ activo: false })
+      expect(batch.commit).toHaveBeenCalled()
     })
   })
 
@@ -263,6 +299,42 @@ describe('AdminService', () => {
     it('should throw NotFoundException when user does not exist', async () => {
       firestoreMock.collection.mockReturnValue(chainCollection({ docResult: mockDoc(null, false) }))
       await expect(service.deleteUser('nonexistent', 'admin-1')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should cascade-delete institution docs and vacancies when deleting an institution user', async () => {
+      const perfilDoc = {
+        exists: true, id: 'inst-user',
+        data: () => ({ id: 'inst-user', rol: 'institucion' }),
+        ref: { delete: jest.fn().mockResolvedValue(undefined) },
+      }
+      const canonicalInst = { exists: true, id: 'inst-user', ref: { delete: jest.fn() } }
+      const vacanteDoc = { ref: { id: 'v1' } }
+      const vacantesSnap = { empty: false, docs: [vacanteDoc], size: 1 }
+      const batch = { delete: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
+      firestoreMock.batch.mockReturnValue(batch)
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(perfilDoc) }) }
+        }
+        if (name === 'instituciones') {
+          return {
+            doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(canonicalInst) }),
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
+          }
+        }
+        if (name === 'vacantes') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(vacantesSnap) }
+        }
+        return chainCollection()
+      })
+
+      await service.deleteUser('inst-user', 'admin-1')
+
+      expect(perfilDoc.ref.delete).toHaveBeenCalled()
+      expect(batch.commit).toHaveBeenCalled()
+      expect(batch.delete).toHaveBeenCalledWith(vacanteDoc.ref)
     })
   })
 

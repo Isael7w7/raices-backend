@@ -6,6 +6,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
 import { FEATURES_POR_DEFECTO } from '../../common/interfaces/feature-flags.interface'
+import { registrarDependienteVinculado } from '../../common/utils/firestore-helpers'
 import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
@@ -83,29 +84,15 @@ export class AuthService {
       ...(dto.tutorId && { tutorId: dto.tutorId }),
       ...(dto.profesion && { profesion: dto.profesion }),
       ...(dto.bio && { bio: dto.bio }),
-    }
-    await this.db.collection(COLECCIONES.perfiles).doc(uid).set(perfilData)
-
-    // Si es una PCD dada de alta por un tutor, registrar la relación en 'dependientes'
-    // para que la persona aparezca en la lista de personas bajo cuidado del tutor.
-    if (dto.rol === 'pcd' && dto.tutorId) {
-      await this.db.collection(COLECCIONES.dependientes).doc(uid).set({
-        id: uid,
-        tutorId: dto.tutorId,
-        pcdUserId: uid,
-        esCuentaVinculada: true,
-        rol: 'pcd',
-        nombreCompleto: dto.nombreCompleto,
-        parentesco: null,
-        datosPerfil: '{}',
-        fechaCreacion: perfilData.fechaCreacion,
-      })
+      // Vínculo explícito institución ↔ usuario: el perfil guarda el ID de su institución
+      ...(dto.rol === 'institucion' && { institucionId: uid }),
     }
 
-    // Si el rol es 'institution', también crear documento en colección 'instituciones'
-    // para que aparezca en los listados públicos del directorio.
-    if (dto.rol === 'institution') {
-      const institucionData: Record<string, any> = {
+    // Si el rol es 'institucion', crear también el documento en la colección
+    // 'instituciones' (mismo ID que el UID) para que aparezca en el directorio.
+    let institucionData: Record<string, any> | null = null
+    if (dto.rol === 'institucion') {
+      institucionData = {
         id: uid,
         nombre: dto.nombreCompleto,
         emailContacto: dto.email,
@@ -115,9 +102,37 @@ export class AuthService {
         verificada: false,
         calificacionPromedio: 0,
         cantidadCalificaciones: 0,
+        // Vínculo explícito institución ↔ usuario (permite buscar por dueño)
+        creadoPor: uid,
+        usuarioId: uid,
         fechaCreacion: new Date().toISOString(),
       }
-      await this.db.collection(COLECCIONES.instituciones).doc(uid).set(institucionData)
+    }
+
+    // Escritura atómica de perfil (+ institución) con un solo batch:
+    // si falla cualquiera de los documentos, se revierte el usuario de Firebase Auth.
+    const batch = this.db.batch()
+    batch.set(this.db.collection(COLECCIONES.perfiles).doc(uid), perfilData)
+    if (institucionData) {
+      batch.set(this.db.collection(COLECCIONES.instituciones).doc(uid), institucionData)
+    }
+    try {
+      await batch.commit()
+    } catch (e) {
+      this.logger.error(`Firestore batch commit failed: ${e?.message ?? e}. Reverting Firebase user ${uid}`)
+      try {
+        await this.auth.deleteUser(uid)
+      } catch (rollbackError: any) {
+        this.logger.warn(`No se pudo revertir el usuario de Firebase Auth: ${rollbackError?.message ?? rollbackError}`)
+      }
+      throw e
+    }
+
+    // Si es una PCD dada de alta por un tutor, registrar la relación en 'dependientes'
+    // para que la persona aparezca en la lista de personas bajo cuidado del tutor.
+    // Se promueve un dependiente plano previo del tutor si coincide el nombre.
+    if (dto.rol === 'pcd' && dto.tutorId) {
+      await registrarDependienteVinculado(this.db, COLECCIONES.dependientes, dto.tutorId, uid, dto.nombreCompleto)
     }
 
     let idToken: string
@@ -143,6 +158,7 @@ export class AuthService {
       rol: dto.rol,
       nombreCompleto: dto.nombreCompleto,
       tutorId: dto.tutorId ?? null,
+      institucionId: dto.rol === 'institucion' ? uid : null,
       features,
     }
 
@@ -207,6 +223,7 @@ export class AuthService {
         rol: datosUsuario.rol,
         nombreCompleto: datosUsuario.nombreCompleto,
         tutorId: datosUsuario.tutorId ?? null,
+        institucionId: datosUsuario.institucionId ?? (datosUsuario.rol === 'institucion' ? datosUsuario.id : null),
         features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
       },
     }
@@ -241,6 +258,7 @@ export class AuthService {
           rol: datosUsuario.rol,
           nombreCompleto: datosUsuario.nombreCompleto,
           tutorId: datosUsuario.tutorId ?? null,
+          institucionId: datosUsuario.institucionId ?? (datosUsuario.rol === 'institucion' ? datosUsuario.id : null),
           features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
         },
       }
@@ -255,7 +273,8 @@ export class AuthService {
     const doc = await this.db.collection(COLECCIONES.perfiles).doc(userId).get()
     if (!doc.exists) return null
     const d = doc.data()!
-    return {
+
+    const base: Record<string, any> = {
       id: d.id,
       email: d.email,
       rol: d.rol,
@@ -265,7 +284,40 @@ export class AuthService {
       urlAvatar: d.urlAvatar ?? null,
       verificado: d.verificado,
       tutorId: d.tutorId ?? null,
+      institucionId: d.institucionId ?? null,
       features: d.features ?? { ...FEATURES_POR_DEFECTO },
     }
+
+    // Para usuarios institución, adjuntar los datos básicos de su institución.
+    // Se busca primero el documento canónico (id = UID) y, si no existe,
+    // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
+    if (d.rol === 'institucion') {
+      let instDoc = await this.db.collection(COLECCIONES.instituciones).doc(userId).get()
+      if (!instDoc.exists) {
+        const porCreador = await this.db.collection(COLECCIONES.instituciones)
+          .where('creadoPor', '==', userId).limit(1).get()
+        instDoc = porCreador.empty ? null : porCreador.docs[0]
+      }
+      if (instDoc) {
+        const i = instDoc.data()!
+        base.institucionId = instDoc.id
+        base.institucion = {
+          id: instDoc.id,
+          nombre: i.nombre ?? null,
+          categoria: i.categoria ?? null,
+          ciudad: i.ciudad ?? null,
+          estado: i.estado ?? null,
+          urlLogo: i.urlLogo ?? null,
+          activa: i.activa ?? false,
+          verificada: i.verificada ?? false,
+          calificacionPromedio: i.calificacionPromedio ?? 0,
+          cantidadCalificaciones: i.cantidadCalificaciones ?? 0,
+        }
+      } else {
+        base.institucion = null
+      }
+    }
+
+    return base
   }
 }

@@ -289,7 +289,15 @@ export class AdminService {
   }
 
   async rejectInstitution(id: string) {
-    await this.col(COLECCIONES.instituciones).doc(id).delete()
+    // Si la institución pertenece a un usuario registrado, desactivar su perfil
+    // para no dejar una cuenta 'institución' huérfana sin institución.
+    const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
+    if (doc.exists && doc.data()?.usuarioId) {
+      await this.col(COLECCIONES.perfiles).doc(doc.data()!.usuarioId).update({ activo: false })
+    }
+
+    // Rechazar elimina la institución y sus vacantes asociadas (evita huérfanos)
+    await this.eliminarInstitucionYCascada(id)
   }
 
   async toggleVerifyInstitution(id: string) {
@@ -336,12 +344,14 @@ export class AdminService {
 
   async changeUserRole(id: string, rol: string, adminId: string) {
     if (id === adminId) throw new BadRequestException('No puedes cambiar tu propio rol')
-    const permitidos = ['pcd', 'tutor', 'institution', 'admin']
-    if (!permitidos.includes(rol)) throw new BadRequestException('Rol inválido')
+    // Normalizar rol legacy 'institution' (inglés) → 'institucion' (canónico)
+    const rolNormalizado = rol === 'institution' ? 'institucion' : rol
+    const permitidos = ['pcd', 'tutor', 'institucion', 'admin']
+    if (!permitidos.includes(rolNormalizado)) throw new BadRequestException('Rol inválido')
     const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
-    await doc.ref.update({ rol })
-    return { rol }
+    await doc.ref.update({ rol: rolNormalizado })
+    return { rol: rolNormalizado }
   }
 
   async deleteUser(id: string, adminId: string) {
@@ -360,6 +370,10 @@ export class AdminService {
         this.logger.warn(`No se pudo eliminar avatar de Storage: ${err.message}`)
       }
     }
+
+    // Si el usuario eliminado es una institución, eliminar en cascada su(s)
+    // documento(s) en 'instituciones' y las vacantes asociadas (evita huérfanos).
+    const esInstitucion = perfil.rol === 'institucion' || perfil.rol === 'institution'
 
     // 2. Eliminar datos relacionados en paralelo
     await Promise.all([
@@ -387,10 +401,44 @@ export class AdminService {
       this.eliminarDocsEnLote(COLECCIONES.postulaciones, 'usuarioId', id),
       // Miembros de grupo
       this.eliminarDocsEnLote(COLECCIONES.miembrosGrupo, 'usuarioId', id),
+      // Institución + vacantes del usuario institución (cascada)
+      esInstitucion ? this.eliminarInstitucionesDeUsuario(id) : Promise.resolve(),
     ])
 
     // 3. Eliminar perfil principal
     await doc.ref.delete()
+  }
+
+  /**
+   * Elimina todas las instituciones de un usuario (la canónica con id = uid
+   * y las creadas por 'creadoPor') junto con sus vacantes asociadas.
+   */
+  private async eliminarInstitucionesDeUsuario(usuarioId: string) {
+    const [canonicalSnap, porCreadorSnap] = await Promise.all([
+      this.col(COLECCIONES.instituciones).doc(usuarioId).get(),
+      this.col(COLECCIONES.instituciones).where('creadoPor', '==', usuarioId).get(),
+    ])
+
+    const ids = new Set<string>()
+    if (canonicalSnap.exists) ids.add(canonicalSnap.id)
+    porCreadorSnap.docs.forEach(d => ids.add(d.id))
+
+    for (const id of ids) {
+      await this.eliminarInstitucionYCascada(id)
+    }
+  }
+
+  /**
+   * Elimina atómicamente una institución y sus vacantes asociadas.
+   */
+  private async eliminarInstitucionYCascada(institucionId: string) {
+    const vacantesSnap = await this.col(COLECCIONES.vacantes)
+      .where('institucionId', '==', institucionId).get()
+
+    const batch = this.db.batch()
+    for (const v of vacantesSnap.docs) batch.delete(v.ref)
+    batch.delete(this.col(COLECCIONES.instituciones).doc(institucionId))
+    await batch.commit()
   }
 
   private async eliminarDocsEnLote(coleccion: string, campo: string, valor: string): Promise<void> {

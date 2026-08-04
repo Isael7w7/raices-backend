@@ -168,4 +168,19 @@ export class UsersController {
   updateLinkedPcdFeatures(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string, @Body() dto: UpdateFeaturesDto) {
     return this.svc.updateLinkedPcdFeatures(user.id, pcdUserId, dto)
   }
+
+  @Delete('pcd-vinculado/:pcdUserId/desvincular')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Desvincular PCD de tutor', description: 'Desvincula una cuenta PCD de su tutor de forma atómica: limpia tutorId del perfil y elimina las relaciones en dependientes. Solo el tutor dueño o un administrador.' })
+  @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD a desvincular' })
+  @ApiResponse({ status: 200, description: 'PCD desvinculada exitosamente' })
+  @ApiResponse({ status: 400, description: 'La cuenta PCD no está vinculada a ningún tutor' })
+  @ApiResponse({ status: 403, description: 'Solo el tutor dueño puede desvincular esta cuenta' })
+  @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
+  unlinkPcdFromTutor(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string) {
+    return this.svc.unlinkPcdFromTutor(user.id, user.rol, pcdUserId)
+  }
 }
