@@ -280,7 +280,9 @@ export class AdminService {
   }
 
   async approveInstitution(id: string) {
-    await this.col(COLECCIONES.instituciones).doc(id).update({ verificada: true })
+    // Aprobar deja la institución verificada Y activa: así puede aparecer en el
+    // directorio público y publicar vacantes (jobs exige activa + verificada).
+    await this.col(COLECCIONES.instituciones).doc(id).update({ verificada: true, activa: true })
     const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
     if (doc.exists) {
       const inst = doc.data()!

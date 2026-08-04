@@ -45,7 +45,11 @@ export class JobsService {
         institucionVerificada: inst.verificada ?? false,
         institucionOwnerId: inst.creadoPor ?? null,
       }
-    }).filter(v => mapaInst.has(v.institucionId) && (mapaInst.get(v.institucionId).activa ?? false))
+    // Solo vacantes de instituciones activas Y aprobadas por un administrador
+    }).filter(v => {
+      const inst = mapaInst.get(v.institucionId)
+      return inst && inst.activa === true && inst.verificada === true
+    })
 
     let resultado = todos
 
@@ -170,6 +174,18 @@ export class JobsService {
   }
 
   async createJob(institucionId: string, dto: any) {
+    // La institución debe existir, estar activa y haber sido aprobada por un
+    // administrador (verificada) antes de publicar vacantes en el directorio.
+    const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(institucionId).get()
+    if (!instDoc.exists) throw new NotFoundException('Institución no encontrada')
+    const inst = instDoc.data()!
+    if (inst.activa !== true) {
+      throw new ForbiddenException('La institución se encuentra inactiva')
+    }
+    if (inst.verificada !== true) {
+      throw new ForbiddenException('La institución debe estar aprobada por un administrador para publicar vacantes')
+    }
+
     const ref = this.db.collection(COLECCIONES.vacantes).doc()
     await ref.set({
       id: ref.id, institucionId, titulo: dto.titulo, descripcion: dto.descripcion ?? '',

@@ -90,7 +90,7 @@ describe('JobsService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: vacantes.map(v => ({ id: v.id, data: () => v })), size: 2 }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', nombre: 'C', activa: true }) }], size: 1 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', nombre: 'C', activa: true, verificada: true }) }], size: 1 }) })
 
       const result = await service.findAll({ ciudad: 'Mérida' })
 
@@ -114,7 +114,20 @@ describe('JobsService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: vacantes.map(v => ({ id: v.id, data: () => v })), size: 1 }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', activa: false }) }], size: 1 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', activa: false, verificada: true }) }], size: 1 }) })
+
+      const result = await service.findAll()
+      expect(result.datos).toHaveLength(0)
+    })
+
+    it('should filter out vacancies from unverified institutions', async () => {
+      const vacantes = [
+        { id: 'v1', titulo: 'A', activa: true, institucionId: 'inst1', fechaCreacion: '2024-01-01' },
+      ]
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: vacantes.map(v => ({ id: v.id, data: () => v })), size: 1 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'inst1', data: () => ({ id: 'inst1', activa: true, verificada: false }) }], size: 1 }) })
 
       const result = await service.findAll()
       expect(result.datos).toHaveLength(0)
@@ -212,14 +225,16 @@ describe('JobsService', () => {
       const chainable = { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) }
       const vacanteSet = jest.fn().mockResolvedValue(undefined)
       const vacanteGet = jest.fn().mockResolvedValue(mockDoc({ titulo: 'Test', institucionId: 'inst1' }, true, 'new-id'))
-      const instGet = jest.fn().mockResolvedValue(mockDoc({ nombre: 'Centro', activa: true, ciudad: 'Mérida', verificada: false }, true, 'inst1'))
+      const instGet = jest.fn().mockResolvedValue(mockDoc({ nombre: 'Centro', activa: true, ciudad: 'Mérida', verificada: true }, true, 'inst1'))
 
       // 1) createForUser -> where().limit().get() to find institution by creadoPor
-      // 2) createJob -> doc().set() to create vacancy
-      // 3) findOne -> doc().get() to read vacancy back
-      // 4) findOne -> doc().get() to read institution data
+      // 2) createJob -> doc(inst1).get() to validate institution approval
+      // 3) createJob -> doc().set() to create vacancy
+      // 4) findOne -> doc().get() to read vacancy back
+      // 5) findOne -> doc().get() to read institution data
       firestoreMock.collection
         .mockReturnValueOnce(chainable)
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: instGet }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: vacanteSet, get: vacanteGet }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: vacanteGet }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: instGet }) })
@@ -237,6 +252,36 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) })
 
       await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when the institution is not approved (verificada false)', async () => {
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ activa: true, verificada: false }, true, 'inst1')) }) })
+
+      await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' }))
+        .rejects.toThrow('La institución debe estar aprobada por un administrador para publicar vacantes')
+    })
+
+    it('should throw ForbiddenException when the institution is inactive', async () => {
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ activa: false, verificada: true }, true, 'inst1')) }) })
+
+      await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' }))
+        .rejects.toThrow('La institución se encuentra inactiva')
+    })
+
+    it('should throw NotFoundException when the admin references a nonexistent institution', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'ghost')) }) })
+
+      await expect(service.createForUser({ id: 'admin1', rol: 'admin' }, { titulo: 'Test', institucionId: 'ghost' }))
+        .rejects.toThrow(NotFoundException)
     })
   })
 
