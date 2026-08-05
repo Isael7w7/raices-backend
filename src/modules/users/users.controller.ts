@@ -13,6 +13,8 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
+import { LimitDependientes } from '../../common/decorators/limit-dependientes.decorator'
+import { LimitDependientesGuard } from '../../common/guards/limit-dependientes.guard'
 
 @ApiTags('Usuarios')
 @ApiBearerAuth('jwt-auth')
@@ -84,6 +86,11 @@ export class UsersController {
     return this.svc.saveProfilingData(user.id, dto)
   }
 
+  @Get('dependientes/count')
+  @ApiOperation({ summary: 'Conteo de dependientes', description: 'Retorna el número de dependientes registrados y el límite restante permitido.' })
+  @ApiResponse({ status: 200, description: 'Conteo y límite restante' })
+  dependentsCount(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependentsCount(user.id) }
+
   @Get('dependientes')
   @UseETag()
   @ApiOperation({ summary: 'Listar dependientes', description: 'Retorna personas bajo cuidado del usuario (hijos, pacientes)' })
@@ -91,9 +98,12 @@ export class UsersController {
   dependents(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependents(user.id) }
 
   @Post('dependientes')
-  @ApiOperation({ summary: 'Agregar dependiente' })
+  @UseGuards(LimitDependientesGuard)
+  @LimitDependientes()
+  @ApiOperation({ summary: 'Agregar dependiente', description: 'Crea un dependiente directo. Valida automáticamente el límite máximo de dependientes por tutor.' })
   @ApiBody({ type: CrearDependienteDto })
   @ApiResponse({ status: 201, description: 'Dependiente creado' })
+  @ApiResponse({ status: 400, description: 'Límite máximo de dependientes alcanzado' })
   addDependent(@CurrentUser() user: CurrentUserPayload, @Body() dto: CrearDependienteDto) {
     return this.svc.addDependent(user.id, dto)
   }

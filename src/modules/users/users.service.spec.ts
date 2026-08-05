@@ -791,6 +791,59 @@ describe('UsersService', () => {
     })
   })
 
+  // ── getDependentsCount ─────────────────────────────────────────────
+
+  describe('getDependentsCount', () => {
+    it('should return total, limit and remaining count', async () => {
+      const deps = Array.from({ length: 3 }, (_, i) => ({
+        id: `dep-${i}`,
+        data: () => ({ id: `dep-${i}`, tutorId: 'user1' }),
+      }))
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ size: 3, docs: deps }),
+      })
+
+      const result: any = await service.getDependentsCount('user1')
+
+      expect(result.total).toBe(3)
+      expect(result.limite).toBe(5)
+      expect(result.restantes).toBe(2)
+    })
+
+    it('should return 0 remaining when at max limit', async () => {
+      const deps = Array.from({ length: 5 }, (_, i) => ({
+        id: `dep-${i}`,
+        data: () => ({ id: `dep-${i}`, tutorId: 'user1' }),
+      }))
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ size: 5, docs: deps }),
+      })
+
+      const result: any = await service.getDependentsCount('user1')
+
+      expect(result.total).toBe(5)
+      expect(result.limite).toBe(5)
+      expect(result.restantes).toBe(0)
+    })
+
+    it('should return full limit remaining when no dependents', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ size: 0, docs: [] }),
+      })
+
+      const result: any = await service.getDependentsCount('user1')
+
+      expect(result.total).toBe(0)
+      expect(result.limite).toBe(5)
+      expect(result.restantes).toBe(5)
+    })
+  })
+
   // ── addDependent ─────────────────────────────────────────────────────
 
   describe('addDependent', () => {
@@ -803,6 +856,8 @@ describe('UsersService', () => {
       }
 
       firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: [] }), // 0 dependientes existentes
         doc: jest.fn().mockReturnValue({
           set: setMock,
           get: jest.fn().mockResolvedValue(mockDoc(docData)),
@@ -828,6 +883,8 @@ describe('UsersService', () => {
       }
 
       firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: [] }), // 0 dependientes existentes
         doc: jest.fn().mockReturnValue({
           set: setMock,
           get: jest.fn().mockResolvedValue(mockDoc(docData)),
@@ -838,6 +895,7 @@ describe('UsersService', () => {
       expect(result.nombreCompleto).toBe('Sin nombre')
       expect(result.parentesco).toBe('familiar')
     })
+
   })
 
   // ── updateDependent ──────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
-import { COLECCIONES } from '../../database/firestore.constants'
+import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
@@ -246,6 +246,17 @@ export class UsersService {
 
     dependientes.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
     return dependientes
+  }
+
+  async getDependentsCount(usuarioId: string) {
+    const snap = await this.col(COLECCIONES.dependientes)
+      .where('tutorId', '==', usuarioId).get()
+    const limite = getMaxDependientesPorTutor()
+    return {
+      total: snap.size,
+      limite,
+      restantes: Math.max(0, limite - snap.size),
+    }
   }
 
   async addDependent(usuarioId: string, datos: any) {
