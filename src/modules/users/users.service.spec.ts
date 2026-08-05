@@ -1027,6 +1027,9 @@ describe('UsersService', () => {
 
       const perfilesCol = {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pcdData)), update: updateMock }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'pcd1', data: () => pcdData }] }),
       }
       // dependientes: canónico no existe, previos vacío → crear
       const dependientesCol = {
@@ -1037,7 +1040,7 @@ describe('UsersService', () => {
       }
       firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
 
-      const result = await service.linkPcdToTutor('tutor1', 'pcd1')
+      const result = await service.linkPcdToTutor('tutor1', 'pcd1@example.com')
 
       expect(updateMock).toHaveBeenCalledWith({ tutorId: 'tutor1' })
       expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -1057,6 +1060,9 @@ describe('UsersService', () => {
 
       const perfilesCol = {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pcdData)), update: updateMock }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'pcd1', data: () => pcdData }] }),
       }
       const dependientesCol = {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)), set: setMock }),
@@ -1073,7 +1079,7 @@ describe('UsersService', () => {
       }
       firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
 
-      await service.linkPcdToTutor('tutor1', 'pcd1')
+      await service.linkPcdToTutor('tutor1', 'pcd1@example.com')
 
       expect(promoteUpdate).toHaveBeenCalledWith(expect.objectContaining({
         pcdUserId: 'pcd1',
@@ -1085,35 +1091,32 @@ describe('UsersService', () => {
 
     it('should throw NotFoundException when PCD user does not exist', async () => {
       firestoreMock.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
-        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       })
 
-      await expect(service.linkPcdToTutor('tutor1', 'nonexistent')).rejects.toThrow(NotFoundException)
+      await expect(service.linkPcdToTutor('tutor1', 'nonexistent@example.com')).rejects.toThrow(NotFoundException)
     })
 
-    it('should throw BadRequestException when user is not PCD role', async () => {
+    it('should throw NotFoundException when user exists but is not PCD role', async () => {
       firestoreMock.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst1', rol: 'institucion' })),
-          update: jest.fn().mockResolvedValue(undefined),
-        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'inst1', data: () => ({ rol: 'institucion' }) }] }),
       })
 
-      await expect(service.linkPcdToTutor('tutor1', 'inst1')).rejects.toThrow(BadRequestException)
+      await expect(service.linkPcdToTutor('tutor1', 'inst@example.com')).rejects.toThrow(NotFoundException)
     })
 
     it('should throw BadRequestException when PCD already has a tutor', async () => {
       firestoreMock.collection.mockReturnValue({
-        doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', rol: 'pcd', tutorId: 'existing-tutor' })),
-          update: jest.fn().mockResolvedValue(undefined),
-          set: jest.fn().mockResolvedValue(undefined),
-        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'pcd1', data: () => ({ rol: 'pcd', tutorId: 'existing-tutor' }) }] }),
       })
 
-      await expect(service.linkPcdToTutor('tutor1', 'pcd1')).rejects.toThrow(BadRequestException)
+      await expect(service.linkPcdToTutor('tutor1', 'pcd@example.com')).rejects.toThrow(BadRequestException)
     })
   })
 

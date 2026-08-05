@@ -364,16 +364,25 @@ export class UsersService {
   // ─── Vinculación PCD ↔ Tutor ───────────────────────────────────────
 
   /**
-   * Vincula una cuenta PCD existente a un Tutor.
+   * Vincula una cuenta PCD existente a un Tutor buscando por correo electrónico.
    * Solo el tutor puede vincular. La PCD no debe estar ya vinculada a otro tutor.
    */
-  async linkPcdToTutor(tutorId: string, pcdUserId: string) {
-    const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdUserId).get()
-    if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+  async linkPcdToTutor(tutorId: string, email: string) {
+    const snap = await this.col(COLECCIONES.perfiles)
+      .where('email', '==', email)
+      .limit(1)
+      .get()
 
-    const pcd = pcdDoc.data()!
+    if (snap.empty) {
+      throw new NotFoundException('No se encontró un usuario PCD asociado a ese correo')
+    }
+
+    const pcdDoc = snap.docs[0]
+    const pcdUserId = pcdDoc.id
+    const pcd = pcdDoc.data()
+
     if (pcd.rol !== 'pcd') {
-      throw new BadRequestException('Solo se pueden vincular cuentas con rol PCD')
+      throw new NotFoundException('No se encontró un usuario PCD asociado a ese correo')
     }
     if (pcd.tutorId) {
       throw new BadRequestException('Esta cuenta PCD ya está vinculada a un tutor')

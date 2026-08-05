@@ -129,17 +129,18 @@ export class UsersController {
 
   // ─── Endpoints de vinculación y features ────────────────────────────
 
-  @Post('vincular-pcd/:pcdUserId')
+  @Post('vincular-pcd')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Vincular PCD a tutor', description: 'Vincula una cuenta PCD existente a la cuenta del tutor autenticado.' })
-  @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD a vincular' })
+  @ApiOperation({ summary: 'Vincular PCD a tutor', description: 'Vincula una cuenta PCD existente a la cuenta del tutor autenticado utilizando el correo electrónico.' })
+  @ApiBody({ schema: { type: 'object', properties: { email: { type: 'string', description: 'Correo electrónico de la cuenta PCD a vincular' } }, required: ['email'] } })
   @ApiResponse({ status: 201, description: 'PCD vinculada exitosamente' })
   @ApiResponse({ status: 400, description: 'La cuenta ya está vinculada o no es una PCD' })
-  @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
-  linkPcdToTutor(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string) {
-    return this.svc.linkPcdToTutor(user.id, pcdUserId)
+  @ApiResponse({ status: 404, description: 'No se encontró un usuario PCD asociado a ese correo' })
+  linkPcdToTutor(@CurrentUser() user: CurrentUserPayload, @Body('email') email: string) {
+    const normalizedEmail = email?.trim().toLowerCase()
+    return this.svc.linkPcdToTutor(user.id, normalizedEmail)
   }
 
   @Put('dependientes/:id/features')
