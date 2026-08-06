@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
@@ -82,47 +82,51 @@ export class UsersService {
     const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
 
-    const perfil = doc.data()!
-    const urlAvatar: string | undefined = perfil.urlAvatar
-
-    if (urlAvatar) {
-      try {
-        const filePath = extractStoragePath(urlAvatar)
-        if (filePath) {
-          await this.storage.delete(filePath)
-        }
-      } catch (err: any) {
-        this.logger.warn(`No se pudo eliminar archivo de Storage: ${err.message}`)
-      }
-    }
+    await this.eliminarArchivoDeUrl(doc.data()!.urlAvatar)
 
     await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar: null })
   }
 
-
+  /**
+   * Elimina de Storage el archivo asociado a una URL (GCS o fallback local).
+   * Los fallos de Storage (o URLs no extraíbles) se registran y no rompen
+   * el flujo principal.
+   */
+  private async eliminarArchivoDeUrl(url: string | undefined): Promise<void> {
+    if (!url) return
+    const filePath = extractStoragePath(url)
+    if (!filePath) {
+      this.logger.warn(`No se pudo extraer la ruta de almacenamiento de la URL: ${url}`)
+      return
+    }
+    try {
+      await this.storage.delete(filePath)
+    } catch (err: any) {
+      this.logger.warn(`No se pudo eliminar archivo de Storage: ${err?.message ?? err}`)
+    }
+  }
 
   async updateAvatar(usuarioId: string, urlAvatar: string) {
-    // 1. Obtener avatar anterior para limpiarlo de Storage
     const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
-    const urlAnterior = doc.exists ? doc.data()?.urlAvatar : undefined
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
+    const urlAnterior = doc.data()?.urlAvatar
 
-    if (urlAnterior) {
-      try {
-        const filePath = extractStoragePath(urlAnterior)
-        if (filePath) await this.storage.delete(filePath)
-      } catch (err: any) {
-        this.logger.warn(`No se pudo eliminar avatar anterior de Storage: ${err.message}`)
-      }
-    }
-
-    // 2. Actualizar la URL en Firestore
+    // 1. Persistir primero la nueva URL: si Firestore falla, el avatar
+    // anterior sigue referenciado en la base de datos y el usuario no
+    // pierde su foto. El archivo recién subido se elimina como rollback
+    // para no dejar objetos huérfanos en Storage.
     try {
       await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar })
-      return { urlAvatar }
     } catch (dbError: any) {
-      console.error('Error al guardar avatarUrl en Firestore:', dbError)
-      return { urlAvatar }
+      this.logger.error(`Error al guardar avatarUrl en Firestore: ${dbError?.message ?? dbError}`)
+      await this.eliminarArchivoDeUrl(urlAvatar)
+      throw new ServiceUnavailableException('No se pudo guardar el avatar en la base de datos')
     }
+
+    // 2. Limpiar el avatar anterior de Storage (fallo no bloqueante)
+    await this.eliminarArchivoDeUrl(urlAnterior)
+
+    return { urlAvatar }
   }
 
   async updateProfile(usuarioId: string, datos: any) {

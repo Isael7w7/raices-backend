@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { FIRESTORE } from '../../database/firebase.provider';
 import { StorageService } from '../storage/storage.service';
@@ -454,11 +454,9 @@ describe('UsersService', () => {
       expect(result).toEqual({ urlAvatar: newAvatarUrl })
     })
 
-    it('should catch Firestore error and return partial success with URL', async () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {})
-
+    it('should delete the uploaded file and throw when Firestore fails to save the avatar', async () => {
       const mockDocRef = {
-        get: jest.fn().mockResolvedValue(mockDoc(null)),
+        get: jest.fn().mockResolvedValue(mockDoc({ id: 'user1' })),
         set: jest.fn().mockResolvedValue(undefined),
         update: jest.fn().mockRejectedValue(new Error('Firestore write denied')),
         delete: jest.fn().mockResolvedValue(undefined),
@@ -472,17 +470,33 @@ describe('UsersService', () => {
         get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       })
 
-      const avatarUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/avatars/abc-123.jpg'
-      const result = await service.updateAvatar('user1', avatarUrl)
+      const avatarUrl = 'https://firebasestorage.googleapis.com/v0/b/raices-499122.appspot.com/o/avatars%2Fabc-123.jpg?alt=media&token=tok'
+
+      await expect(service.updateAvatar('user1', avatarUrl)).rejects.toThrow(ServiceUnavailableException)
 
       expect(mockDocRef.update).toHaveBeenCalledWith({ urlAvatar: avatarUrl })
-      expect(consoleSpy).toHaveBeenCalledWith(
-        'Error al guardar avatarUrl en Firestore:',
-        expect.any(Error),
-      )
-      expect(result).toEqual({ urlAvatar: avatarUrl })
+      // Rollback: el archivo recién subido se elimina para no dejarlo huérfano
+      expect(storageMock.delete).toHaveBeenCalledWith('avatars/abc-123.jpg')
+    })
 
-      consoleSpy.mockRestore()
+    it('should throw NotFoundException when the user does not exist', async () => {
+      const mockDocRef = {
+        get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+        set: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+        delete: jest.fn().mockResolvedValue(undefined),
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockDocRef),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      await expect(service.updateAvatar('ghost-user', 'https://example.com/avatar.jpg')).rejects.toThrow(NotFoundException)
+      expect(mockDocRef.update).not.toHaveBeenCalled()
     })
   })
 

@@ -1,12 +1,13 @@
 import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
 import { StorageService } from '../storage/storage.service'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
+import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto } from './dto/respuestas-usuario.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -29,14 +30,14 @@ export class UsersController {
   @Get('perfil')
   @UseETag()
   @ApiOperation({ summary: 'Obtener perfil completo del usuario', description: 'Retorna perfil + datos de profiling (discapacidad, necesidades, etc.)' })
-  @ApiResponse({ status: 200, description: 'Perfil completo' })
+  @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil completo' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   profile(@CurrentUser() user: CurrentUserPayload) { return this.svc.getProfile(user.id) }
 
   @Put('perfil')
   @ApiOperation({ summary: 'Actualizar perfil básico', description: 'Actualiza nombre, ciudad, estado o urlAvatar del usuario autenticado.' })
   @ApiBody({ type: ActualizarPerfilDto })
-  @ApiResponse({ status: 200, description: 'Perfil actualizado' })
+  @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil actualizado' })
   updateProfile(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilDto) {
     return this.svc.updateProfile(user.id, dto)
   }
@@ -46,8 +47,9 @@ export class UsersController {
   @ApiOperation({ summary: 'Subir/actualizar foto de perfil', description: 'Sube una imagen (JPEG, PNG, WebP o GIF) de hasta 5MB para usarla como avatar del usuario autenticado.' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { avatar: { type: 'string', format: 'binary' } } } })
-  @ApiResponse({ status: 201, description: 'Avatar actualizado correctamente' })
+  @ApiCreatedResponse({ type: RespuestaAvatarDto, description: 'Avatar actualizado correctamente' })
   @ApiResponse({ status: 400, description: 'Archivo inválido o demasiado grande' })
+  @ApiResponse({ status: 503, description: 'No se pudo guardar el avatar en la base de datos (Firestore inaccesible)' })
   async uploadAvatar(
     @CurrentUser() user: CurrentUserPayload,
     @UploadedFile(
@@ -70,7 +72,7 @@ export class UsersController {
   @Delete('avatar')
   @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar foto de perfil', description: 'Elimina el avatar del usuario de Firebase Storage y limpia el campo en la base de datos.' })
-  @ApiResponse({ status: 204, description: 'Foto de perfil eliminada correctamente' })
+  @ApiNoContentResponse({ description: 'Foto de perfil eliminada correctamente' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
   deleteAvatar(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.deleteAvatar(user.id)
@@ -79,7 +81,7 @@ export class UsersController {
   @Post('perfil-necesidades')
   @ApiOperation({ summary: 'Guardar perfil de necesidades', description: 'Guarda tipos de discapacidad, necesidades, metas, historial, etc.' })
   @ApiBody({ type: GuardarPerfilNecesidadesDto })
-  @ApiResponse({ status: 201, description: 'Perfil de necesidades guardado con éxito' })
+  @ApiCreatedResponse({ type: PerfilNecesidadesDto, description: 'Perfil de necesidades guardado con éxito' })
   @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
   @ApiResponse({ status: 401, description: 'No autorizado' })
   saveProfiling(@CurrentUser() user: CurrentUserPayload, @Body() dto: GuardarPerfilNecesidadesDto) {
@@ -88,13 +90,13 @@ export class UsersController {
 
   @Get('dependientes/count')
   @ApiOperation({ summary: 'Conteo de dependientes', description: 'Retorna el número de dependientes registrados y el límite restante permitido.' })
-  @ApiResponse({ status: 200, description: 'Conteo y límite restante' })
+  @ApiOkResponse({ type: ConteoDependientesDto, description: 'Conteo y límite restante' })
   dependentsCount(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependentsCount(user.id) }
 
   @Get('dependientes')
   @UseETag()
   @ApiOperation({ summary: 'Listar dependientes', description: 'Retorna personas bajo cuidado del usuario (hijos, pacientes)' })
-  @ApiResponse({ status: 200, description: 'Lista de dependientes' })
+  @ApiOkResponse({ type: [DependienteDto], description: 'Lista de dependientes' })
   dependents(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependents(user.id) }
 
   @Post('dependientes')
@@ -102,7 +104,7 @@ export class UsersController {
   @LimitDependientes()
   @ApiOperation({ summary: 'Agregar dependiente', description: 'Crea un dependiente directo. Valida automáticamente el límite máximo de dependientes por tutor.' })
   @ApiBody({ type: CrearDependienteDto })
-  @ApiResponse({ status: 201, description: 'Dependiente creado' })
+  @ApiCreatedResponse({ type: DependienteDto, description: 'Dependiente creado' })
   @ApiResponse({ status: 400, description: 'Límite máximo de dependientes alcanzado' })
   addDependent(@CurrentUser() user: CurrentUserPayload, @Body() dto: CrearDependienteDto) {
     return this.svc.addDependent(user.id, dto)
@@ -111,7 +113,7 @@ export class UsersController {
   @Get('dependientes/:id')
   @ApiOperation({ summary: 'Detalle de dependiente', description: 'Retorna la información de un dependiente específico por su ID.' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
-  @ApiResponse({ status: 200, description: 'Dependiente encontrado' })
+  @ApiOkResponse({ type: DependienteDto, description: 'Dependiente encontrado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   getDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
     return this.svc.getDependent(user.id, id)
@@ -121,7 +123,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Actualizar dependiente' })
   @ApiBody({ type: CrearDependienteDto })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
-  @ApiResponse({ status: 200, description: 'Dependiente actualizado' })
+  @ApiOkResponse({ type: DependienteDto, description: 'Dependiente actualizado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   updateDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: CrearDependienteDto) {
     return this.svc.updateDependent(user.id, id, dto)
@@ -131,7 +133,7 @@ export class UsersController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar dependiente' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
-  @ApiResponse({ status: 204, description: 'Dependiente eliminado' })
+  @ApiNoContentResponse({ description: 'Dependiente eliminado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   deleteDependent(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
     return this.svc.deleteDependent(user.id, id)
@@ -145,7 +147,7 @@ export class UsersController {
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Vincular PCD a tutor', description: 'Vincula una cuenta PCD existente a la cuenta del tutor autenticado utilizando el correo electrónico.' })
   @ApiBody({ schema: { type: 'object', properties: { email: { type: 'string', description: 'Correo electrónico de la cuenta PCD a vincular' } }, required: ['email'] } })
-  @ApiResponse({ status: 201, description: 'PCD vinculada exitosamente' })
+  @ApiCreatedResponse({ type: RespuestaVinculacionDto, description: 'PCD vinculada exitosamente' })
   @ApiResponse({ status: 400, description: 'La cuenta ya está vinculada o no es una PCD' })
   @ApiResponse({ status: 404, description: 'No se encontró un usuario PCD asociado a ese correo' })
   linkPcdToTutor(@CurrentUser() user: CurrentUserPayload, @Body('email') email: string) {
@@ -160,7 +162,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Configurar features de dependiente', description: 'Activa/desactiva funcionalidades para un dependiente plano.' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiBody({ type: UpdateFeaturesDto })
-  @ApiResponse({ status: 200, description: 'Features actualizadas' })
+  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   updateDependentFeatures(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: UpdateFeaturesDto) {
     return this.svc.updateDependentFeatures(user.id, id, dto)
@@ -173,7 +175,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Configurar features de PCD vinculada', description: 'Activa/desactiva funcionalidades para una cuenta PCD vinculada al tutor.' })
   @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD vinculada' })
   @ApiBody({ type: UpdateFeaturesDto })
-  @ApiResponse({ status: 200, description: 'Features actualizadas' })
+  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })
   @ApiResponse({ status: 403, description: 'La PCD no está vinculada a tu cuenta' })
   @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
   updateLinkedPcdFeatures(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string, @Body() dto: UpdateFeaturesDto) {
@@ -187,7 +189,7 @@ export class UsersController {
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Desvincular PCD de tutor', description: 'Desvincula una cuenta PCD de su tutor de forma atómica: limpia tutorId del perfil y elimina las relaciones en dependientes. Solo el tutor dueño o un administrador.' })
   @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD a desvincular' })
-  @ApiResponse({ status: 200, description: 'PCD desvinculada exitosamente' })
+  @ApiOkResponse({ type: RespuestaDesvinculacionDto, description: 'PCD desvinculada exitosamente' })
   @ApiResponse({ status: 400, description: 'La cuenta PCD no está vinculada a ningún tutor' })
   @ApiResponse({ status: 403, description: 'Solo el tutor dueño puede desvincular esta cuenta' })
   @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
