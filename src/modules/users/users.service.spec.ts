@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { FIRESTORE } from '../../database/firebase.provider';
+import { getMaxDependientesPorTutor } from '../../database/firestore.constants';
 import { StorageService } from '../storage/storage.service';
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
@@ -922,6 +923,9 @@ describe('UsersService', () => {
 
   describe('getDependentsCount', () => {
     it('should return total, limit and remaining count', async () => {
+      // Se usa getMaxDependientesPorTutor() como fuente de verdad para que el
+      // test sea inmune al valor de MAX_DEPENDIENTES_POR_TUTOR en el entorno.
+      const limite = getMaxDependientesPorTutor()
       const deps = Array.from({ length: 3 }, (_, i) => ({
         id: `dep-${i}`,
         data: () => ({ id: `dep-${i}`, tutorId: 'user1' }),
@@ -935,29 +939,31 @@ describe('UsersService', () => {
       const result: any = await service.getDependentsCount('user1')
 
       expect(result.total).toBe(3)
-      expect(result.limite).toBe(5)
-      expect(result.restantes).toBe(2)
+      expect(result.limite).toBe(limite)
+      expect(result.restantes).toBe(Math.max(0, limite - 3))
     })
 
     it('should return 0 remaining when at max limit', async () => {
-      const deps = Array.from({ length: 5 }, (_, i) => ({
+      const limite = getMaxDependientesPorTutor()
+      const deps = Array.from({ length: limite }, (_, i) => ({
         id: `dep-${i}`,
         data: () => ({ id: `dep-${i}`, tutorId: 'user1' }),
       }))
 
       firestoreMock.collection.mockReturnValue({
         where: jest.fn().mockReturnThis(),
-        get: jest.fn().mockResolvedValue({ size: 5, docs: deps }),
+        get: jest.fn().mockResolvedValue({ size: limite, docs: deps }),
       })
 
       const result: any = await service.getDependentsCount('user1')
 
-      expect(result.total).toBe(5)
-      expect(result.limite).toBe(5)
+      expect(result.total).toBe(limite)
+      expect(result.limite).toBe(limite)
       expect(result.restantes).toBe(0)
     })
 
     it('should return full limit remaining when no dependents', async () => {
+      const limite = getMaxDependientesPorTutor()
       firestoreMock.collection.mockReturnValue({
         where: jest.fn().mockReturnThis(),
         get: jest.fn().mockResolvedValue({ size: 0, docs: [] }),
@@ -966,8 +972,8 @@ describe('UsersService', () => {
       const result: any = await service.getDependentsCount('user1')
 
       expect(result.total).toBe(0)
-      expect(result.limite).toBe(5)
-      expect(result.restantes).toBe(5)
+      expect(result.limite).toBe(limite)
+      expect(result.restantes).toBe(limite)
     })
   })
 
