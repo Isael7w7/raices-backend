@@ -19,7 +19,36 @@ describe('CommunityService', () => {
   let firestoreMock: Record<string, any>
 
   beforeEach(async () => {
-    firestoreMock = { collection: jest.fn() }
+    firestoreMock = {
+      collection: jest.fn(),
+      batch: jest.fn(() => ({ set: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) })),
+      // Transacción simulada: delega en los objetos mockeados igual que
+      // firestore-admin (tx.get → ref/query .get(); tx.set/update/delete → ref).
+      // Incluye la regla real de Firestore: NO se permiten lecturas después de
+      // una escritura dentro de la transacción.
+      runTransaction: jest.fn(async (cb: any) => {
+        let escritura = false
+        const tx = {
+          get: async (target: any) => {
+            if (escritura) throw new Error('Firestore: lectura después de escritura en transacción')
+            return target.get()
+          },
+          set: (ref: any, data: any, opts?: any) => {
+            escritura = true
+            return opts === undefined ? ref.set(data) : ref.set(data, opts)
+          },
+          update: (ref: any, data: any) => {
+            escritura = true
+            return ref.update(data)
+          },
+          delete: (ref: any) => {
+            escritura = true
+            return ref.delete()
+          },
+        }
+        return cb(tx)
+      }),
+    }
     const module: TestingModule = await Test.createTestingModule({
       providers: [CommunityService, { provide: FIRESTORE, useValue: firestoreMock }],
     }).compile()
@@ -110,31 +139,40 @@ describe('CommunityService', () => {
   })
 
   describe('toggleLike', () => {
-    it('should add like when not liked', async () => {
-      const emptySnap = { empty: true, docs: [] as never[] }
-      const batch = { set: jest.fn().mockResolvedValue(undefined) }
+    it('should add like atomically with deterministic id (usuario_publicacion)', async () => {
+      const setLikeMock = jest.fn().mockResolvedValue(undefined)
+      const updatePubMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'u1_p1', get: jest.fn().mockResolvedValue({ exists: false }), set: setLikeMock, delete: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: true }), update: updatePubMock }) })
 
       const result = await service.toggleLike('u1', 'p1')
       expect(result.meGusta).toBe(true)
+      expect(setLikeMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'u1_p1', usuarioId: 'u1', publicacionId: 'p1' }))
+      expect(updatePubMock).toHaveBeenCalled()
     })
 
-    it('should remove like when already liked', async () => {
-      const existingSnap = {
-        empty: false,
-        docs: [{ ref: { delete: jest.fn().mockResolvedValue(undefined) } }],
-      }
+    it('should remove like atomically when already liked', async () => {
+      const deleteLikeMock = jest.fn().mockResolvedValue(undefined)
+      const updatePubMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(existingSnap) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'u1_p1', get: jest.fn().mockResolvedValue({ exists: true }), set: jest.fn().mockResolvedValue(undefined), delete: deleteLikeMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: true }), update: updatePubMock }) })
 
       const result = await service.toggleLike('u1', 'p1')
       expect(result.meGusta).toBe(false)
+      expect(deleteLikeMock).toHaveBeenCalled()
+      expect(updatePubMock).toHaveBeenCalled()
+    })
+
+    it('should throw NotFoundException when publication does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'u1_p1', get: jest.fn().mockResolvedValue({ exists: false }), set: jest.fn(), delete: jest.fn() }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }), update: jest.fn() }) })
+
+      await expect(service.toggleLike('u1', 'p1')).rejects.toThrow(NotFoundException)
     })
   })
 
@@ -198,39 +236,46 @@ describe('CommunityService', () => {
   })
 
   describe('createGroup', () => {
-    it('should create a group and add creator as member', async () => {
+    it('should create group + creator member atómicamente en un batch', async () => {
       const groupData = { id: 'g1', nombre: 'Test Group', descripcion: '', esPublico: true, creadorId: 'u1', cantidadMiembros: 1 }
+      const batchMock = { set: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'g1', set: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'g1_u1', set: jest.fn().mockResolvedValue(undefined) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')) }) })
+      firestoreMock.batch = jest.fn(() => batchMock)
 
       const result = await service.createGroup('u1', { nombre: 'Test Group' })
       expect(result.nombre).toBe('Test Group')
+      expect(batchMock.set).toHaveBeenCalledTimes(2)
+      expect(batchMock.commit).toHaveBeenCalled()
     })
   })
 
   describe('joinGroup', () => {
-    it('should add user to group', async () => {
+    it('should add user to group atomically with deterministic id (grupo_usuario)', async () => {
       const groupData = { id: 'g1', nombre: 'Group', cantidadMiembros: 5 }
+      const setMemberMock = jest.fn().mockResolvedValue(undefined)
+      const updateGroupMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')) }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'g1_u1', get: jest.fn().mockResolvedValue({ exists: false }), set: setMemberMock, delete: jest.fn() }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')), update: updateGroupMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: updateGroupMock }) })
 
       const result = await service.joinGroup('g1', 'u1')
       expect(result.unido).toBe(true)
+      expect(setMemberMock).toHaveBeenCalledWith(expect.objectContaining({ grupoId: 'g1', usuarioId: 'u1', rol: 'miembro' }))
+      expect(updateGroupMock).toHaveBeenCalled()
     })
 
     it('should return already member if user is already in group', async () => {
       const groupData = { id: 'g1', nombre: 'Group' }
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')) }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: false, docs: [{}] }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'g1_u1', get: jest.fn().mockResolvedValue({ exists: true }), set: jest.fn(), delete: jest.fn() }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')), update: jest.fn() }) })
 
       const result = await service.joinGroup('g1', 'u1')
       expect(result.yaMiembro).toBe(true)
@@ -238,26 +283,28 @@ describe('CommunityService', () => {
   })
 
   describe('leaveGroup', () => {
-    it('should remove user from group', async () => {
+    it('should remove user from group atomically (mismo ID determinista)', async () => {
       const groupData = { id: 'g1', nombre: 'Group', cantidadMiembros: 5 }
-      const memberSnap = { empty: false, docs: [{ data: () => ({ rol: 'miembro' }), ref: { delete: jest.fn().mockResolvedValue(undefined) } }] }
+      const deleteMemberMock = jest.fn().mockResolvedValue(undefined)
+      const updateGroupMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')) }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(memberSnap) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'g1_u1', get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ rol: 'miembro' }) }), delete: deleteMemberMock, set: jest.fn() }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')), update: updateGroupMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: updateGroupMock }) })
 
       const result = await service.leaveGroup('g1', 'u1')
       expect(result.salido).toBe(true)
+      expect(deleteMemberMock).toHaveBeenCalled()
+      expect(updateGroupMock).toHaveBeenCalled()
     })
 
     it('should throw ForbiddenException when creator tries to leave', async () => {
       const groupData = { id: 'g1', nombre: 'Group' }
-      const memberSnap = { empty: false, docs: [{ data: () => ({ rol: 'admin' }) }] }
 
       firestoreMock.collection
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')) }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(memberSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'g1_u1', get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ rol: 'admin' }) }), delete: jest.fn(), set: jest.fn() }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(groupData, true, 'g1')), update: jest.fn() }) })
 
       await expect(service.leaveGroup('g1', 'u1')).rejects.toThrow(ForbiddenException)
     })

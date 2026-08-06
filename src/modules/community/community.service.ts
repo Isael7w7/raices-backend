@@ -189,27 +189,29 @@ export class CommunityService {
   }
 
   async toggleLike(usuarioId: string, publicacionId: string) {
-    const snap = await this.db.collection(COLECCIONES.meGustas)
-      .where('usuarioId', '==', usuarioId)
-      .where('publicacionId', '==', publicacionId)
-      .limit(1).get()
+    // ID determinista (usuario_publicación): dos toggles simultáneos no pueden
+    // crear likes duplicados ni desincronizar el contador, porque la existencia
+    // del like y el incremento se resuelven en una única transacción.
+    const refLike = this.db.collection(COLECCIONES.meGustas).doc(`${usuarioId}_${publicacionId}`)
 
-    if (!snap.empty) {
-      await snap.docs[0].ref.delete()
-      await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
-        cantidadMeGustas: FieldValue.increment(-1),
+    return this.db.runTransaction(async (tx) => {
+      const likeSnap = await tx.get(refLike)
+      const refPublicacion = this.db.collection(COLECCIONES.publicaciones).doc(publicacionId)
+      const pubSnap = await tx.get(refPublicacion)
+      if (!pubSnap.exists) throw new NotFoundException('Publicación no encontrada')
+
+      if (likeSnap.exists) {
+        tx.delete(refLike)
+        tx.update(refPublicacion, { cantidadMeGustas: FieldValue.increment(-1) })
+        return { meGusta: false }
+      }
+
+      tx.set(refLike, {
+        id: refLike.id, usuarioId, publicacionId, fechaCreacion: new Date().toISOString(),
       })
-      return { meGusta: false }
-    }
-
-    const refLike = this.db.collection(COLECCIONES.meGustas).doc()
-    await refLike.set({
-      id: refLike.id, usuarioId, publicacionId,
+      tx.update(refPublicacion, { cantidadMeGustas: FieldValue.increment(1) })
+      return { meGusta: true }
     })
-    await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).update({
-      cantidadMeGustas: FieldValue.increment(1),
-    })
-    return { meGusta: true }
   }
 
   async updatePost(id: string, usuarioId: string, contenido: string) {
@@ -236,55 +238,71 @@ export class CommunityService {
 
   async createGroup(creadorId: string, dto: any) {
     const ref = this.db.collection(COLECCIONES.grupos).doc()
-    await ref.set({
+    // Miembro del creador con ID determinista: evita duplicados y permite
+    // atomizar la creación del grupo + su primer miembro en un solo batch.
+    const refMiembro = this.db.collection(COLECCIONES.miembrosGrupo).doc(`${ref.id}_${creadorId}`)
+
+    const batch = this.db.batch()
+    batch.set(ref, {
       id: ref.id, nombre: dto.nombre, descripcion: dto.descripcion ?? '',
       esPublico: dto.esPublico !== false, creadorId,
       cantidadMiembros: 1, fechaCreacion: new Date().toISOString(),
     })
-    const refMiembro = this.db.collection(COLECCIONES.miembrosGrupo).doc()
-    await refMiembro.set({
+    batch.set(refMiembro, {
       id: refMiembro.id, grupoId: ref.id, usuarioId: creadorId, rol: 'admin',
       fechaCreacion: new Date().toISOString(),
     })
+    await batch.commit()
+
     const doc = await this.db.collection(COLECCIONES.grupos).doc(ref.id).get()
     return { id: ref.id, ...(doc.data() ?? {}) } as any
   }
 
   async joinGroup(grupoId: string, usuarioId: string) {
-    const grupoDoc = await this.db.collection(COLECCIONES.grupos).doc(grupoId).get()
-    if (!grupoDoc.exists) throw new NotFoundException('Grupo no encontrado')
+    // ID determinista (grupo_usuario): dos uniones simultáneas no crean
+    // membresías duplicadas ni inflan el contador, porque la verificación de
+    // existencia y el incremento se resuelven en una única transacción.
+    const refMiembro = this.db.collection(COLECCIONES.miembrosGrupo).doc(`${grupoId}_${usuarioId}`)
 
-    const existente = await this.db.collection(COLECCIONES.miembrosGrupo)
-      .where('grupoId', '==', grupoId).where('usuarioId', '==', usuarioId).limit(1).get()
-    if (!existente.empty) return { yaMiembro: true }
+    return this.db.runTransaction(async (tx) => {
+      const grupoSnap = await tx.get(this.db.collection(COLECCIONES.grupos).doc(grupoId))
+      if (!grupoSnap.exists) throw new NotFoundException('Grupo no encontrado')
 
-    const refJoin = this.db.collection(COLECCIONES.miembrosGrupo).doc()
-    await refJoin.set({
-      id: refJoin.id, grupoId, usuarioId, rol: 'miembro',
-      fechaCreacion: new Date().toISOString(),
+      const miembroSnap = await tx.get(refMiembro)
+      if (miembroSnap.exists) return { yaMiembro: true }
+
+      tx.set(refMiembro, {
+        id: refMiembro.id, grupoId, usuarioId, rol: 'miembro',
+        fechaCreacion: new Date().toISOString(),
+      })
+      tx.update(this.db.collection(COLECCIONES.grupos).doc(grupoId), {
+        cantidadMiembros: FieldValue.increment(1),
+      })
+      return { unido: true }
     })
-    await this.db.collection(COLECCIONES.grupos).doc(grupoId).update({
-      cantidadMiembros: FieldValue.increment(1),
-    })
-    return { unido: true }
   }
 
   async leaveGroup(grupoId: string, usuarioId: string) {
-    const grupoDoc = await this.db.collection(COLECCIONES.grupos).doc(grupoId).get()
-    if (!grupoDoc.exists) throw new NotFoundException('Grupo no encontrado')
+    // Mismo ID determinista que joinGroup: la salida es atómica con el
+    // decremento del contador y no puede dejar la membresía a medias.
+    const refMiembro = this.db.collection(COLECCIONES.miembrosGrupo).doc(`${grupoId}_${usuarioId}`)
 
-    const snap = await this.db.collection(COLECCIONES.miembrosGrupo)
-      .where('grupoId', '==', grupoId).where('usuarioId', '==', usuarioId).limit(1).get()
-    if (snap.empty) throw new NotFoundException('No eres miembro de este grupo')
+    return this.db.runTransaction(async (tx) => {
+      const grupoSnap = await tx.get(this.db.collection(COLECCIONES.grupos).doc(grupoId))
+      if (!grupoSnap.exists) throw new NotFoundException('Grupo no encontrado')
 
-    const miembro = snap.docs[0].data()
-    if (miembro.rol === 'admin') throw new ForbiddenException('El creador del grupo no puede salir. Elimina el grupo en su lugar.')
+      const miembroSnap = await tx.get(refMiembro)
+      if (!miembroSnap.exists) throw new NotFoundException('No eres miembro de este grupo')
+      if (miembroSnap.data()?.rol === 'admin') {
+        throw new ForbiddenException('El creador del grupo no puede salir. Elimina el grupo en su lugar.')
+      }
 
-    await snap.docs[0].ref.delete()
-    await this.db.collection(COLECCIONES.grupos).doc(grupoId).update({
-      cantidadMiembros: FieldValue.increment(-1),
+      tx.delete(refMiembro)
+      tx.update(this.db.collection(COLECCIONES.grupos).doc(grupoId), {
+        cantidadMiembros: FieldValue.increment(-1),
+      })
+      return { salido: true }
     })
-    return { salido: true }
   }
 
   async getStats() {

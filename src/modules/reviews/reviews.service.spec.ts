@@ -12,7 +12,35 @@ describe('ReviewsService', () => {
   let firestoreMock: Record<string, any>
 
   beforeEach(async () => {
-    firestoreMock = { collection: jest.fn() }
+    firestoreMock = {
+      collection: jest.fn(),
+      // Transacción simulada: lee/borra a través de los objetos mockeados y
+      // confirma que el servicio delega en tx.get/tx.set/tx.update/tx.delete.
+      // Incluye la regla real de Firestore: NO se permiten lecturas después de
+      // una escritura dentro de la transacción.
+      runTransaction: jest.fn(async (cb: any) => {
+        let escritura = false
+        const tx = {
+          get: async (target: any) => {
+            if (escritura) throw new Error('Firestore: lectura después de escritura en transacción')
+            return target.get()
+          },
+          set: (ref: any, data: any, opts?: any) => {
+            escritura = true
+            return opts === undefined ? ref.set(data) : ref.set(data, opts)
+          },
+          update: (ref: any, data: any) => {
+            escritura = true
+            return ref.update(data)
+          },
+          delete: (ref: any) => {
+            escritura = true
+            return ref.delete()
+          },
+        }
+        return cb(tx)
+      }),
+    }
     const module: TestingModule = await Test.createTestingModule({
       providers: [ReviewsService, { provide: FIRESTORE, useValue: firestoreMock }],
     }).compile()
@@ -46,39 +74,47 @@ describe('ReviewsService', () => {
   })
 
   describe('submit', () => {
-    it('should create a new review', async () => {
-      const emptySnap = { empty: true, docs: [] as never[], size: 0 }
+    it('should create a new review atomically with deterministic id', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const updateInstMock = jest.fn().mockResolvedValue(undefined)
       const allReviewsSnap = { docs: [{ data: () => ({ calificacion: 4 }) }], size: 1 }
 
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'auto-gen-firestore-id', set: jest.fn().mockResolvedValue(undefined) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+        // 1. ref determinista usuario_institución (no existe → set)
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'user1_inst1', get: jest.fn().mockResolvedValue({ exists: false }), set: setMock, update: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }) })
+        // 2. query de todas las reseñas de la institución (dentro de la transacción)
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(allReviewsSnap) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
+        // 3. institución: promedio y contador actualizados en la misma transacción
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: updateInstMock }) })
 
       const result = await service.submit('user1', 'inst1', 4, 'Buen servicio')
+
+      expect(result.id).toBe('user1_inst1')
       expect(result.calificacion).toBe(4)
       expect(result.usuarioId).toBe('user1')
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ usuarioId: 'user1', institucionId: 'inst1', calificacion: 4 }))
+      expect(updateInstMock).toHaveBeenCalledWith({ calificacionPromedio: 4, cantidadCalificaciones: 1 })
     })
 
-    it('should update existing review', async () => {
+    it('should update existing review atomically (sin duplicados por ID determinista)', async () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
-      const existingSnap = {
-        empty: false,
-        docs: [{ id: 'r1', ref: { update: updateMock }, data: () => ({ calificacion: 3 }) }],
-        size: 1,
-      }
       const allReviewsSnap = { docs: [{ data: () => ({ calificacion: 5 }) }], size: 1 }
 
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(existingSnap) })
+        // 1. la reseña ya existe en el doc determinista → update
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'user1_inst1', get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ calificacion: 3 }) }), set: jest.fn().mockResolvedValue(undefined), update: updateMock, delete: jest.fn().mockResolvedValue(undefined) }) })
+        // 2. query de todas las reseñas de la institución
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(allReviewsSnap) })
+        // 3. institución: promedio actualizado
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined) }) })
 
       const result = await service.submit('user1', 'inst1', 5, 'Actualizado')
+
+      expect(result.id).toBe('user1_inst1')
       expect(result.calificacion).toBe(5)
-      expect(updateMock).toHaveBeenCalledWith({ calificacion: 5, comentario: 'Actualizado' })
+      expect(updateMock).toHaveBeenCalledWith({ calificacion: 5, comentario: 'Actualizado', fechaActualizacion: expect.any(String) })
+      // El set no debe ejecutarse en la ruta de actualización
+      expect(firestoreMock.runTransaction).toHaveBeenCalledTimes(1)
     })
   })
 

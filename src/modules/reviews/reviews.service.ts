@@ -44,33 +44,46 @@ export class ReviewsService {
   }
 
   async submit(usuarioId: string, institucionId: string, calificacion: number, comentario: string) {
-    const snap = await this.db.collection(COLECCIONES.resenas)
-      .where('usuarioId', '==', usuarioId)
-      .where('institucionId', '==', institucionId)
-      .limit(1).get()
+    // ID determinista (usuario_institución): impide reseñas duplicadas del
+    // mismo usuario en la misma institución incluso bajo concurrencia, porque
+    // el documento o existe o no existe (no hay ventana de doble creación).
+    const refResena = this.db.collection(COLECCIONES.resenas).doc(`${usuarioId}_${institucionId}`)
 
-    let resenaId: string
-    if (!snap.empty) {
-      resenaId = snap.docs[0].id
-      await snap.docs[0].ref.update({ calificacion, comentario })
-    } else {
-      resenaId = this.db.collection(COLECCIONES.resenas).doc().id
-      await this.db.collection(COLECCIONES.resenas).doc(resenaId).set({
-        id: resenaId, usuarioId, institucionId,
-        calificacion, comentario, fechaCreacion: new Date().toISOString(),
+    await this.db.runTransaction(async (tx) => {
+      // Firestore exige TODAS las lecturas ANTES de cualquier escritura dentro
+      // de una transacción: se leen la reseña y todas las reseñas de la
+      // institución con una sola fotografía consistente, y luego se escribe.
+      const [snapResena, todasRev] = await Promise.all([
+        tx.get(refResena),
+        tx.get(
+          this.db.collection(COLECCIONES.resenas).where('institucionId', '==', institucionId),
+        ),
+      ])
+      const esNueva = !snapResena.exists
+
+      if (esNueva) {
+        tx.set(refResena, {
+          id: refResena.id, usuarioId, institucionId,
+          calificacion, comentario, fechaCreacion: new Date().toISOString(),
+        })
+      } else {
+        tx.update(refResena, { calificacion, comentario, fechaActualizacion: new Date().toISOString() })
+      }
+
+      // Promedio y contador calculados con la misma fotografía consistente de
+      // la transacción: dos envíos simultáneos no pueden pisarse ni dejar
+      // contadores incorrectos.
+      const calificaciones = todasRev.docs.map(d => d.data().calificacion as number)
+      const promedio = calificaciones.length === 0
+        ? 0
+        : calificaciones.reduce((s, r) => s + r, 0) / calificaciones.length
+      tx.update(this.db.collection(COLECCIONES.instituciones).doc(institucionId), {
+        calificacionPromedio: parseFloat(promedio.toFixed(2)),
+        cantidadCalificaciones: calificaciones.length,
       })
-    }
-
-    const todasRev = await this.db.collection(COLECCIONES.resenas)
-      .where('institucionId', '==', institucionId).get()
-    const calificaciones = todasRev.docs.map(d => d.data().calificacion as number)
-    const promedio = calificaciones.reduce((s, r) => s + r, 0) / calificaciones.length
-    await this.db.collection(COLECCIONES.instituciones).doc(institucionId).update({
-      calificacionPromedio: parseFloat(promedio.toFixed(2)),
-      cantidadCalificaciones: calificaciones.length,
     })
 
-    return { id: resenaId, usuarioId, institucionId, calificacion, comentario, fechaCreacion: new Date().toISOString() }
+    return { id: refResena.id, usuarioId, institucionId, calificacion, comentario, fechaCreacion: new Date().toISOString() }
   }
 
   async myReviews(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
@@ -136,20 +149,28 @@ export class ReviewsService {
     return { eliminado: true }
   }
 
+  /**
+   * Recalcula el promedio de una institución de forma atómica: la lectura de
+   * todas sus reseñas y la escritura del promedio ocurren en una sola
+   * transacción, evitando carreras entre ediciones/eliminaciones simultáneas.
+   */
   private async recalcularPromedio(institucionId: string) {
-    const todasRev = await this.db.collection(COLECCIONES.resenas)
-      .where('institucionId', '==', institucionId).get()
-    if (todasRev.empty) {
-      await this.db.collection(COLECCIONES.instituciones).doc(institucionId).update({
-        calificacionPromedio: 0, cantidadCalificaciones: 0,
-      })
-    } else {
-      const calificaciones = todasRev.docs.map(d => d.data().calificacion as number)
-      const promedio = calificaciones.reduce((s, r) => s + r, 0) / calificaciones.length
-      await this.db.collection(COLECCIONES.instituciones).doc(institucionId).update({
-        calificacionPromedio: parseFloat(promedio.toFixed(2)),
-        cantidadCalificaciones: calificaciones.length,
-      })
-    }
+    await this.db.runTransaction(async (tx) => {
+      const todasRev = await tx.get(
+        this.db.collection(COLECCIONES.resenas).where('institucionId', '==', institucionId),
+      )
+      if (todasRev.empty) {
+        tx.update(this.db.collection(COLECCIONES.instituciones).doc(institucionId), {
+          calificacionPromedio: 0, cantidadCalificaciones: 0,
+        })
+      } else {
+        const calificaciones = todasRev.docs.map(d => d.data().calificacion as number)
+        const promedio = calificaciones.reduce((s, r) => s + r, 0) / calificaciones.length
+        tx.update(this.db.collection(COLECCIONES.instituciones).doc(institucionId), {
+          calificacionPromedio: parseFloat(promedio.toFixed(2)),
+          cantidadCalificaciones: calificaciones.length,
+        })
+      }
+    })
   }
 }

@@ -179,6 +179,39 @@ function crearBatch() {
 const mockDbInstance: any = {
   collection: (nombre: string) => crearColeccion(nombre),
   batch: () => crearBatch(),
+  // Transacción: lecturas en vivo y escrituras acumuladas que se aplican al
+  // final si el callback no lanza (aproximación suficiente para tests E2E).
+  // Respeta la regla real de Firestore: no se permiten lecturas después de
+  // una escritura dentro de la transacción.
+  async runTransaction(cb: any) {
+    const ops: any[] = []
+    let escritura = false
+    const tx = {
+      get: async (target: any) => {
+        if (escritura) throw new Error('Firestore: lectura después de escritura en transacción')
+        return target.get()
+      },
+      set: (ref: any, data: any, opts?: any) => {
+        escritura = true
+        ops.push({ tipo: 'set', ref, data, opts })
+      },
+      update: (ref: any, data: any) => {
+        escritura = true
+        ops.push({ tipo: 'update', ref, data })
+      },
+      delete: (ref: any) => {
+        escritura = true
+        ops.push({ tipo: 'delete', ref })
+      },
+    }
+    const resultado = await cb(tx)
+    for (const op of ops) {
+      if (op.tipo === 'set') await op.ref.set(op.data, op.opts)
+      else if (op.tipo === 'update') await op.ref.update(op.data)
+      else await op.ref.delete()
+    }
+    return resultado
+  },
 }
 
 // ─── Firebase Auth mock ──────────────────────────────────────────────────────
