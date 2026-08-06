@@ -47,7 +47,6 @@ describe('AuthService', () => {
     }
     authMock = {
       createUser: jest.fn().mockResolvedValue({ uid: 'new-uid-123' }),
-      createCustomToken: jest.fn().mockResolvedValue('custom-token-abc'),
       verifyIdToken: jest.fn().mockResolvedValue({ uid: 'user-uid-123', email: 'test@test.com' }),
       deleteUser: jest.fn().mockResolvedValue(undefined),
     }
@@ -87,7 +86,6 @@ describe('AuthService', () => {
     it('should register a new user successfully', async () => {
       // 1. Email check -> empty
       // 2. Profile doc set
-      // 3. Sign-in response
       const emailCheckSnap = { empty: true, docs: [], size: 0 }
 
       firestoreMock.collection
@@ -107,8 +105,12 @@ describe('AuthService', () => {
         password: dto.password,
         displayName: dto.nombreCompleto,
       })
-      expect(result.tokenAcceso).toBe('mock-id-token')
-      expect(result.tokenRefresco).toBe('mock-refresh-token')
+      // El registro nunca inicia sesión ni devuelve tokens: se obliga al login
+      expect(axiosPostSpy).not.toHaveBeenCalled()
+      expect(result).not.toHaveProperty('tokenAcceso')
+      expect(result).not.toHaveProperty('tokenRefresco')
+      expect(result).not.toHaveProperty('expiraEn')
+      expect(result.requiereInicioSesion).toBe(true)
       expect(result.usuario.email).toBe(dto.email)
       expect(result.usuario.rol).toBe('pcd')
       expect(analyticsMock.incrementar).toHaveBeenCalledWith('totalUsuarios')
@@ -352,28 +354,6 @@ describe('AuthService', () => {
       expect(authMock.createUser).not.toHaveBeenCalled()
     })
 
-    it('should use custom token as fallback when sign-in fails after register', async () => {
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
-
-      firestoreMock.collection
-        .mockReturnValueOnce({
-          where: jest.fn().mockReturnThis(),
-          limit: jest.fn().mockReturnThis(),
-          get: jest.fn().mockResolvedValue(emailCheckSnap),
-        })
-        .mockReturnValueOnce({
-          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false, 'new-uid-123')),
-        })
-
-      // Make axios.post fail to trigger fallback
-      axiosPostSpy.mockRejectedValueOnce(new Error('Sign-in failed'))
-
-      const result = await service.register(dto)
-
-      expect(authMock.createCustomToken).toHaveBeenCalledWith('new-uid-123')
-      expect(result.tokenAcceso).toBe('custom-token-abc')
-      expect(result.tokenRefresco).toBe('')
-    })
   })
 
   // ── login ───────────────────────────────────────────────────────────

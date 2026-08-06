@@ -145,23 +145,6 @@ export class AuthService {
       await registrarDependienteVinculado(this.db, COLECCIONES.dependientes, dto.tutorId, uid, dto.nombreCompleto)
     }
 
-    let idToken: string
-    let tokenRefresco: string
-    try {
-      const signInResponse = await axios.post(this.identityToolkitUrl, {
-        email: dto.email,
-        password: dto.password,
-        returnSecureToken: true,
-      })
-      idToken = signInResponse.data.idToken
-      tokenRefresco = signInResponse.data.refreshToken
-    } catch (e: any) {
-      this.logger.warn(`Sign-in after register failed: ${e?.message ?? e}. Generating custom token.`)
-      const customToken = await this.auth.createCustomToken(uid)
-      idToken = customToken
-      tokenRefresco = ''
-    }
-
     const usuario = {
       id: uid,
       email: dto.email,
@@ -177,11 +160,12 @@ export class AuthService {
 
     this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch(() => null)
 
+    // El registro NUNCA devuelve tokens: se obliga al usuario a iniciar sesión
+    // de forma explícita para obtener un ID token real que los guards acepten.
+    // (Un custom token de Firebase no es un ID token y verifyIdToken() lo rechaza.)
     return {
-      tokenAcceso: idToken,
-      tokenRefresco,
-      expiraEn: this.defaultExpiresIn,
       usuario,
+      requiereInicioSesion: true,
     }
   }
 
