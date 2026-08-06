@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Param, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
+import { Controller, Get, Put, Patch, Post, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
@@ -7,7 +7,8 @@ import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dt
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
-import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto } from './dto/respuestas-usuario.dto'
+import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, MisPersonaDto, PaginaMisPersonasDto } from './dto/respuestas-usuario.dto'
+import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -99,6 +100,14 @@ export class UsersController {
   @ApiOkResponse({ type: [DependienteDto], description: 'Lista de dependientes' })
   dependents(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependents(user.id) }
 
+  @Get('mis-personas')
+  @UseETag()
+  @ApiOperation({ summary: 'Mis personas', description: 'Lista consolidada y paginada de dependientes planos y cuentas PCD vinculadas bajo una interfaz común (id, nombre, esCuentaVinculada, features, fotoUrl). Permite búsqueda por nombre y ordenamiento.' })
+  @ApiOkResponse({ type: PaginaMisPersonasDto, description: 'Lista paginada de personas bajo cuidado' })
+  misPersonas(@CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) {
+    return this.svc.getMisPersonas(user.id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar)
+  }
+
   @Post('dependientes')
   @UseGuards(LimitDependientesGuard)
   @LimitDependientes()
@@ -155,11 +164,40 @@ export class UsersController {
     return this.svc.linkPcdToTutor(user.id, normalizedEmail)
   }
 
+  @Patch('dependientes/:dependienteId/features')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Actualizar features de dependiente (PATCH)', description: 'Actualiza parcialmente el mapa features de un dependiente plano. Valida que el dependiente pertenezca al tutor autenticado.' })
+  @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
+  @ApiBody({ type: UpdateFeaturesDto })
+  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  updateDependentFeaturesPatch(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: UpdateFeaturesDto) {
+    return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
+  }
+
+  @Patch('vincular-pcd/:pcdId/features')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Actualizar features de PCD vinculada (PATCH)', description: 'Actualiza parcialmente el objeto features del perfil real de una cuenta PCD vinculada al tutor autenticado.' })
+  @ApiParam({ name: 'pcdId', description: 'ID de la cuenta PCD vinculada' })
+  @ApiBody({ type: UpdateFeaturesDto })
+  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })
+  @ApiResponse({ status: 403, description: 'La PCD no está vinculada a tu cuenta' })
+  @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
+  updateLinkedPcdFeaturesPatch(@CurrentUser() user: CurrentUserPayload, @Param('pcdId') pcdId: string, @Body() dto: UpdateFeaturesDto) {
+    return this.svc.updateLinkedPcdFeatures(user.id, pcdId, dto)
+  }
+
+  // ── Alias deprecados (compatibilidad): usa PATCH /dependientes/:dependienteId/features
+
   @Put('dependientes/:id/features')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Configurar features de dependiente', description: 'Activa/desactiva funcionalidades para un dependiente plano.' })
+  @ApiOperation({ summary: 'Configurar features de dependiente (deprecado)', description: 'DEPRECADO — usa PATCH /dependientes/:dependienteId/features. Activa/desactiva funcionalidades para un dependiente plano.' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiBody({ type: UpdateFeaturesDto })
   @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })
@@ -172,7 +210,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Configurar features de PCD vinculada', description: 'Activa/desactiva funcionalidades para una cuenta PCD vinculada al tutor.' })
+  @ApiOperation({ summary: 'Configurar features de PCD vinculada (deprecado)', description: 'DEPRECADO — usa PATCH /vincular-pcd/:pcdId/features. Activa/desactiva funcionalidades para una cuenta PCD vinculada al tutor.' })
   @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD vinculada' })
   @ApiBody({ type: UpdateFeaturesDto })
   @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })

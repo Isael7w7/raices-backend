@@ -805,6 +805,119 @@ describe('UsersService', () => {
     })
   })
 
+  // ── getMisPersonas ────────────────────────────────────────────────
+
+  describe('getMisPersonas', () => {
+    function setupDocs(flat: any[], linked: any[] = []) {
+      const docs = [
+        ...flat.map(f => ({
+          id: f.id,
+          data: () => ({
+            id: f.id, tutorId: 'user1', nombreCompleto: f.nombre,
+            parentesco: f.parentesco ?? 'hijo', fechaCreacion: f.fecha ?? '2024-01-01',
+            datosPerfil: JSON.stringify({
+              tiposDiscapacidad: f.tipos ?? [], rangoEdad: f.rango ?? null, etapaVida: f.etapa ?? null, notas: f.notas ?? '',
+            }),
+          }),
+        })),
+        ...linked.map(l => ({
+          id: l.id,
+          data: () => ({
+            id: l.id, tutorId: 'user1', esCuentaVinculada: true, pcdUserId: l.id,
+            nombreCompleto: l.nombre, parentesco: null, fechaCreacion: l.fecha ?? '2024-01-01', datosPerfil: '{}',
+          }),
+        })),
+      ]
+      firestoreMock.collection.mockReturnValueOnce({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs }),
+      })
+      return docs
+    }
+
+    it('should consolidate flat and linked dependents under the common interface', async () => {
+      setupDocs(
+        [{ id: 'dep1', nombre: 'María', fecha: '2024-01-01' }],
+        [{ id: 'pcd1', nombre: 'Ana', fecha: '2024-02-01' }],
+      )
+      // Perfiles y perfilesExtendidos de la PCD vinculada
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({
+            docs: [{ id: 'pcd1', data: () => ({ urlAvatar: 'https://storage/ana.jpg', features: { chat: false } }) }],
+          }),
+        })
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: [] }),
+        })
+
+      const result: any = await service.getMisPersonas('user1', 1, 20)
+
+      expect(result.total).toBe(2)
+      expect(result.datos).toHaveLength(2)
+      const ana = result.datos.find((p: any) => p.id === 'pcd1')
+      const maria = result.datos.find((p: any) => p.id === 'dep1')
+      expect(ana).toMatchObject({
+        nombre: 'Ana', esCuentaVinculada: true, fotoUrl: 'https://storage/ana.jpg', pcdUserId: 'pcd1',
+      })
+      // Features reales del perfil de la PCD (merge con defaults)
+      expect(ana.features.chat).toBe(false)
+      expect(ana.features.postulaciones).toBe(true)
+      expect(maria).toMatchObject({ nombre: 'María', esCuentaVinculada: false, fotoUrl: null, pcdUserId: null })
+      expect(maria.features).toEqual({ chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true })
+    })
+
+    it('should paginate results', async () => {
+      const deps = Array.from({ length: 25 }, (_, i) => ({ id: `dep-${i}`, nombre: `Persona ${i}`, fecha: `2024-01-${String((i % 28) + 1).padStart(2, '0')}` }))
+      setupDocs(deps)
+
+      const result: any = await service.getMisPersonas('user1', 2, 10)
+
+      expect(result.total).toBe(25)
+      expect(result.pagina).toBe(2)
+      expect(result.limite).toBe(10)
+      expect(result.totalPaginas).toBe(3)
+      expect(result.datos).toHaveLength(10)
+    })
+
+    it('should filter by search text on nombre', async () => {
+      const deps = [
+        { id: 'dep1', nombre: 'María García', fecha: '2024-01-01' },
+        { id: 'dep2', nombre: 'Pedro López', fecha: '2024-01-02' },
+      ]
+      setupDocs(deps)
+
+      const result: any = await service.getMisPersonas('user1', 1, 20, undefined, 'desc', 'maría')
+
+      expect(result.total).toBe(1)
+      expect(result.datos[0].id).toBe('dep1')
+    })
+
+    it('should sort by fechaCreacion descending by default', async () => {
+      const deps = [
+        { id: 'dep1', nombre: 'María', fecha: '2024-01-01' },
+        { id: 'dep2', nombre: 'Pedro', fecha: '2024-03-01' },
+      ]
+      setupDocs(deps)
+
+      const result: any = await service.getMisPersonas('user1')
+
+      expect(result.datos[0].id).toBe('dep2')
+      expect(result.datos[1].id).toBe('dep1')
+    })
+
+    it('should return empty page when there are no dependents', async () => {
+      setupDocs([])
+
+      const result: any = await service.getMisPersonas('user1')
+
+      expect(result.total).toBe(0)
+      expect(result.datos).toHaveLength(0)
+    })
+  })
+
   // ── getDependentsCount ─────────────────────────────────────────────
 
   describe('getDependentsCount', () => {

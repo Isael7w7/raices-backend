@@ -6,6 +6,7 @@ import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feat
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
 @Injectable()
 export class UsersService {
@@ -227,29 +228,78 @@ export class UsersService {
 
     // Las cuentas PCD vinculadas guardan sus features y perfil de necesidades
     // en sus propios documentos; enriquecer la lista con esa información real.
-    const pcdIds = dependientes.filter(d => d.esCuentaVinculada).map(d => d.pcdUserId ?? d.id)
-    if (pcdIds.length > 0) {
-      const [mapaPerfiles, mapaExtendidos] = await Promise.all([
-        obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, pcdIds),
-        obtenerDocumentosPorCampo(this.db, COLECCIONES.perfilesExtendidos, 'usuarioId', pcdIds),
-      ])
-      for (const dep of dependientes) {
-        if (!dep.esCuentaVinculada) continue
-        const pcdId = dep.pcdUserId ?? dep.id
-        const perfil = mapaPerfiles.get(pcdId)
-        if (perfil?.features) dep.features = { ...FEATURES_POR_DEFECTO, ...perfil.features }
-        const ext = mapaExtendidos.get(pcdId)
-        if (ext) {
-          const tipos = this.parsearCampoJson(ext.tiposDiscapacidad)
-          dep.tiposDiscapacidad = Array.isArray(tipos) ? tipos : []
-          dep.discapacidad = ext.severidadDiscapacidad ?? null
-          dep.etapaVida = ext.etapaVida ?? dep.etapaVida ?? null
-        }
-      }
-    }
+    await this.enriquecerDependientes(dependientes)
 
     dependientes.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
     return dependientes
+  }
+
+  /**
+   * Enriquecimiento compartido para dependientes planos y cuentas PCD vinculadas:
+   * para las vinculadas, sobrescribe features/tiposDiscapacidad/discapacidad/etapaVida
+   * con los datos reales de sus documentos (perfiles y perfilesExtendidos) y adjunta
+   * la foto real del perfil (fotoUrl).
+   */
+  private async enriquecerDependientes(dependientes: any[]): Promise<void> {
+    const pcdIds = dependientes.filter(d => d.esCuentaVinculada).map(d => d.pcdUserId ?? d.id)
+    if (pcdIds.length === 0) return
+
+    const [mapaPerfiles, mapaExtendidos] = await Promise.all([
+      obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, pcdIds),
+      obtenerDocumentosPorCampo(this.db, COLECCIONES.perfilesExtendidos, 'usuarioId', pcdIds),
+    ])
+    for (const dep of dependientes) {
+      if (!dep.esCuentaVinculada) continue
+      const pcdId = dep.pcdUserId ?? dep.id
+      const perfil = mapaPerfiles.get(pcdId)
+      if (perfil?.features) dep.features = { ...FEATURES_POR_DEFECTO, ...perfil.features }
+      dep.fotoUrl = perfil?.urlAvatar ?? null
+      const ext = mapaExtendidos.get(pcdId)
+      if (ext) {
+        const tipos = this.parsearCampoJson(ext.tiposDiscapacidad)
+        dep.tiposDiscapacidad = Array.isArray(tipos) ? tipos : []
+        dep.discapacidad = ext.severidadDiscapacidad ?? null
+        dep.etapaVida = ext.etapaVida ?? dep.etapaVida ?? null
+      }
+    }
+  }
+
+  /**
+   * Lista consolidada de "mis personas" (dependientes planos + cuentas PCD vinculadas)
+   * bajo una interfaz común: { id, nombre, esCuentaVinculada, features, fotoUrl, ... }.
+   * Soporta paginación, ordenamiento y búsqueda por nombre.
+   */
+  async getMisPersonas(
+    usuarioId: string,
+    pagina = 1,
+    limite = 20,
+    ordenarPor?: string,
+    direccion: 'asc' | 'desc' = 'desc',
+    buscar?: string,
+  ): Promise<RespuestaPaginada<any>> {
+    const snap = await this.col(COLECCIONES.dependientes)
+      .where('tutorId', '==', usuarioId).get()
+
+    const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
+    await this.enriquecerDependientes(dependientes)
+
+    const personas = dependientes.map(d => ({
+      id: d.id,
+      nombre: d.nombreCompleto,
+      esCuentaVinculada: d.esCuentaVinculada,
+      features: d.features ?? { ...FEATURES_POR_DEFECTO },
+      fotoUrl: d.fotoUrl ?? null,
+      pcdUserId: d.pcdUserId ?? null,
+      fechaCreacion: d.fechaCreacion ?? null,
+    }))
+
+    const filtradas = buscar
+      ? personas.filter(p => (p.nombre ?? '').toLowerCase().includes(buscar.toLowerCase()))
+      : personas
+    const ordenadas = ordenar(filtradas, ordenarPor ?? 'fechaCreacion', direccion)
+    const total = ordenadas.length
+    const inicio = (pagina - 1) * limite
+    return paginar(ordenadas.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getDependentsCount(usuarioId: string) {
@@ -276,6 +326,8 @@ export class UsersService {
         etapaVida: datos.etapaVida ?? null,
         notas: datos.notas ?? '',
       }),
+      // Esquema unificado de permisos: features inicializados con valores por defecto
+      features: { ...FEATURES_POR_DEFECTO },
       fechaCreacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(ref.id).get()

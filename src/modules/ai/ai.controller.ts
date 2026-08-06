@@ -1,4 +1,5 @@
-import { Controller, Post, Body, HttpCode, UseGuards } from '@nestjs/common'
+import { Controller, Post, Body, Req, HttpCode, UseGuards } from '@nestjs/common'
+import { Request } from 'express'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { AiService } from './ai.service'
@@ -6,6 +7,7 @@ import { ChatIaDto } from './dto/chat-ia.dto'
 import { RecomendacionIaDto } from './dto/recomendacion-ia.dto'
 import { RespuestaChatDto, RespuestaRecomendacionDto } from './dto/respuestas-ia.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { DependientePropietarioGuard } from '../../common/guards/dependiente-propietario.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
@@ -28,13 +30,16 @@ export class AiController {
 
   @Post('recomendaciones')
   @HttpCode(200)
+  @UseGuards(JwtAuthGuard, DependientePropietarioGuard)
   @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 10 recomendaciones por hora
-  @ApiOperation({ summary: 'Recomendaciones personalizadas', description: 'Genera 3 próximos pasos concretos basados en el perfil del usuario o de un dependiente. Incluye sugerencias de instituciones.' })
+  @ApiOperation({ summary: 'Recomendaciones personalizadas', description: 'Genera 3 próximos pasos concretos basados en el perfil del usuario o de un dependiente. Incluye sugerencias de instituciones. Si se envía dependienteId, se valida que el dependiente pertenezca al tutor autenticado.' })
   @ApiOkResponse({ type: RespuestaRecomendacionDto, description: 'Próximos pasos, razonamiento y sugerencias de instituciones' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  recommend(@Body() dto: RecomendacionIaDto, @CurrentUser() user: CurrentUserPayload) {
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado o no pertenece al tutor' })
+  recommend(@Body() dto: RecomendacionIaDto, @CurrentUser() user: CurrentUserPayload, @Req() req: Request) {
     if (dto?.dependienteId) {
-      return this.svc.recommendForDependent(user.id, dto.dependienteId)
+      // DependientePropietarioGuard ya validó la autoría y adjuntó el documento en request.dependiente
+      return this.svc.recommendForDependent(user.id, dto.dependienteId, (req as any).dependiente)
     }
     return this.svc.recommend(user.id)
   }

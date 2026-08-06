@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { RespuestaPaginadaDto } from '../../../common/dto/paginacion.dto'
 
 export class PerfilNecesidadesDto {
   @ApiProperty({ example: ['tea', 'motriz'], type: [String] })
@@ -165,6 +166,9 @@ export class DependienteDto {
   @ApiProperty({ example: { chat: true, postulaciones: true } })
   features: Record<string, boolean>
 
+  @ApiPropertyOptional({ example: 'https://storage.../avatar.jpg', nullable: true, description: 'Foto real del perfil (solo cuentas vinculadas, en el listado enriquecido)' })
+  fotoUrl?: string | null
+
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' })
   fechaCreacion: string
 }
@@ -208,4 +212,36 @@ export class RespuestaFeaturesDto {
 
   @ApiProperty({ example: { chat: true, postulaciones: false } })
   features: Record<string, boolean>
+}
+
+/**
+ * Interfaz común de "mis personas": consolida dependientes planos y
+ * cuentas PCD vinculadas en un solo arreglo.
+ */
+export class MisPersonaDto {
+  @ApiProperty({ example: 'dep-uid' })
+  id: string
+
+  @ApiProperty({ example: 'María García' })
+  nombre: string
+
+  @ApiProperty({ example: false, description: 'true si es una cuenta PCD vinculada con correo; false si es un dependiente plano' })
+  esCuentaVinculada: boolean
+
+  @ApiProperty({ example: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+  features: Record<string, boolean>
+
+  @ApiProperty({ example: 'https://storage.../avatar.jpg', nullable: true, description: 'Foto real del perfil (solo cuentas vinculadas)' })
+  fotoUrl: string | null
+
+  @ApiProperty({ example: 'pcd-uid', nullable: true })
+  pcdUserId: string | null
+
+  @ApiProperty({ example: '2026-08-06T00:00:00.000Z', nullable: true })
+  fechaCreacion: string | null
+}
+
+export class PaginaMisPersonasDto extends RespuestaPaginadaDto<MisPersonaDto> {
+  @ApiProperty({ type: [MisPersonaDto], description: 'Personas de la página' })
+  datos: MisPersonaDto[]
 }

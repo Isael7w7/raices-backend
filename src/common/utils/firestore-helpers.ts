@@ -1,4 +1,5 @@
 import { Firestore, FieldPath } from 'firebase-admin/firestore'
+import { FEATURES_POR_DEFECTO } from '../interfaces/feature-flags.interface'
 
 /**
  * Helpers reutilizables para interactuar con Firestore de forma segura.
@@ -122,7 +123,8 @@ export async function registrarDependienteVinculado(
     return 'promovido'
   }
 
-  // Nuevo registro canónico
+  // Nuevo registro canónico (esquema unificado: features inicializados por defecto;
+  // para cuentas vinculadas la fuente de verdad de features es perfiles/{pcdUid})
   await col.doc(pcdUserId).set({
     id: pcdUserId,
     tutorId,
@@ -132,6 +134,7 @@ export async function registrarDependienteVinculado(
     nombreCompleto: nombre,
     parentesco: null,
     datosPerfil: '{}',
+    features: { ...FEATURES_POR_DEFECTO },
     fechaCreacion: new Date().toISOString(),
   })
   return 'creado'

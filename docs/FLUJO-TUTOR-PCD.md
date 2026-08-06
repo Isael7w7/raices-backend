@@ -58,6 +58,7 @@ dependientes/{id}                 ← Relación Tutor ↔ Persona bajo su cuidad
 ├── rol: "discapacitado" (plano) | "pcd" (vinculado)
 ├── nombreCompleto, parentesco
 ├── datosPerfil: string JSON      ← Solo para dependientes planos
+├── features: { ... }             ← Esquema unificado (defaults: FEATURES_POR_DEFECTO)
 └── fechaCreacion
 ```
 
@@ -159,7 +160,8 @@ Orden de resolución (devuelve `'ya_vinculado' | 'promovido' | 'creado'`):
 **Guards de los endpoints de vinculación** (`users.controller.ts`):
 - `POST /vincular-pcd/:id` → `JwtAuthGuard` + `RolesGuard` con `@Roles('tutor')`.
 - `DELETE /pcd-vinculado/:id/desvincular` → `JwtAuthGuard` + `RolesGuard` con `@Roles('tutor', 'admin')`.
-- `PUT /dependientes/:id/features` y `PUT /pcd-vinculado/:id/features` → `@Roles('tutor')`.
+- `PATCH /dependientes/:dependienteId/features` y `PATCH /vincular-pcd/:pcdId/features` → `@Roles('tutor')`. (Los `PUT` antiguos se conservan como alias deprecados.)
+- **Operaciones a nombre de un dependiente**: `DependientePropietarioGuard` (global) valida que `dependientes/{id}.tutorId === user.id` leyendo `dependienteId` del body/params antes de la transacción; adjunta el documento en `request.dependiente`.
 
 ---
 
@@ -176,9 +178,12 @@ Orden de resolución (devuelve `'ya_vinculado' | 'promovido' | 'creado'`):
 | `PUT` | `/api/usuarios/dependientes/:id` | Autenticado | Actualizar dependiente plano |
 | `DELETE` | `/api/usuarios/dependientes/:id` | Autenticado | Eliminar dependiente (si es vinculada, limpia también `tutorId`) |
 | `POST` | `/api/usuarios/vincular-pcd/:pcdUserId` | `tutor` | Vincular cuenta PCD existente |
-| `PUT` | `/api/usuarios/dependientes/:id/features` | `tutor` | Features de dependiente plano |
-| `PUT` | `/api/usuarios/pcd-vinculado/:pcdUserId/features` | `tutor` | Features de PCD vinculada (escribe en su perfil real) |
+| `GET` | `/api/usuarios/mis-personas` | Autenticado | Lista **consolidada y paginada** (planos + vinculados) con interfaz común: `id, nombre, esCuentaVinculada, features, fotoUrl` |
+| `PATCH` | `/api/usuarios/dependientes/:dependienteId/features` | `tutor` | Actualizar parcialmente features de dependiente plano |
+| `PATCH` | `/api/usuarios/vincular-pcd/:pcdId/features` | `tutor` | Actualizar parcialmente features de PCD vinculada (escribe en su perfil real) |
 | `DELETE` | `/api/usuarios/pcd-vinculado/:pcdUserId/desvincular` | `tutor`, `admin` | **Desvincular de forma atómica** (batch: limpia `tutorId` + elimina relaciones) |
+| `PUT` | `/api/usuarios/dependientes/:id/features` | `tutor` | *(deprecado)* Alias de `PATCH` |
+| `PUT` | `/api/usuarios/pcd-vinculado/:pcdUserId/features` | `tutor` | *(deprecado)* Alias de `PATCH` |
 
 ---
 
@@ -214,7 +219,8 @@ Orden de resolución (devuelve `'ya_vinculado' | 'promovido' | 'creado'`):
 
 | Suite | Cobertura relevante |
 |-------|---------------------|
-| `users.service.spec.ts` | `getDependents` enriquece con discapacidad/features reales (batch lookups); `linkPcdToTutor` (éxito, PCD inexistente, rol no PCD, ya vinculada, promoción de plano); `unlinkPcdFromTutor` (batch atómico con `tutorId: null` + deletes, autorización tutor/admin, 403/404/400) |
+| `users.service.spec.ts` | `getDependents` enriquece con discapacidad/features reales (batch lookups); `getMisPersonas` (consolidación planos+vinculados, paginación, búsqueda y orden); `linkPcdToTutor` (éxito, PCD inexistente, rol no PCD, ya vinculada, promoción de plano); `unlinkPcdFromTutor` (batch atómico con `tutorId: null` + deletes, autorización tutor/admin, 403/404/400) |
+| `dependiente-propietario.guard.spec.ts` | Autoría de operaciones a nombre de dependiente (body/params, inexistente, de otro tutor, sin dependienteId) |
 | `auth.service.spec.ts` | `register` con `tutorId`: validación del tutor, alta de PCD vinculada y registro de la relación en `dependientes` |
 | `firestore-helpers.spec.ts` | `obtenerDocumentosPorIds` (lotes de 30, mapa O(1)) y `registrarDependienteVinculado` (idempotencia, promoción, creación) |
 
@@ -239,7 +245,8 @@ Solo el tutor dueño o un administrador (`@Roles('tutor', 'admin')` + verificaci
 
 **¿Dónde vive la lógica?**
 - `auth.service.ts` (`register`) — alta de PCD vinculada.
-- `users.service.ts` (`linkPcdToTutor`, `unlinkPcdFromTutor`, `getDependents`, `getDependent`, features) — operaciones sobre la relación.
+- `users.service.ts` (`linkPcdToTutor`, `unlinkPcdFromTutor`, `getDependents`, `getMisPersonas`, `getDependent`, features) — operaciones sobre la relación.
+- `common/guards/dependiente-propietario.guard.ts` — validación de autoría para acciones a nombre de un dependiente (`tutorId === user.id`).
 - `common/utils/firestore-helpers.ts` (`registrarDependienteVinculado`, `obtenerDocumentosPorIds`, `obtenerDocumentosPorCampo`) — helpers reutilizables.
 
 ---

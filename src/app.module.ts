@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { DatabaseModule } from './database/database.module'
+import { CommonGuardsModule } from './common/guards/common-guards.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
 import { InstitutionsModule } from './modules/institutions/institutions.module'
@@ -26,6 +27,7 @@ import { HealthModule } from './modules/health/health.module'
       limit: 100,
     }]),
     DatabaseModule,
+    CommonGuardsModule,
     AuthModule,
     UsersModule,
     InstitutionsModule,

@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger } from '@nestjs/common'
+import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -154,12 +154,16 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
     }
   }
 
-  async recommendForDependent(usuarioId: string, dependienteId: string) {
-    const depDoc = await this.db.collection(COLECCIONES.dependientes).doc(dependienteId).get()
-    if (!depDoc.exists || depDoc.data()?.tutorId !== usuarioId) {
-      return { proximosPasos: ['Perfil no encontrado'], razonamiento: 'Error de acceso', simulado: true }
+  async recommendForDependent(usuarioId: string, dependienteId: string, dependienteDoc?: Record<string, any>) {
+    // Si vino de DependientePropietarioGuard, ya viene validado y cargado (evita una lectura extra).
+    let dep: Record<string, any> | undefined = dependienteDoc
+    if (!dep) {
+      const depDoc = await this.db.collection(COLECCIONES.dependientes).doc(dependienteId).get()
+      if (!depDoc.exists || depDoc.data()?.tutorId !== usuarioId) {
+        throw new NotFoundException('Dependiente no encontrado')
+      }
+      dep = depDoc.data()!
     }
-    const dep = depDoc.data()!
 
     let datosPerfil: any = {}
     try { datosPerfil = dep.datosPerfil ? JSON.parse(dep.datosPerfil) : {} } catch {}
