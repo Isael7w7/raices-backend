@@ -10,6 +10,9 @@ node_modules/
 # Build output
 dist/
 
+# Test coverage
+coverage/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -32,6 +35,7 @@ firebase-debug.log
 AGENTS.md
 .cursorrules
 CLINE_RULES.md
+opencode.json
 
 # Auditorías técnicas
 docs/AUDITORIA-TECNICA-COMPLETA.md
