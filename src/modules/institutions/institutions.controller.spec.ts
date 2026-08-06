@@ -41,7 +41,7 @@ describe('InstitutionsController', () => {
 
   describe('findAll', () => {
     it('should call service.findAll with query params', async () => {
-      const expected = { datos: [], paginacion: { total: 0, pagina: 1, limite: 20, totalPaginas: 0 } }
+      const expected: { datos: never[]; paginacion: { total: number; pagina: number; limite: number; totalPaginas: number } } = { datos: [], paginacion: { total: 0, pagina: 1, limite: 20, totalPaginas: 0 } }
       mockService.findAll.mockResolvedValue(expected)
 
       const result = await controller.findAll(1, 20, 'merida', 'funcional', 'Mérida')

@@ -100,7 +100,7 @@ describe('JobsService', () => {
 
     it('should return empty array when no active vacancies', async () => {
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], size: 0 }) })
 
       const result = await service.findAll()
       expect(result.datos).toHaveLength(0)
@@ -164,7 +164,7 @@ describe('JobsService', () => {
   describe('apply', () => {
     it('should create a postulation successfully', async () => {
       const vacanteDoc = mockDoc({ id: 'v1', activa: true }, true, 'v1')
-      const emptySnap = { empty: true, docs: [], size: 0 }
+      const emptySnap = { empty: true, docs: [] as never[], size: 0 }
       const postulacionDoc = { id: 'p1', set: jest.fn().mockResolvedValue(undefined) }
 
       firestoreMock.collection
@@ -249,7 +249,7 @@ describe('JobsService', () => {
 
     it('should throw NotFoundException when institution user has no institution', async () => {
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }) })
 
       await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' })).rejects.toThrow(NotFoundException)
     })

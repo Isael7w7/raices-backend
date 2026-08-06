@@ -1,5 +1,5 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException, Logger } from '@nestjs/common'
-import { Firestore } from 'firebase-admin/firestore'
+import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
@@ -51,7 +51,7 @@ export class UsersService {
     // Se busca primero el documento canónico (id = UID) y, si no existe,
     // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
     if (perfil.rol === 'institucion') {
-      let instDoc = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
+      let instDoc: DocumentSnapshot<DocumentData> | null = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
       if (!instDoc.exists) {
         const porCreador = await this.col(COLECCIONES.instituciones)
           .where('creadoPor', '==', usuarioId).limit(1).get()

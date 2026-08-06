@@ -19,7 +19,7 @@ function chainCollection(opts: {
   docResult?: any
   whereResult?: { empty: boolean; docs: any[]; size: number }
 } = {}) {
-  const { docResult = mockDoc(null, false), whereResult = { empty: true, docs: [], size: 0 } } = opts
+  const { docResult = mockDoc(null, false), whereResult = { empty: true, docs: [] as never[], size: 0 } } = opts
   return {
     doc: jest.fn().mockReturnValue({
       get: jest.fn().mockResolvedValue(docResult),
@@ -65,7 +65,7 @@ describe('AdminService', () => {
 
   describe('getStats', () => {
     it('should return aggregated stats', async () => {
-      const emptySnap = { size: 0, docs: [], empty: true }
+      const emptySnap = { size: 0, docs: [] as never[], empty: true }
       const resenasSnap = {
         size: 3, empty: false,
         docs: [{ data: () => ({ calificacion: 4 }) }, { data: () => ({ calificacion: 5 }) }, { data: () => ({ calificacion: 3 }) }],
@@ -73,15 +73,15 @@ describe('AdminService', () => {
 
       // 9 collection calls for getStats
       firestoreMock.collection
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 10, docs: [] }) }) // usuarios
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ size: 8, docs: [] }) }) // activos
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 5, docs: [] }) }) // instituciones
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ size: 3, docs: [] }) }) // verificadas
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ size: 2, docs: [] }) }) // pendientes
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 10, docs: [] as never[] }) }) // usuarios
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ size: 8, docs: [] as never[] }) }) // activos
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 5, docs: [] as never[] }) }) // instituciones
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ size: 3, docs: [] as never[] }) }) // verificadas
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ size: 2, docs: [] as never[] }) }) // pendientes
         .mockReturnValueOnce({ get: jest.fn().mockResolvedValue(resenasSnap) }) // resenas
         .mockReturnValueOnce({ get: jest.fn().mockResolvedValue(emptySnap) }) // publicaciones
         .mockReturnValueOnce({ get: jest.fn().mockResolvedValue(emptySnap) }) // grupos
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 6, docs: [] }) }) // perfilesExtendidos
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 6, docs: [] as never[] }) }) // perfilesExtendidos
 
       const result = await service.getStats()
 
@@ -147,7 +147,7 @@ describe('AdminService', () => {
           return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(instDoc) }) }
         }
         if (name === 'vacantes') {
-          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }) }
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[], size: 0 }) }
         }
         if (name === 'perfiles') {
           return { doc: jest.fn().mockReturnValue({ update: profileUpdate }) }
@@ -321,7 +321,7 @@ describe('AdminService', () => {
           return {
             doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(canonicalInst) }),
             where: jest.fn().mockReturnThis(),
-            get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[], size: 0 }),
           }
         }
         if (name === 'vacantes') {
@@ -357,7 +357,7 @@ describe('AdminService', () => {
 
     it('should set rating to 0 when no reviews remain', async () => {
       const reviewDoc = mockDoc({ institucionId: 'inst1', calificacion: 3 }, true, 'r1')
-      const emptyReviews = { empty: true, size: 0, docs: [] }
+      const emptyReviews = { empty: true, size: 0, docs: [] as never[] }
       const updateMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection
@@ -411,7 +411,7 @@ describe('AdminService', () => {
     })
 
     it('should ignore unknown keys', async () => {
-      const emptySnap = { docs: [] }
+      const emptySnap = { docs: [] as never[] }
 
       firestoreMock.collection.mockReturnValue({
         get: jest.fn().mockResolvedValue(emptySnap),
@@ -491,7 +491,7 @@ describe('AdminService', () => {
     it('should fall back to estimation when analytics snap is empty, returning Spanish camelCase properties', async () => {
       jest.spyOn(Math, 'random').mockReturnValue(0.5)
 
-      const emptyAnaliticas = { empty: true, docs: [], size: 0 }
+      const emptyAnaliticas = { empty: true, docs: [] as never[], size: 0 }
       const usuariosSnap = {
         size: 100,
         docs: Array.from({ length: 60 }, (_, i) => ({
@@ -499,7 +499,7 @@ describe('AdminService', () => {
           data: () => ({ activo: true }),
         })),
       }
-      const perfilesExtendidosSnap = { size: 40, docs: [], empty: false }
+      const perfilesExtendidosSnap = { size: 40, docs: [] as never[], empty: false }
 
       firestoreMock.collection
         .mockReturnValueOnce({
@@ -547,7 +547,7 @@ describe('AdminService', () => {
           get: jest.fn().mockRejectedValue(new Error('Firestore error')),
         })
         .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 50, docs: Array.from({ length: 30 }, () => ({ data: () => ({ activo: true }) })) }) })  // perfiles
-        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 20, docs: [] }) }) // perfilesExtendidos
+        .mockReturnValueOnce({ get: jest.fn().mockResolvedValue({ size: 20, docs: [] as never[] }) }) // perfilesExtendidos
 
       const result = await service.getActiveVisitors()
 
@@ -572,7 +572,7 @@ describe('AdminService', () => {
         .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: insts.map(i => ({ id: i.id, data: () => i })) }) })
         .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: users.map(u => ({ id: u.id, data: () => u })) }) })
         .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: reviews.map(r => ({ id: r.id, data: () => r })) }) })
-        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) }) // perfilesExtendidos
+        .mockReturnValueOnce({ limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], size: 0 }) }) // perfilesExtendidos
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true }) }) // mant mode
 
       const result = await service.getAlerts()

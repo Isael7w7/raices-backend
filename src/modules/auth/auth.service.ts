@@ -1,5 +1,5 @@
 import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Inject, Logger, Optional } from '@nestjs/common'
-import { Firestore } from 'firebase-admin/firestore'
+import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
 import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -129,7 +129,8 @@ export class AuthService {
     try {
       await batch.commit()
     } catch (e) {
-      this.logger.error(`Firestore batch commit failed: ${e?.message ?? e}. Reverting Firebase user ${uid}`)
+      const detalle = e instanceof Error ? e.message : String(e)
+      this.logger.error(`Firestore batch commit failed: ${detalle}. Reverting Firebase user ${uid}`)
       try {
         await this.auth.deleteUser(uid)
       } catch (rollbackError: any) {
@@ -158,7 +159,7 @@ export class AuthService {
     await this.analytics?.incrementar('totalUsuarios')
     await this.analytics?.incrementar('usuariosActivos')
 
-    this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch(() => null)
+    this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch((): null => null)
 
     // El registro NUNCA devuelve tokens: se obliga al usuario a iniciar sesión
     // de forma explícita para obtener un ID token real que los guards acepten.
@@ -286,7 +287,7 @@ export class AuthService {
     // Se busca primero el documento canónico (id = UID) y, si no existe,
     // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
     if (d.rol === 'institucion') {
-      let instDoc = await this.db.collection(COLECCIONES.instituciones).doc(userId).get()
+      let instDoc: DocumentSnapshot<DocumentData> | null = await this.db.collection(COLECCIONES.instituciones).doc(userId).get()
       if (!instDoc.exists) {
         const porCreador = await this.db.collection(COLECCIONES.instituciones)
           .where('creadoPor', '==', userId).limit(1).get()

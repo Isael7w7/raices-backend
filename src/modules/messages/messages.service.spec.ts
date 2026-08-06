@@ -36,8 +36,8 @@ describe('MessagesService', () => {
 
     it('should return empty array when no conversations', async () => {
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[] }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[] }) })
 
       const result = await service.getConversations('u1')
       expect(result).toHaveLength(0)
@@ -64,9 +64,9 @@ describe('MessagesService', () => {
 
     it('should not commit batch when no unread messages', async () => {
       const batch = { update: jest.fn(), commit: jest.fn() }
-      const emptySnap = { docs: [], empty: true }
-      const sentSnap = { docs: [] }
-      const receivedSnap = { docs: [] }
+      const emptySnap = { docs: [] as never[], empty: true }
+      const sentSnap = { docs: [] as never[] }
+      const receivedSnap = { docs: [] as never[] }
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })

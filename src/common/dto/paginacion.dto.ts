@@ -87,20 +87,6 @@ export class RespuestaPaginadaAnidadaDto<T> {
 }
 
 /**
- * Ejemplo de respuesta paginada para documentación Swagger.
- * Usar como @ApiResponse({ schema: { example: EJEMPLO_RESPUESTA_PAGINADA } })
- */
-export const EJEMPLO_RESPUESTA_PAGINADA = {
-  example: {
-    datos: [],
-    total: 45,
-    pagina: 1,
-    limite: 20,
-    totalPaginas: 3,
-  },
-}
-
-/**
  * Aplica ordenamiento por un campo de los datos en memoria.
  */
 export function ordenar<T>(datos: T[], campo: string | undefined, direccion: 'asc' | 'desc'): T[] {

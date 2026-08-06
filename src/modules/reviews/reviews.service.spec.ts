@@ -38,7 +38,7 @@ describe('ReviewsService', () => {
 
     it('should return empty array when no reviews', async () => {
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], size: 0 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], size: 0 }) })
 
       const result = await service.findByInstitution('inst1')
       expect(result.datos).toHaveLength(0)
@@ -47,7 +47,7 @@ describe('ReviewsService', () => {
 
   describe('submit', () => {
     it('should create a new review', async () => {
-      const emptySnap = { empty: true, docs: [], size: 0 }
+      const emptySnap = { empty: true, docs: [] as never[], size: 0 }
       const allReviewsSnap = { docs: [{ data: () => ({ calificacion: 4 }) }], size: 1 }
 
       firestoreMock.collection

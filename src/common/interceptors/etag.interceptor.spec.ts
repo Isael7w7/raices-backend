@@ -200,7 +200,7 @@ describe('ETagInterceptor', () => {
     });
 
     it('should handle null body', () => {
-      const body = null;
+      const body: null = null;
       const req = mockRequest('GET');
       const res = mockResponse();
       const ctx = mockExecutionContext(req, res);

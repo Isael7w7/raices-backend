@@ -42,7 +42,7 @@ describe('JobsController', () => {
       rol: 'institucion',
       nombreCompleto: 'Centro Test',
       verificado: false,
-      tutorId: null,
+      tutorId: null as string | null,
       features: {},
     }
     const dto = { titulo: 'Terapeuta', descripcion: 'Atención integral' }
@@ -56,7 +56,7 @@ describe('JobsController', () => {
   it('delegates to the service regardless of role: la restricción por rol vive en RolesGuard (probado en roles.guard.spec.ts)', async () => {
     mockSvc.createForUser.mockResolvedValue({ id: 'v1' })
 
-    const user = { id: 'pcd-1', email: 'x@test.com', rol: 'pcd', nombreCompleto: 'P', verificado: false, tutorId: null, features: {} }
+    const user = { id: 'pcd-1', email: 'x@test.com', rol: 'pcd', nombreCompleto: 'P', verificado: false, tutorId: null as string | null, features: {} }
     const dto = { titulo: 'T' }
 
     // Con guards simulados como permitidos, el controlador delega siempre;

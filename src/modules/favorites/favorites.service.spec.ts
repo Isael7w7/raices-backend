@@ -30,7 +30,7 @@ describe('FavoritesService', () => {
 
     it('should return empty array when no favorites', async () => {
       firestoreMock.collection
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], empty: true }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], empty: true }) })
 
       const result = await service.findByUser('u1')
       expect(result).toHaveLength(0)
@@ -39,7 +39,7 @@ describe('FavoritesService', () => {
 
   describe('toggle', () => {
     it('should add favorite when not liked', async () => {
-      const emptySnap = { empty: true, docs: [] }
+      const emptySnap = { empty: true, docs: [] as never[] }
       const setMock = jest.fn().mockResolvedValue(undefined)
 
       firestoreMock.collection

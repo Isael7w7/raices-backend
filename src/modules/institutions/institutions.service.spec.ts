@@ -358,8 +358,8 @@ describe('InstitutionsService', () => {
       firestoreMock.collection.mockReturnValue({
         doc: jest.fn().mockImplementation((docId?: string) => {
           if (docId === 'user1') return { get: jest.fn().mockResolvedValue(mockDoc(null, false, 'user1')) }
-          if (!docId) return { set: setMock, get: jest.fn().mockResolvedValue(mockDoc({ id: 'new-id', ...createdDocData }, true, 'new-id')) }
-          return { get: jest.fn().mockResolvedValue(mockDoc({ id: docId, ...createdDocData }, true, docId)) }
+          if (!docId) return { set: setMock, get: jest.fn().mockResolvedValue(mockDoc({ ...createdDocData, id: 'new-id' }, true, 'new-id')) }
+          return { get: jest.fn().mockResolvedValue(mockDoc({ ...createdDocData, id: docId }, true, docId)) }
         }),
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),

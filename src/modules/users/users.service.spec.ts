@@ -100,7 +100,7 @@ describe('UsersService', () => {
 
     it('should return original string if JSON is malformed (not crash)', async () => {
       const profileData = { id: 'user2', nombreCompleto: 'Bad Data User' };
-      const profilingData = {
+      const profilingData: Record<string, unknown> = {
         tiposDiscapacidad: 'not-valid-json[[',
         necesidades: '{broken',
         historialEducacion: undefined,
@@ -139,7 +139,7 @@ describe('UsersService', () => {
 
     it('should handle already-parsed arrays (not strings) gracefully', async () => {
       const profileData = { id: 'user3', nombreCompleto: 'Array User' };
-      const profilingData = {
+      const profilingData: Record<string, unknown> = {
         tiposDiscapacidad: ['autismo', 'discapacidad_visual'], // already array
         necesidades: ['comunicacion'], // already array
         historialEducacion: ['escuela'], // already array
@@ -574,7 +574,7 @@ describe('UsersService', () => {
     it('should enrich features and disability data of a linked account from its real profile', async () => {
       const depData = {
         id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1',
-        nombreCompleto: 'Ana', parentesco: null, fechaCreacion: '2024-01-01T00:00:00.000Z', datosPerfil: '{}',
+        nombreCompleto: 'Ana', parentesco: null as string | null, fechaCreacion: '2024-01-01T00:00:00.000Z', datosPerfil: '{}',
       }
       const perfilData = {
         features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
@@ -1095,7 +1095,7 @@ describe('UsersService', () => {
     it('should link a PCD user to a tutor and create the dependiente relation record', async () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
       const setMock = jest.fn().mockResolvedValue(undefined)
-      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null, nombreCompleto: 'PCD Uno' }
+      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null as string | null, nombreCompleto: 'PCD Uno' }
 
       const perfilesCol = {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pcdData)), update: updateMock }),
@@ -1128,7 +1128,7 @@ describe('UsersService', () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
       const setMock = jest.fn().mockResolvedValue(undefined)
       const promoteUpdate = jest.fn().mockResolvedValue(undefined)
-      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null, nombreCompleto: 'PCD Uno' }
+      const pcdData = { id: 'pcd1', rol: 'pcd', tutorId: null as string | null, nombreCompleto: 'PCD Uno' }
 
       const perfilesCol = {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pcdData)), update: updateMock }),

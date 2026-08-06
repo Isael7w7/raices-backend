@@ -86,7 +86,7 @@ describe('AuthService', () => {
     it('should register a new user successfully', async () => {
       // 1. Email check -> empty
       // 2. Profile doc set
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
 
       firestoreMock.collection
         .mockReturnValueOnce({
@@ -132,7 +132,7 @@ describe('AuthService', () => {
     })
 
     it('should throw ConflictException when Firebase Auth reports email-already-exists', async () => {
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       authMock.createUser.mockRejectedValue({ code: 'auth/email-already-exists', message: 'Email exists' })
 
       firestoreMock.collection
@@ -146,7 +146,7 @@ describe('AuthService', () => {
     })
 
     it('should throw UnauthorizedException when Firebase Auth creation fails for other reason', async () => {
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       authMock.createUser.mockRejectedValue({ code: 'auth/invalid-password', message: 'Weak password' })
 
       firestoreMock.collection
@@ -161,7 +161,7 @@ describe('AuthService', () => {
 
     it('should link the PCD to the tutor and create the dependiente record when tutorId is provided', async () => {
       const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
 
       // perfiles: validación del tutor (doc.get), email check (where.get), perfil set (doc.set)
@@ -182,7 +182,7 @@ describe('AuthService', () => {
         }),
         where: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
-        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }),
       }
       firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
 
@@ -199,7 +199,7 @@ describe('AuthService', () => {
 
     it('should promote an existing flat dependiente of the tutor instead of creating a duplicate', async () => {
       const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const promoteUpdate = jest.fn().mockResolvedValue(undefined)
       const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
 
@@ -281,7 +281,7 @@ describe('AuthService', () => {
         descripcion: 'Terapias físicas y ocupacionales', telefono: '9999990001',
         tiposDiscapacidad: ['tea', 'motriz'],
       }
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const batchSet = jest.fn()
       const batchCommit = jest.fn().mockResolvedValue(undefined)
       firestoreMock.batch.mockReturnValue({ set: batchSet, commit: batchCommit })
@@ -326,7 +326,7 @@ describe('AuthService', () => {
 
     it('should rollback the Firebase user when the Firestore batch commit fails', async () => {
       const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional' }
-      const emailCheckSnap = { empty: true, docs: [], size: 0 }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const batchCommit = jest.fn().mockRejectedValue(new Error('commit failed'))
       firestoreMock.batch.mockReturnValue({ set: jest.fn(), commit: batchCommit })
 
