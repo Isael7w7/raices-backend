@@ -49,9 +49,9 @@ USER appuser
 # Expose port (Cloud Run requires PORT env var)
 EXPOSE 7000
 
-# Health check
+# Health check (valida proceso + Firestore)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:7000/api || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://localhost:7000/api/health || exit 1
 
 # Start the application
 CMD ["node", "dist/main.js"]

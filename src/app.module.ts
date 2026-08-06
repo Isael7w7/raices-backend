@@ -17,6 +17,7 @@ import { EmailModule } from './modules/email/email.module'
 import { JobsModule } from './modules/jobs/jobs.module'
 import { MessagesModule } from './modules/messages/messages.module'
 import { CatalogsModule } from './modules/catalogs/catalogs.module'
+import { HealthModule } from './modules/health/health.module'
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { CatalogsModule } from './modules/catalogs/catalogs.module'
     JobsModule,
     MessagesModule,
     CatalogsModule,
+    HealthModule,
   ],
   providers: [
     {
