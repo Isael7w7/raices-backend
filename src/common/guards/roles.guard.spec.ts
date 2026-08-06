@@ -5,11 +5,16 @@ import { RolesGuard } from './roles.guard'
 // ─── Mock helpers ────────────────────────────────────────────────────────
 
 function mockExecutionContext(user?: { id: string; rol: string }) {
+  // handler y clase se crean UNA vez para poder asertar identidad en
+  // toHaveBeenCalledWith (los guards reciben estas mismas referencias).
+  const handler = jest.fn()
+  const controllerClass = class ControladorPrueba {}
   return {
     switchToHttp: () => ({
       getRequest: () => ({ user }),
     }),
-    getHandler: () => jest.fn(),
+    getHandler: () => handler,
+    getClass: () => controllerClass,
   } as unknown as ExecutionContext
 }
 
@@ -20,7 +25,7 @@ describe('RolesGuard', () => {
   let reflector: jest.Mocked<Reflector>
 
   beforeEach(() => {
-    reflector = { get: jest.fn() } as unknown as jest.Mocked<Reflector>
+    reflector = { getAllAndOverride: jest.fn() } as unknown as jest.Mocked<Reflector>
     guard = new RolesGuard(reflector)
   })
 
@@ -30,7 +35,7 @@ describe('RolesGuard', () => {
 
   describe('no roles required', () => {
     it('should allow access when no roles are defined on the handler', () => {
-      reflector.get.mockReturnValue(undefined)
+      reflector.getAllAndOverride.mockReturnValue(undefined)
 
       const context = mockExecutionContext({ id: 'user1', rol: 'pcd' })
       const result = guard.canActivate(context)
@@ -41,7 +46,7 @@ describe('RolesGuard', () => {
 
   describe('roles required', () => {
     beforeEach(() => {
-      reflector.get.mockReturnValue(['admin'])
+      reflector.getAllAndOverride.mockReturnValue(['admin'])
     })
 
     it('should allow access when user role matches', () => {
@@ -73,7 +78,7 @@ describe('RolesGuard', () => {
 
   describe('multiple roles', () => {
     beforeEach(() => {
-      reflector.get.mockReturnValue(['institucion', 'admin'])
+      reflector.getAllAndOverride.mockReturnValue(['institucion', 'admin'])
     })
 
     it('should allow access when user has one of the required roles', () => {
@@ -96,6 +101,29 @@ describe('RolesGuard', () => {
       const context = mockExecutionContext({ id: 'user1', rol: 'pcd' })
 
       expect(() => guard.canActivate(context)).toThrow(ForbiddenException)
+    })
+  })
+
+  describe('roles declared at class level (metadata del controlador)', () => {
+    it('should read metadata de handler Y clase (getAllAndOverride)', () => {
+      const context = mockExecutionContext({ id: 'admin1', rol: 'admin' })
+      reflector.getAllAndOverride.mockReturnValue(['admin'])
+
+      guard.canActivate(context)
+
+      // El fix de seguridad: el guard consulta la metadata combinada de
+      // handler + clase (AdminController usa @Roles a nivel de clase).
+      expect(reflector.getAllAndOverride).toHaveBeenCalledWith(
+        'roles',
+        [context.getHandler(), context.getClass()],
+      )
+    })
+
+    it('should deny a non-admin user when roles vienen de la clase', () => {
+      reflector.getAllAndOverride.mockReturnValue(['admin'])
+
+      const contextoPcd = mockExecutionContext({ id: 'pcd1', rol: 'pcd' })
+      expect(() => guard.canActivate(contextoPcd)).toThrow(ForbiddenException)
     })
   })
 })

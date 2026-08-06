@@ -6,11 +6,14 @@ import { FEATURES_POR_DEFECTO } from '../interfaces/feature-flags.interface'
 // ─── Mock helpers ────────────────────────────────────────────────────────
 
 function mockExecutionContext(user?: { id: string; rol: string; features?: Record<string, boolean> }) {
+  const handler = jest.fn()
+  const controllerClass = class ControladorPrueba {}
   return {
     switchToHttp: () => ({
       getRequest: () => ({ user }),
     }),
-    getHandler: () => jest.fn(),
+    getHandler: () => handler,
+    getClass: () => controllerClass,
   } as unknown as ExecutionContext
 }
 
@@ -21,7 +24,7 @@ describe('FeatureGuard', () => {
   let reflector: jest.Mocked<Reflector>
 
   beforeEach(() => {
-    reflector = { get: jest.fn() } as unknown as jest.Mocked<Reflector>
+    reflector = { getAllAndOverride: jest.fn() } as unknown as jest.Mocked<Reflector>
     guard = new FeatureGuard(reflector)
   })
 
@@ -31,7 +34,7 @@ describe('FeatureGuard', () => {
 
   describe('no feature required', () => {
     it('should allow access when no feature metadata is defined', () => {
-      reflector.get.mockReturnValue(undefined)
+      reflector.getAllAndOverride.mockReturnValue(undefined)
 
       const context = mockExecutionContext({ id: 'user1', rol: 'pcd', features: { ...FEATURES_POR_DEFECTO } })
       const result = guard.canActivate(context)
@@ -42,7 +45,7 @@ describe('FeatureGuard', () => {
 
   describe('feature required', () => {
     beforeEach(() => {
-      reflector.get.mockReturnValue('postulaciones')
+      reflector.getAllAndOverride.mockReturnValue('postulaciones')
     })
 
     it('should allow access when user has the feature enabled', () => {
@@ -77,7 +80,7 @@ describe('FeatureGuard', () => {
         rol: 'pcd',
         features: { ...FEATURES_POR_DEFECTO, comunidad: false },
       })
-      reflector.get.mockReturnValue('comunidad')
+      reflector.getAllAndOverride.mockReturnValue('comunidad')
 
       try {
         guard.canActivate(context)
@@ -117,7 +120,7 @@ describe('FeatureGuard', () => {
 
   describe('different features', () => {
     it('should allow access for chat feature when enabled', () => {
-      reflector.get.mockReturnValue('chat')
+      reflector.getAllAndOverride.mockReturnValue('chat')
       const context = mockExecutionContext({ id: 'user1', rol: 'pcd', features: { ...FEATURES_POR_DEFECTO } })
 
       const result = guard.canActivate(context)
@@ -126,7 +129,7 @@ describe('FeatureGuard', () => {
     })
 
     it('should deny access for chat feature when disabled', () => {
-      reflector.get.mockReturnValue('chat')
+      reflector.getAllAndOverride.mockReturnValue('chat')
       const context = mockExecutionContext({
         id: 'user1',
         rol: 'pcd',

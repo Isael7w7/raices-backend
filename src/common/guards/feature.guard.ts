@@ -22,7 +22,9 @@ export class FeatureGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(ctx: ExecutionContext): boolean {
-    const feature = this.reflector.get<string>('feature', ctx.getHandler())
+    // getAllAndOverride respeta la metadata tanto a nivel de handler como de
+    // clase, igual que RolesGuard (mismo patrón defensivo).
+    const feature = this.reflector.getAllAndOverride<string>('feature', [ctx.getHandler(), ctx.getClass()])
     if (!feature) return true // Sin metadata, acceso libre
 
     const request = ctx.switchToHttp().getRequest()

@@ -9,7 +9,8 @@
     "dev": "pnpm run start:dev",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage"
+    "test:cov": "jest --coverage",
+    "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
@@ -41,10 +42,12 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^20.12.0",
+    "@types/supertest": "^7.2.1",
     "@types/uuid": "^10.0.0",
     "babel-jest": "^30.4.1",
     "jest": "^30.4.2",
     "nodemon": "^3.1.0",
+    "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.0",
