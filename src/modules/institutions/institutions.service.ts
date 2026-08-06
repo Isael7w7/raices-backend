@@ -62,9 +62,33 @@ export class InstitutionsService {
 
   // ─── Detalle de institución (público) ──────────────────────────────
   async findOne(id: string) {
+    const fila = await this.findOneInterno(id)
+    // El detalle público solo expone instituciones activas y verificadas
+    // (misma regla que el listado): lo pendiente/inactivo no existe para
+    // el público, y se responde 404 para no revelar su existencia.
+    if (fila.activa !== true || fila.verificada !== true) {
+      throw new NotFoundException('Institución no encontrada')
+    }
+    return fila
+  }
+
+  // ─── Detalle de institución (sin filtro de visibilidad) ────────────
+  // Uso interno: create/updateMine/update y el endpoint protegido.
+  // Privado para que ningún otro módulo pueda saltarse el filtro público.
+  private async findOneInterno(id: string) {
     const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Institución no encontrada')
     return this.parsear({ id: doc.id, ...doc.data()! })
+  }
+
+  // ─── Detalle de institución (admin o propietario) ──────────────────
+  async findOneProtegido(id: string, usuarioId: string, rol: string) {
+    const fila = await this.findOneInterno(id)
+    const creadoPor = fila.creadoPor
+    if (rol !== 'admin' && creadoPor !== usuarioId) {
+      throw new ForbiddenException('No tienes permisos para consultar esta institución')
+    }
+    return fila
   }
 
   // ─── Mi institución (autenticado) ──────────────────────────────────
@@ -122,7 +146,13 @@ export class InstitutionsService {
   }
 
   // ─── Crear institución (autenticado) ───────────────────────────────
-  async create(dto: CreateInstitucionDto, usuarioId: string) {
+  async create(dto: CreateInstitucionDto, usuarioId: string, rol: string) {
+    // Defensa en profundidad (el RolesGuard ya lo exige a nivel HTTP):
+    // solo cuentas de institución o administradores pueden crear.
+    if (rol !== 'institucion' && rol !== 'admin') {
+      throw new ForbiddenException('Rol insuficiente: solo cuentas de institución o administradores pueden crear instituciones')
+    }
+
     // Guard anti-duplicado: el usuario no puede tener más de una institución
     const [canonico, existente] = await Promise.all([
       this.col(COLECCIONES.instituciones).doc(usuarioId).get(),
@@ -169,7 +199,7 @@ export class InstitutionsService {
     }
 
     await ref.set(documento)
-    return this.findOne(ref.id)
+    return this.findOneInterno(ref.id)
   }
 
   // ─── Actualizar mi institución (autenticado) ───────────────────────
@@ -185,11 +215,11 @@ export class InstitutionsService {
     const id = docSnap.id
 
     const carga = this.buildUpdatePayload(dto)
-    if (Object.keys(carga).length === 0) return this.findOne(id)
+    if (Object.keys(carga).length === 0) return this.findOneInterno(id)
 
     carga.fechaActualizacion = new Date().toISOString()
     await this.col(COLECCIONES.instituciones).doc(id).update(carga)
-    return this.findOne(id)
+    return this.findOneInterno(id)
   }
 
   // ─── Actualizar institución por ID (admin o propietario) ───────────
@@ -204,11 +234,11 @@ export class InstitutionsService {
     }
 
     const carga = this.buildUpdatePayload(dto)
-    if (Object.keys(carga).length === 0) return this.findOne(id)
+    if (Object.keys(carga).length === 0) return this.findOneInterno(id)
 
     carga.fechaActualizacion = new Date().toISOString()
     await this.col(COLECCIONES.instituciones).doc(id).update(carga)
-    return this.findOne(id)
+    return this.findOneInterno(id)
   }
 
   // ─── Eliminar institución (soft-delete, admin o propietario) ──────

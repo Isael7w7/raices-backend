@@ -10,6 +10,7 @@ describe('InstitutionsController', () => {
   const mockService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
+    findOneProtegido: jest.fn(),
     findMine: jest.fn(),
     create: jest.fn(),
     updateMine: jest.fn(),
@@ -84,6 +85,20 @@ describe('InstitutionsController', () => {
     })
   })
 
+  // ── findOneProtegido ────────────────────────────────────────────────
+
+  describe('findOneProtegido', () => {
+    it('should call service.findOneProtegido with id and user context', async () => {
+      const inst = { id: 'inst-1', nombre: 'Centro', verificada: false, creadoPor: 'user1' }
+      mockService.findOneProtegido.mockResolvedValue(inst)
+
+      const result = await controller.findOneProtegido('inst-1', { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+
+      expect(mockService.findOneProtegido).toHaveBeenCalledWith('inst-1', 'user1', 'institucion')
+      expect(result).toEqual(inst)
+    })
+  })
+
   // ── findMine ────────────────────────────────────────────────────────
 
   describe('findMine', () => {
@@ -108,7 +123,7 @@ describe('InstitutionsController', () => {
 
       const result = await controller.create(dto as any, { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
 
-      expect(mockService.create).toHaveBeenCalledWith(dto, 'user1')
+      expect(mockService.create).toHaveBeenCalledWith(dto, 'user1', 'institucion')
       expect(result).toEqual(created)
     })
   })

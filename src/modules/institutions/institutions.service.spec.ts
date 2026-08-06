@@ -134,8 +134,8 @@ describe('InstitutionsService', () => {
   // ── findOne ─────────────────────────────────────────────────────────
 
   describe('findOne', () => {
-    it('should return institution by id', async () => {
-      const instData = { nombre: 'Centro Test', activa: true }
+    it('should return institution by id when active and verified', async () => {
+      const instData = { nombre: 'Centro Test', activa: true, verificada: true }
 
       firestoreMock.collection.mockReturnValue(
         mockCollection({ docData: instData, docId: 'test-id' })
@@ -153,6 +153,73 @@ describe('InstitutionsService', () => {
       )
 
       await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when the institution is not verified', async () => {
+      const instData = { nombre: 'Centro Pendiente', activa: true, verificada: false }
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({ docData: instData, docId: 'test-id' })
+      )
+
+      await expect(service.findOne('test-id')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when the institution is inactive', async () => {
+      const instData = { nombre: 'Centro Inactivo', activa: false, verificada: true }
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({ docData: instData, docId: 'test-id' })
+      )
+
+      await expect(service.findOne('test-id')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── findOneProtegido ───────────────────────────────────────────────
+
+  describe('findOneProtegido', () => {
+    it('should return a pending institution for its owner', async () => {
+      const instData = { nombre: 'Mi Centro', activa: true, verificada: false, creadoPor: 'user1' }
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({ docData: instData, docId: 'inst-1' })
+      )
+
+      const result: any = await service.findOneProtegido('inst-1', 'user1', 'institucion')
+
+      expect(result.nombre).toBe('Mi Centro')
+      expect(result.verificada).toBe(false)
+    })
+
+    it('should return a pending institution for an admin', async () => {
+      const instData = { nombre: 'Centro Ajeno', activa: true, verificada: false, creadoPor: 'other-user' }
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({ docData: instData, docId: 'inst-1' })
+      )
+
+      const result: any = await service.findOneProtegido('inst-1', 'admin-id', 'admin')
+
+      expect(result.nombre).toBe('Centro Ajeno')
+    })
+
+    it('should throw ForbiddenException for a non-owner non-admin user', async () => {
+      const instData = { nombre: 'Centro Ajeno', activa: true, verificada: false, creadoPor: 'owner-id' }
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({ docData: instData, docId: 'inst-1' })
+      )
+
+      await expect(service.findOneProtegido('inst-1', 'intruder', 'pcd')).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should throw NotFoundException when the institution does not exist', async () => {
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({ docData: null, docId: 'ghost' })
+      )
+
+      await expect(service.findOneProtegido('ghost', 'admin', 'admin')).rejects.toThrow(NotFoundException)
     })
   })
 
@@ -299,11 +366,18 @@ describe('InstitutionsService', () => {
         get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
       })
 
-      const result: any = await service.create(dto, 'user1')
+      const result: any = await service.create(dto, 'user1', 'institucion')
 
       expect(setMock).toHaveBeenCalled()
       expect(result.nombre).toBe('Nueva Institución')
       expect(result.creadoPor).toBe('user1')
+    })
+
+    it('should throw ForbiddenException when the user role is not institucion or admin', async () => {
+      const dto = { nombre: 'Nueva Institución', categoria: 'funcional' }
+
+      await expect(service.create(dto, 'user1', 'pcd')).rejects.toThrow(ForbiddenException)
+      await expect(service.create(dto, 'user1', 'tutor')).rejects.toThrow(ForbiddenException)
     })
 
     it('should throw BadRequestException when the user already has a canonical institution', async () => {
@@ -316,7 +390,7 @@ describe('InstitutionsService', () => {
         get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       })
 
-      await expect(service.create(dto, 'user1')).rejects.toThrow(BadRequestException)
+      await expect(service.create(dto, 'user1', 'institucion')).rejects.toThrow(BadRequestException)
     })
 
     it('should throw BadRequestException when the user already has an institution by creadoPor', async () => {
@@ -329,7 +403,7 @@ describe('InstitutionsService', () => {
         get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'inst-aleatoria', data: () => ({ nombre: 'Existente' }) }] }),
       })
 
-      await expect(service.create(dto, 'user1')).rejects.toThrow(BadRequestException)
+      await expect(service.create(dto, 'user1', 'admin')).rejects.toThrow(BadRequestException)
     })
   })
 

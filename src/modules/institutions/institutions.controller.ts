@@ -4,13 +4,16 @@ import {
   UseGuards, HttpCode,
 } from '@nestjs/common'
 import {
-  ApiTags, ApiOperation, ApiResponse, ApiBearerAuth,
+  ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth,
   ApiParam, ApiQuery, ApiBody,
 } from '@nestjs/swagger'
 import { InstitutionsService } from './institutions.service'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
+import { InstitucionDto, PaginaInstitucionesDto } from './dto/respuestas-institucion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { RolesGuard } from '../../common/guards/roles.guard'
+import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 
@@ -27,7 +30,7 @@ export class InstitutionsController {
     summary: 'Mi institución',
     description: 'Retorna la información de la institución asociada al usuario autenticado.',
   })
-  @ApiResponse({ status: 200, description: 'Institución del usuario' })
+  @ApiOkResponse({ type: InstitucionDto, description: 'Institución del usuario' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
   findMine(@CurrentUser() user: CurrentUserPayload) {
@@ -43,7 +46,7 @@ export class InstitutionsController {
     description: 'Permite actualizar la información de la institución del usuario autenticado.',
   })
   @ApiBody({ type: UpdateInstitucionDto })
-  @ApiResponse({ status: 200, description: 'Institución actualizada' })
+  @ApiOkResponse({ type: InstitucionDto, description: 'Institución actualizada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
   updateMine(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateInstitucionDto) {
@@ -61,7 +64,7 @@ export class InstitutionsController {
   @ApiQuery({ name: 'busqueda', required: false, description: 'Búsqueda por nombre, descripción o ciudad' })
   @ApiQuery({ name: 'categoria', required: false, description: 'Filtrar por categoría: funcional, educativo, laboral, social' })
   @ApiQuery({ name: 'ciudad', required: false, description: 'Filtrar por ciudad (búsqueda parcial)' })
-  @ApiResponse({ status: 200, description: 'Lista paginada de instituciones' })
+  @ApiOkResponse({ type: PaginaInstitucionesDto, description: 'Lista paginada de instituciones' })
   findAll(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -72,32 +75,51 @@ export class InstitutionsController {
     return this.svc.findAll({ page, limit, busqueda, categoria, ciudad })
   }
 
+  // ─── GET /instituciones/:id/detalle (admin o propietario) ──────────
+  @Get(':id/detalle')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Detalle de institución (admin o propietario)',
+    description: 'Retorna una institución sin importar su estado (pendiente, inactiva o verificada). Solo el propietario o un administrador pueden consultarla.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la institución (UID de Firestore)' })
+  @ApiOkResponse({ type: InstitucionDto, description: 'Detalle completo de la institución' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'No tienes permisos para consultar esta institución' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada' })
+  findOneProtegido(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.findOneProtegido(id, user.id, user.rol)
+  }
+
   // ─── GET /instituciones/:id ───────────────────────────────────────
   @Get(':id')
   @ApiOperation({
     summary: 'Detalle de institución',
-    description: 'Obtiene los detalles de una institución específica por su ID.',
+    description: 'Obtiene los detalles de una institución pública por su ID. Solo se exponen instituciones activas y verificadas.',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución (UID de Firestore)' })
-  @ApiResponse({ status: 200, description: 'Detalle completo de la institución' })
-  @ApiResponse({ status: 404, description: 'Institución no encontrada' })
+  @ApiOkResponse({ type: InstitucionDto, description: 'Detalle completo de la institución' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada (o aún no aprobada)' })
   findOne(@Param('id') id: string) {
     return this.svc.findOne(id)
   }
 
   // ─── POST /instituciones ──────────────────────────────────────────
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
     summary: 'Crear institución',
-    description: 'Crea una nueva institución en Firestore. Queda pendiente de verificación por un administrador.',
+    description: 'Crea una nueva institución en Firestore. Queda pendiente de verificación por un administrador. Solo cuentas con rol institución o administrador.',
   })
   @ApiBody({ type: CreateInstitucionDto })
-  @ApiResponse({ status: 201, description: 'Institución creada' })
+  @ApiCreatedResponse({ type: InstitucionDto, description: 'Institución creada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente: se requiere rol institución o admin' })
   create(@Body() dto: CreateInstitucionDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.svc.create(dto, user.id)
+    return this.svc.create(dto, user.id, user.rol)
   }
 
   // ─── PUT /instituciones/:id ───────────────────────────────────────
@@ -110,7 +132,7 @@ export class InstitutionsController {
   })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiBody({ type: UpdateInstitucionDto })
-  @ApiResponse({ status: 200, description: 'Institución actualizada' })
+  @ApiOkResponse({ type: InstitucionDto, description: 'Institución actualizada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   update(@Param('id') id: string, @Body() dto: UpdateInstitucionDto, @CurrentUser() user: CurrentUserPayload) {
@@ -127,7 +149,7 @@ export class InstitutionsController {
     description: 'Elimina suavemente (soft-delete) una institución de la base de datos.',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 204, description: 'Institución eliminada' })
+  @ApiNoContentResponse({ description: 'Institución eliminada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {

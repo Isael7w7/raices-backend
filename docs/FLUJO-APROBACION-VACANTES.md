@@ -82,7 +82,8 @@ sequenceDiagram
     A->>A: Crea usuario en Firebase Auth
     A->>A: db.batch(): perfiles/{uid} + instituciones/{uid} (atómico)
     Note over A: Si el batch falla → rollback (elimina el usuario de Firebase Auth)
-    A-->>U: 201 { tokenAcceso, usuario { rol: "institucion", institucionId } }
+    A-->>U: 201 { usuario, requiereInicioSesion: true }
+    Note over U: El registro NO devuelve tokens: debe llamar a POST /autenticacion/inicio-sesion
     Note over U: Institución queda activa: true, verificada: false
 
     AD->>AD: GET /administracion/instituciones/pendientes
@@ -154,6 +155,8 @@ sequenceDiagram
 | `GET` | `/api/instituciones/mi-institucion` | Autenticado | Institución del usuario (doc canónico o por `creadoPor`) |
 | `PUT` | `/api/instituciones/mi-institucion` | Autenticado | Actualizar su institución |
 | `GET` | `/api/instituciones` | Público | Directorio (solo `activa && verificada`) |
+| `GET` | `/api/instituciones/:id` | Público | Detalle público (solo `activa && verificada`; `404` si está pendiente o inactiva) |
+| `GET` | `/api/instituciones/:id/detalle` | Autenticado | Detalle sin filtrar estado (admin o propietario) |
 | `POST` | `/api/empleo` | `institucion`, `admin` | Crear vacante (requiere institución aprobada) |
 | `GET` | `/api/empleo` | Público | Listado de vacantes (solo instituciones aprobadas) |
 | `PUT`/`DELETE` | `/api/empleo/:id` | `institucion`, `admin` | Editar / desactivar vacante |
@@ -211,8 +214,14 @@ Las reglas anteriores están cubiertas por la suite de Jest:
 
 ## 9. Preguntas Frecuentes
 
+**¿El registro devuelve tokens de acceso?**
+No. El registro crea la cuenta y responde `201 { usuario, requiereInicioSesion: true }` sin tokens. El cliente debe llamar a `POST /api/autenticacion/inicio-sesion` para obtener el ID token y el token de refresco. Esto evita devolver custom tokens de Firebase que los guards rechazan.
+
 **¿Por qué una institución recién registrada no aparece en el directorio?**
-Porque nace con `verificada: false`. Un admin debe aprobarla (`POST /administracion/instituciones/:id/aprobar`).
+Porque nace con `verificada: false`. Un admin debe aprobarla (`POST /administracion/instituciones/:id/aprobar`). Tampoco es visible en el detalle público `GET /api/instituciones/:id` (responde `404` para no revelar su existencia). El propietario puede consultarla vía `GET /api/instituciones/mi-institucion` o `GET /api/instituciones/:id/detalle`; el admin, vía el detalle protegido o `GET /api/administracion/instituciones/pendientes`.
+
+**¿Quién puede crear instituciones (`POST /api/instituciones`)?**
+Solo cuentas con rol `institucion` o `admin`. El `RolesGuard` rechaza con `403` a los demás roles (pcd, tutor).
 
 **¿Puede una institución publicar vacantes antes de ser aprobada?**
 No. `createJob` devuelve `403` con el mensaje de aprobación pendiente.
