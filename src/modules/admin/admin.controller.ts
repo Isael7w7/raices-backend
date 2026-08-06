@@ -1,8 +1,15 @@
 import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
-import { PaginacionDto, EJEMPLO_RESPUESTA_PAGINADA } from '../../common/dto/paginacion.dto'
+import {
+  EstadisticasDto, AnaliticasDto, NecesidadesInteligenciaDto, VisitantesActivosDto,
+  InstitucionAdminDto, PaginaInstitucionesAdminDto, UsuarioAdminDto, PaginaUsuariosAdminDto,
+  ResenaAdminDto, PaginaResenasAdminDto, RespuestaToggleUsuarioDto, RespuestaToggleVerificacionDto,
+  RespuestaRolDto, AlertaDto, ConfiguracionDto,
+} from './dto/respuestas-admin.dto'
+import { InstitucionDto } from '../institutions/dto/respuestas-institucion.dto'
+import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -20,23 +27,23 @@ export class AdminController {
   /* ── Stats y analítica ── */
   @Get('estadisticas')
   @ApiOperation({ summary: 'Estadísticas generales', description: 'Retorna contadores de usuarios, instituciones, reseñas, publicaciones, etc.' })
-  @ApiResponse({ status: 200, description: 'Estadísticas del panel de control' })
+  @ApiOkResponse({ type: EstadisticasDto, description: 'Estadísticas del panel de control' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
   stats() { return this.svc.getStats() }
 
   @Get('analiticas')
   @ApiOperation({ summary: 'Analíticas detalladas', description: 'Registros por mes, distribución de roles, categorías, calificaciones, actividad comunitaria, distribución geográfica' })
-  @ApiResponse({ status: 200, description: 'Datos de analítica completa' })
+  @ApiOkResponse({ type: AnaliticasDto, description: 'Datos de analítica completa' })
   analytics() { return this.svc.getAnalytics() }
 
   @Get('inteligencia-necesidades')
   @ApiOperation({ summary: 'Inteligencia de necesidades', description: 'Motor de análisis: demanda vs oferta por tipo de discapacidad, brechas de cobertura, análisis automáticos' })
-  @ApiResponse({ status: 200, description: 'Análisis de cobertura con hallazgos' })
+  @ApiOkResponse({ type: NecesidadesInteligenciaDto, description: 'Análisis de cobertura con hallazgos' })
   needsIntelligence() { return this.svc.getNeedsIntelligence() }
 
   @Get('visitantes-activos')
   @ApiOperation({ summary: 'Visitantes activos en tiempo real', description: 'Métricas de visitantes actuales y promedios históricos: personasActivas, promedioDiario, promedioSemanal, promedioMensual, historialMinutos (últimos 13 min). Intenta calcular con datos reales de sesiones; si no hay, estima con base en usuarios activos.' })
-  @ApiResponse({ status: 200, description: 'Métricas de visitantes activos', example: { personasActivas: 3, promedioDiario: 5, promedioSemanal: 4, promedioMensual: 10, historialMinutos: [25, 45, 48, 28, 12, 36, 48, 38, 48, 45, 38, 34, 40] } })
+  @ApiOkResponse({ type: VisitantesActivosDto, description: 'Métricas de visitantes activos' })
   activeVisitors() { return this.svc.getActiveVisitors() }
 
   /* ── Instituciones ── */
@@ -44,33 +51,33 @@ export class AdminController {
   @ApiOperation({ summary: 'Todas las instituciones (admin)', description: 'Lista paginada de instituciones' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de instituciones con estado y verificación', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  @ApiOkResponse({ type: PaginaInstitucionesAdminDto, description: 'Lista paginada de instituciones con estado y verificación' })
   institutions(@Query() paginacion: PaginacionDto) { return this.svc.getAllInstitutions(paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Get('instituciones/pendientes')
   @ApiOperation({ summary: 'Instituciones pendientes de aprobación' })
-  @ApiResponse({ status: 200, description: 'Instituciones con activa=false' })
+  @ApiOkResponse({ type: [InstitucionDto], description: 'Instituciones pendientes (activa=true, verificada=false)' })
   pending() { return this.svc.getPendingInstitutions() }
 
   @Post('instituciones/:id/aprobar')
   @HttpCode(204)
   @ApiOperation({ summary: 'Aprobar institución', description: 'Activa la institución y envía correo de notificación' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 204, description: 'Institución aprobada' })
+  @ApiNoContentResponse({ description: 'Institución aprobada' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   approve(@Param('id') id: string) { return this.svc.approveInstitution(id) }
 
   @Patch('instituciones/:id/verificar')
   @ApiOperation({ summary: 'Alternar verificación de institución' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Estado de verificación actualizado' })
+  @ApiOkResponse({ type: RespuestaToggleVerificacionDto, description: 'Estado de verificación actualizado' })
   verify(@Param('id') id: string) { return this.svc.toggleVerifyInstitution(id) }
 
   @Delete('instituciones/:id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Rechazar/eliminar institución', description: 'Elimina permanentemente la institución' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 204, description: 'Institución eliminada' })
+  @ApiNoContentResponse({ description: 'Institución eliminada' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   reject(@Param('id') id: string) { return this.svc.rejectInstitution(id) }
 
@@ -79,13 +86,13 @@ export class AdminController {
   @ApiOperation({ summary: 'Todos los usuarios', description: 'Lista paginada de usuarios' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de usuarios con correo, nombre, rol, estado', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  @ApiOkResponse({ type: PaginaUsuariosAdminDto, description: 'Lista paginada de usuarios con correo, nombre, rol, estado' })
   users(@Query() paginacion: PaginacionDto) { return this.svc.getUsers(paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Patch('usuarios/:id/activo')
   @ApiOperation({ summary: 'Activar/desactivar usuario' })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
-  @ApiResponse({ status: 200, description: 'Estado de activación actualizado' })
+  @ApiOkResponse({ type: RespuestaToggleUsuarioDto, description: 'Estado de activación actualizado' })
   @ApiResponse({ status: 400, description: 'No puedes desactivar tu propia cuenta' })
   toggleActive(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.toggleUserActive(id, user.id)
@@ -95,7 +102,7 @@ export class AdminController {
   @ApiOperation({ summary: 'Cambiar rol de usuario', description: 'Roles válidos: pcd, tutor, institución, administrador' })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
   @ApiBody({ schema: { properties: { role: { type: 'string', enum: ['pcd', 'tutor', 'institucion', 'admin'] } } } })
-  @ApiResponse({ status: 200, description: 'Rol actualizado' })
+  @ApiOkResponse({ type: RespuestaRolDto, description: 'Rol actualizado' })
   @ApiResponse({ status: 400, description: 'Rol inválido o intento de cambiar propio rol' })
   changeRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.changeUserRole(id, role, user.id)
@@ -105,7 +112,7 @@ export class AdminController {
   @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar cuenta de usuario', description: 'Elimina permanentemente el usuario, su avatar en Storage, perfil extendido y dependientes. No se puede eliminar la propia cuenta.' })
   @ApiParam({ name: 'id', description: 'ID del usuario a eliminar' })
-  @ApiResponse({ status: 204, description: 'Cuenta eliminada permanentemente' })
+  @ApiNoContentResponse({ description: 'Cuenta eliminada permanentemente' })
   @ApiResponse({ status: 400, description: 'Intento de eliminar la propia cuenta' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
@@ -118,32 +125,32 @@ export class AdminController {
   @ApiOperation({ summary: 'Moderar reseñas', description: 'Lista paginada de reseñas con información de usuario e institución' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
-  @ApiResponse({ status: 200, description: 'Lista paginada de reseñas para moderación', schema: EJEMPLO_RESPUESTA_PAGINADA })
+  @ApiOkResponse({ type: PaginaResenasAdminDto, description: 'Lista paginada de reseñas para moderación' })
   reviews(@Query() paginacion: PaginacionDto) { return this.svc.getReviews(paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Delete('resenas/:id')
   @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar reseña', description: 'Elimina la reseña y recalcula la calificación de la institución' })
   @ApiParam({ name: 'id', description: 'ID de la reseña' })
-  @ApiResponse({ status: 204, description: 'Reseña eliminada y calificación recalculada' })
+  @ApiNoContentResponse({ description: 'Reseña eliminada y calificación recalculada' })
   @ApiResponse({ status: 404, description: 'Reseña no encontrada' })
   deleteReview(@Param('id') id: string) { return this.svc.deleteReview(id) }
 
   /* ── Alertas de riesgo ── */
   @Get('alertas')
   @ApiOperation({ summary: 'Alertas de riesgo', description: 'Genera alertas automáticas: calificaciones críticas, instituciones sin verificar, cobertura incompleta, retención, etc.' })
-  @ApiResponse({ status: 200, description: 'Lista de alertas ordenadas por severidad (crítica → media → info)' })
+  @ApiOkResponse({ type: [AlertaDto], description: 'Lista de alertas ordenadas por severidad (crítica → media → info)' })
   alerts() { return this.svc.getAlerts() }
 
   /* ── Configuración ── */
   @Get('configuracion')
   @ApiOperation({ summary: 'Obtener configuración de plataforma' })
-  @ApiResponse({ status: 200, description: 'Configuración actual (nombre, correo de soporte, registro, mantenimiento, etc.)' })
+  @ApiOkResponse({ type: ConfiguracionDto, description: 'Configuración actual (nombre, correo de soporte, registro, mantenimiento, etc.)' })
   settings() { return this.svc.getSettings() }
 
   @Put('configuracion')
   @ApiOperation({ summary: 'Actualizar configuración', description: 'Actualiza configuración de la plataforma. Solo se modifican campos válidos.' })
   @ApiBody({ type: ActualizarConfiguracionDto })
-  @ApiResponse({ status: 200, description: 'Configuración actualizada' })
+  @ApiOkResponse({ type: ConfiguracionDto, description: 'Configuración actualizada' })
   updateSettings(@Body() dto: ActualizarConfiguracionDto) { return this.svc.updateSettings(dto as Record<string, string>) }
 }

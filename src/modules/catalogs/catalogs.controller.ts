@@ -1,6 +1,7 @@
 import { Controller, Get } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse } from '@nestjs/swagger'
 import { CatalogsService } from './catalogs.service'
+import { CatalogoCompletoDto, EtapaVidaCatalogoDto, FeatureCatalogoDto, CategoriaCatalogoDto } from './dto/respuestas-catalogo.dto'
 
 @ApiTags('Catálogos')
 @Controller('catalogos')
@@ -9,42 +10,42 @@ export class CatalogsController {
 
   @Get()
   @ApiOperation({ summary: 'Todos los catálogos', description: 'Retorna todos los catálogos de la plataforma en un solo objeto (parentescos, discapacidades, etapas de vida, features, categorías)' })
-  @ApiResponse({ status: 200, description: 'Objeto con todos los catálogos disponibles' })
+  @ApiOkResponse({ type: CatalogoCompletoDto, description: 'Objeto con todos los catálogos disponibles' })
   getAll() {
     return this.svc.getAll()
   }
 
   @Get('parentescos')
   @ApiOperation({ summary: 'Catálogo de parentescos', description: 'Lista de opciones de parentesco para dependientes' })
-  @ApiResponse({ status: 200, description: 'Arreglo de parentescos disponibles', example: ['Hijo/a', 'Hermano/a', 'Nieto/a'] })
+  @ApiOkResponse({ type: [String], description: 'Arreglo de parentescos disponibles', example: ['Hijo/a', 'Hermano/a', 'Nieto/a'] })
   parentescos() {
     return this.svc.getParentescos()
   }
 
   @Get('discapacidades')
   @ApiOperation({ summary: 'Catálogo de tipos de discapacidad', description: 'Lista de tipos de discapacidad disponibles en la plataforma' })
-  @ApiResponse({ status: 200, description: 'Arreglo de discapacidades', example: ['Motriz', 'Visual', 'Auditiva'] })
+  @ApiOkResponse({ type: [String], description: 'Arreglo de discapacidades', example: ['Motriz', 'Visual', 'Auditiva'] })
   discapacidades() {
     return this.svc.getDiscapacidades()
   }
 
   @Get('etapas-vida')
   @ApiOperation({ summary: 'Catálogo de etapas de vida', description: 'Lista de etapas de vida con rangos de edad' })
-  @ApiResponse({ status: 200, description: 'Arreglo de etapas de vida', example: [{ id: 'infancia', label: 'Infancia (0-12)' }] })
+  @ApiOkResponse({ type: [EtapaVidaCatalogoDto], description: 'Arreglo de etapas de vida' })
   etapasVida() {
     return this.svc.getEtapasVida()
   }
 
   @Get('features')
   @ApiOperation({ summary: 'Catálogo de funcionalidades (features)', description: 'Lista de funcionalidades disponibles para activar/desactivar en cuentas vinculadas' })
-  @ApiResponse({ status: 200, description: 'Arreglo de features', example: [{ id: 'instituciones', label: 'Instituciones', description: 'Explorar y buscar instituciones' }] })
+  @ApiOkResponse({ type: [FeatureCatalogoDto], description: 'Arreglo de features' })
   features() {
     return this.svc.getFeatures()
   }
 
   @Get('categorias')
   @ApiOperation({ summary: 'Catálogo de categorías de instituciones', description: 'Lista de categorías con identificador, etiqueta y color' })
-  @ApiResponse({ status: 200, description: 'Arreglo de categorías', example: [{ id: 'funcional', label: 'Funcional', color: '#01ADFF' }] })
+  @ApiOkResponse({ type: [CategoriaCatalogoDto], description: 'Arreglo de categorías' })
   categorias() {
     return this.svc.getCategorias()
   }

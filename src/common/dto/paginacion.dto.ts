@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsOptional, IsInt, Min, Max, IsString, IsIn } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -34,6 +34,56 @@ export interface RespuestaPaginada<T> {
   pagina: number
   limite: number
   totalPaginas: number
+}
+
+/** Metadatos de paginación anidados: { total, pagina, limite, totalPaginas } */
+export class PaginacionMetaDto {
+  @ApiProperty({ description: 'Total de elementos', example: 45 })
+  total: number
+
+  @ApiProperty({ description: 'Página actual', example: 1 })
+  pagina: number
+
+  @ApiProperty({ description: 'Elementos por página', example: 20 })
+  limite: number
+
+  @ApiProperty({ description: 'Total de páginas', example: 3 })
+  totalPaginas: number
+}
+
+/**
+ * Respuesta paginada plana: { datos, total, pagina, limite, totalPaginas }.
+ * Para tipar `datos`, extiende esta clase y redefine la propiedad con
+ * `@ApiProperty({ type: [TuDto] })`.
+ */
+export class RespuestaPaginadaDto<T> {
+  @ApiProperty({ description: 'Elementos de la página', type: () => [Object] })
+  datos: T[]
+
+  @ApiProperty({ description: 'Total de elementos', example: 45 })
+  total: number
+
+  @ApiProperty({ description: 'Página actual', example: 1 })
+  pagina: number
+
+  @ApiProperty({ description: 'Elementos por página', example: 20 })
+  limite: number
+
+  @ApiProperty({ description: 'Total de páginas', example: 3 })
+  totalPaginas: number
+}
+
+/**
+ * Respuesta paginada anidada (módulo de instituciones): { datos, paginacion: {...} }.
+ * Para tipar `datos`, extiende esta clase y redefine la propiedad con
+ * `@ApiProperty({ type: [TuDto] })`.
+ */
+export class RespuestaPaginadaAnidadaDto<T> {
+  @ApiProperty({ description: 'Elementos de la página', type: () => [Object] })
+  datos: T[]
+
+  @ApiProperty({ type: PaginacionMetaDto })
+  paginacion: PaginacionMetaDto
 }
 
 /**
