@@ -1,11 +1,12 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger'
 import { JobsService } from './jobs.service'
 import { CreateJobDto } from './dto/create-job.dto'
 import { ActualizarVacanteDto } from './dto/actualizar-vacante.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { PostulacionDto } from './dto/postulacion.dto'
-import { VacanteDto, PaginaVacantesDto, PaginaPostulacionesDto, PostulacionCreadaDto } from './dto/respuestas-empleo.dto'
+import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
+import { VacanteDto, PaginaVacantesDto, PaginaPostulacionesDto, PostulacionCreadaDto, PostulacionEstadoActualizadoDto, PaginaPostulantesInstitucionDto } from './dto/respuestas-empleo.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
@@ -91,6 +92,37 @@ export class JobsController {
     return this.svc.remove(id, user)
   }
 
+  @Get('postulantes-institucion')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Postulantes de mi institución', description: 'Retorna los postulantes de todas las vacantes de la institución del usuario (rol institución) o de la institución indicada (rol admin, vía institucionId).' })
+  @ApiQuery({ name: 'institucionId', required: false, description: 'Obligatorio para admins: ID de la institución a consultar' })
+  @ApiQuery({ name: 'estado', required: false, description: 'Filtrar por estado de la postulación (pendiente, aceptada, rechazada, etc.)' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Búsqueda por nombre del postulante o título de la vacante' })
+  @ApiOkResponse({ type: PaginaPostulantesInstitucionDto, description: 'Lista paginada de postulantes con datos del postulante y de la vacante' })
+  @ApiResponse({ status: 400, description: 'Admin sin institucionId' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere institución o admin)' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada para el usuario' })
+  institutionApplicants(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() paginacion: PaginacionDto,
+    @Query('institucionId') institucionId?: string,
+    @Query('estado') estado?: string,
+  ) {
+    return this.svc.postulantesDeMiInstitucion(user, {
+      institucionId,
+      estado,
+      pagina: paginacion.pagina,
+      limite: paginacion.limite,
+      ordenarPor: paginacion.ordenarPor,
+      direccion: paginacion.direccion,
+      buscar: paginacion.buscar,
+    })
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Detalle de vacante' })
   @ApiParam({ name: 'id', description: 'ID de la vacante' })
@@ -112,5 +144,19 @@ export class JobsController {
   @ApiResponse({ status: 404, description: 'Vacante no encontrada o inactiva' })
   apply(@Param('id') id: string, @Body() dto: PostulacionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.apply(user.id, id, dto.cartaPresentacion ?? '')
+  }
+
+  @Patch('postulaciones/:id/estado')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Cambiar estado de postulación', description: 'Permite a la institución dueña de la vacante (o admin) aceptar o rechazar una postulación. Notifica al postulante.' })
+  @ApiParam({ name: 'id', description: 'ID de la postulación' })
+  @ApiOkResponse({ type: PostulacionEstadoActualizadoDto, description: 'Estado actualizado correctamente' })
+  @ApiResponse({ status: 400, description: 'Estado inválido (debe ser pendiente, aceptada o rechazada)' })
+  @ApiResponse({ status: 403, description: 'No pertenece a tu institución' })
+  @ApiResponse({ status: 404, description: 'Postulación o vacante no encontrada' })
+  cambiarEstadoPostulacion(@Param('id') id: string, @Body() dto: ActualizarEstadoPostulacionDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.actualizarEstadoPostulacion(id, user, dto)
   }
 }

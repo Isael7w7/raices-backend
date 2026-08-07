@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { JobsService } from './jobs.service'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { NotificationsService } from '../notifications/notifications.service'
 
 // ─── Mock helpers ────────────────────────────────────────────────────────
 
@@ -42,13 +43,17 @@ describe('JobsService', () => {
   let service: JobsService
   let firestoreMock: Record<string, any>
 
+  let mockNotif: Record<string, any>
+
   beforeEach(async () => {
     firestoreMock = { collection: jest.fn() }
+    mockNotif = { crear: jest.fn().mockResolvedValue(undefined) }
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         JobsService,
         { provide: FIRESTORE, useValue: firestoreMock },
+        { provide: NotificationsService, useValue: mockNotif },
       ],
     }).compile()
 
@@ -195,6 +200,230 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(existingSnap) })
 
       await expect(service.apply('user1', 'v1', '')).rejects.toThrow(ConflictException)
+    })
+  })
+
+  // ── postulantesDeMiInstitucion ───────────────────────────────────────
+
+  describe('postulantesDeMiInstitucion', () => {
+    it('should return applicants of the user institution with profile and vacancy data', async () => {
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+      const vacantesSnap = {
+        docs: [
+          { id: 'v1', data: () => ({ id: 'v1', titulo: 'Terapeuta', modalidad: 'presencial', institucionId: 'inst1' }) },
+        ],
+        size: 1,
+      }
+      const postulacionesSnap = {
+        docs: [
+          { id: 'p1', data: () => ({ id: 'p1', vacanteId: 'v1', usuarioId: 'user1', cartaPresentacion: 'Hola', estado: 'pendiente', fechaCreacion: '2024-01-02' }) },
+        ],
+        size: 1,
+      }
+      const perfilesSnap = {
+        docs: [
+          { id: 'user1', data: () => ({ nombreCompleto: 'María Pérez', email: 'maria@correo.mx', urlAvatar: 'https://foto.png' }) },
+        ],
+        size: 1,
+      }
+
+      const chainable = (resultado: any) => ({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(resultado) })
+
+      firestoreMock.collection
+        .mockReturnValueOnce(chainable(instSnap))
+        .mockReturnValueOnce(chainable(vacantesSnap))
+        .mockReturnValueOnce(chainable(postulacionesSnap))
+        .mockReturnValueOnce(chainable(perfilesSnap))
+
+      const result = await service.postulantesDeMiInstitucion({ id: 'owner1', rol: 'institucion' } as any)
+
+      expect(result.total).toBe(1)
+      expect(result.datos[0]).toMatchObject({
+        id: 'p1',
+        vacanteId: 'v1',
+        tituloVacante: 'Terapeuta',
+        modalidad: 'presencial',
+        nombrePostulante: 'María Pérez',
+        emailPostulante: 'maria@correo.mx',
+        cartaPresentacion: 'Hola',
+        estado: 'pendiente',
+      })
+    })
+
+    it('should throw NotFoundException when institution user has no institution', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }) })
+
+      await expect(service.postulantesDeMiInstitucion({ id: 'user1', rol: 'institucion' } as any))
+        .rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException for non-institution users', async () => {
+      await expect(service.postulantesDeMiInstitucion({ id: 'user1', rol: 'pcd' } as any))
+        .rejects.toThrow(ForbiddenException)
+    })
+
+    it('should throw BadRequestException when admin omits institucionId', async () => {
+      await expect(service.postulantesDeMiInstitucion({ id: 'admin1', rol: 'admin' } as any))
+        .rejects.toThrow(BadRequestException)
+    })
+
+    it('should return empty page when the institution has no vacancies', async () => {
+      const chainable = (resultado: any) => ({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(resultado) })
+
+      firestoreMock.collection
+        .mockReturnValueOnce(chainable({ empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }))
+        .mockReturnValueOnce(chainable({ docs: [] as never[], size: 0 }))
+
+      const result = await service.postulantesDeMiInstitucion({ id: 'admin1', rol: 'admin' } as any, { institucionId: 'inst1' })
+      expect(result.datos).toHaveLength(0)
+      expect(result.total).toBe(0)
+    })
+
+    it('should filter by estado', async () => {
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+      const vacantesSnap = {
+        docs: [{ id: 'v1', data: () => ({ id: 'v1', titulo: 'A', institucionId: 'inst1' }) }],
+        size: 1,
+      }
+      const postulacionesSnap = {
+        docs: [
+          { id: 'p1', data: () => ({ id: 'p1', vacanteId: 'v1', usuarioId: 'user1', estado: 'pendiente', fechaCreacion: '2024-01-01' }) },
+          { id: 'p2', data: () => ({ id: 'p2', vacanteId: 'v1', usuarioId: 'user2', estado: 'aceptada', fechaCreacion: '2024-01-02' }) },
+        ],
+        size: 2,
+      }
+      const perfilesSnap = {
+        docs: [
+          { id: 'user1', data: () => ({ nombreCompleto: 'A' }) },
+          { id: 'user2', data: () => ({ nombreCompleto: 'B' }) },
+        ],
+        size: 2,
+      }
+
+      const chainable = (resultado: any) => ({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(resultado) })
+
+      firestoreMock.collection
+        .mockReturnValueOnce(chainable(instSnap))
+        .mockReturnValueOnce(chainable(vacantesSnap))
+        .mockReturnValueOnce(chainable(postulacionesSnap))
+        .mockReturnValueOnce(chainable(perfilesSnap))
+
+      const result = await service.postulantesDeMiInstitucion({ id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' })
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].id).toBe('p2')
+    })
+  })
+
+  // ── actualizarEstadoPostulacion ─────────────────────────────────────
+
+  describe('actualizarEstadoPostulacion', () => {
+    const chainable = (resultado: any) => ({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(resultado) })
+    const postDoc = (estado = 'pendiente') => mockDoc({ id: 'p1', vacanteId: 'v1', usuarioId: 'user1', estado, fechaCreacion: '2024-01-01' }, true, 'p1')
+    const vacanteDoc = () => mockDoc({ id: 'v1', titulo: 'Terapeuta', institucionId: 'inst1' }, true, 'v1')
+    const instSnap = (instId = 'inst1') => ({ empty: false, docs: [{ id: instId, data: () => ({}) }] })
+
+    it('should accept a postulation and notify the applicant', async () => {
+      const pDoc = postDoc()
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(pDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+        .mockReturnValueOnce(chainable(instSnap()))
+
+      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any)
+
+      expect(result).toMatchObject({ id: 'p1', estado: 'aceptada' })
+      expect(pDoc.ref.update).toHaveBeenCalledWith({ estado: 'aceptada', fechaActualizacion: expect.any(String) })
+      expect(mockNotif.crear).toHaveBeenCalledWith('user1', 'postulacion_aceptada', '¡Tu postulación fue aceptada!', expect.any(String), 'p1')
+    })
+
+    it('should reject a postulation and notify the applicant', async () => {
+      const pDoc = postDoc()
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(pDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+        .mockReturnValueOnce(chainable(instSnap()))
+
+      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'rechazada' } as any)
+
+      expect(result.estado).toBe('rechazada')
+      expect(mockNotif.crear).toHaveBeenCalledWith('user1', 'postulacion_rechazada', 'Actualización de tu postulación', expect.any(String), 'p1')
+    })
+
+    it('should allow admin to change any postulation state', async () => {
+      const pDoc = postDoc()
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(pDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+
+      const result = await service.actualizarEstadoPostulacion('p1', { id: 'admin1', rol: 'admin' } as any, { estado: 'aceptada' } as any)
+      expect(result.estado).toBe('aceptada')
+      expect(mockNotif.crear).toHaveBeenCalled()
+    })
+
+    it('should throw NotFoundException when postulation does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.actualizarEstadoPostulacion('ghost', { id: 'admin1', rol: 'admin' } as any, { estado: 'aceptada' } as any))
+        .rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when the vacancy does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(postDoc()) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.actualizarEstadoPostulacion('p1', { id: 'admin1', rol: 'admin' } as any, { estado: 'aceptada' } as any))
+        .rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when the user does not own the vacancy institution', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(postDoc()) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+        .mockReturnValueOnce(chainable(instSnap('inst2')))
+
+      await expect(service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any))
+        .rejects.toThrow(ForbiddenException)
+    })
+
+    it('should throw ForbiddenException when institution user has no institution', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(postDoc()) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+        .mockReturnValueOnce(chainable({ empty: true, docs: [] as never[] }))
+
+      await expect(service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any))
+        .rejects.toThrow(ForbiddenException)
+    })
+
+    it('should not notify the applicant when estado is reset to pendiente', async () => {
+      const pDoc = postDoc('aceptada')
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(pDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+        .mockReturnValueOnce(chainable(instSnap()))
+
+      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'pendiente' } as any)
+
+      expect(result.estado).toBe('pendiente')
+      expect(pDoc.ref.update).toHaveBeenCalledWith({ estado: 'pendiente', fechaActualizacion: expect.any(String) })
+      expect(mockNotif.crear).not.toHaveBeenCalled()
+    })
+
+    it('should return early without update or notification when estado is unchanged', async () => {
+      const pDoc = postDoc('aceptada')
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(pDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
+        .mockReturnValueOnce(chainable(instSnap()))
+
+      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any)
+
+      expect(result.estado).toBe('aceptada')
+      expect(pDoc.ref.update).not.toHaveBeenCalled()
+      expect(mockNotif.crear).not.toHaveBeenCalled()
     })
   })
 

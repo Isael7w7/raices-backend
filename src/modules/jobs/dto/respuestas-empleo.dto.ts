@@ -122,3 +122,54 @@ export class PostulacionCreadaDto {
   estado!: string
 }
 
+export class PostulacionEstadoActualizadoDto {
+  @ApiProperty({ example: 'post-uid' })
+  id!: string
+
+  @ApiProperty({ example: 'aceptada' })
+  estado!: string
+
+  @ApiProperty({ example: '2026-08-06T00:00:00.000Z' })
+  fechaActualizacion!: string
+}
+
+export class PostulanteItemDto {
+  @ApiProperty({ example: 'post-uid' })
+  id!: string
+
+  @ApiProperty({ example: 'vacante-uid' })
+  vacanteId!: string
+
+  @ApiPropertyOptional({ example: 'Terapeuta ocupacional', nullable: true })
+  tituloVacante?: string | null
+
+  @ApiPropertyOptional({ example: 'presencial', nullable: true })
+  modalidad?: string | null
+
+  @ApiProperty({ example: 'user-uid' })
+  usuarioId!: string
+
+  @ApiPropertyOptional({ example: 'María Pérez', nullable: true })
+  nombrePostulante?: string | null
+
+  @ApiPropertyOptional({ example: 'maria@correo.mx', nullable: true })
+  emailPostulante?: string | null
+
+  @ApiPropertyOptional({ example: 'https://storage.googleapis.com/...', nullable: true })
+  urlAvatar?: string | null
+
+  @ApiPropertyOptional({ example: 'Me interesa este puesto.', nullable: true })
+  cartaPresentacion?: string | null
+
+  @ApiProperty({ example: 'pendiente' })
+  estado!: string
+
+  @ApiPropertyOptional({ example: '2026-08-06T00:00:00.000Z', nullable: true })
+  fechaCreacion?: string | null
+}
+
+export class PaginaPostulantesInstitucionDto extends RespuestaPaginadaDto<PostulanteItemDto> {
+  @ApiProperty({ description: 'Postulantes de la página', type: [PostulanteItemDto] })
+  datos!: PostulanteItemDto[]
+}
+

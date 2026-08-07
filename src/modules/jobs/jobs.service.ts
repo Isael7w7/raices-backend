@@ -5,10 +5,15 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { NotificationsService } from '../notifications/notifications.service'
+import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
 
 @Injectable()
 export class JobsService {
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly notificaciones: NotificationsService,
+  ) {}
 
   async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string; pagina?: number; limite?: number; ordenarPor?: string; direccion?: 'asc' | 'desc'; buscar?: string } = {}): Promise<RespuestaPaginada<any>> {
     const pagina = filtros.pagina ?? 1
@@ -108,6 +113,50 @@ export class JobsService {
     return { id: ref.id, estado: 'pendiente' }
   }
 
+  async actualizarEstadoPostulacion(postulacionId: string, user: CurrentUserPayload, dto: ActualizarEstadoPostulacionDto) {
+    const postDoc = await this.db.collection(COLECCIONES.postulaciones).doc(postulacionId).get()
+    if (!postDoc.exists) throw new NotFoundException('Postulación no encontrada')
+    const postulacion = postDoc.data() as any
+
+    const vacanteDoc = await this.db.collection(COLECCIONES.vacantes).doc(postulacion.vacanteId).get()
+    if (!vacanteDoc.exists) throw new NotFoundException('Vacante no encontrada')
+    const vacante = vacanteDoc.data() as any
+
+    // Solo la institución dueña de la vacante (o admin) puede cambiar el estado
+    if (user.rol !== 'admin') {
+      const instSnap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (instSnap.empty || instSnap.docs[0].id !== vacante.institucionId) {
+        throw new ForbiddenException('No tienes permiso para cambiar el estado de esta postulación')
+      }
+    }
+
+    const nuevoEstado = dto.estado
+    if (postulacion.estado === nuevoEstado) {
+      return { id: postulacionId, estado: nuevoEstado, fechaActualizacion: postulacion.fechaActualizacion ?? postulacion.fechaCreacion ?? new Date().toISOString() }
+    }
+
+    const fechaActualizacion = new Date().toISOString()
+    await postDoc.ref.update({ estado: nuevoEstado, fechaActualizacion })
+
+    // Notificar solo en desenlaces finales (aceptada/rechazada); un regreso a
+    // 'pendiente' no debe disparar una notificación de rechazo engañosa.
+    if (nuevoEstado === 'aceptada' || nuevoEstado === 'rechazada') {
+      const aceptada = nuevoEstado === 'aceptada'
+      await this.notificaciones.crear(
+        postulacion.usuarioId,
+        aceptada ? 'postulacion_aceptada' : 'postulacion_rechazada',
+        aceptada ? '¡Tu postulación fue aceptada!' : 'Actualización de tu postulación',
+        aceptada
+          ? `La institución aceptó tu postulación para la vacante "${vacante.titulo ?? ''}".`
+          : `Tu postulación para la vacante "${vacante.titulo ?? ''}" no fue aceptada.`,
+        postulacionId,
+      )
+    }
+
+    return { id: postulacionId, estado: nuevoEstado, fechaActualizacion }
+  }
+
   async myApplications(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('usuarioId', '==', usuarioId).get()
@@ -142,6 +191,103 @@ export class JobsService {
     const total = resultado.length
     const inicio = (pagina - 1) * limite
     return paginar(resultado.slice(inicio, inicio + limite), total, pagina, limite)
+  }
+
+  async postulantesDeMiInstitucion(
+    user: CurrentUserPayload,
+    filtros: {
+      institucionId?: string
+      estado?: string
+      pagina?: number
+      limite?: number
+      ordenarPor?: string
+      direccion?: 'asc' | 'desc'
+      buscar?: string
+    } = {},
+  ): Promise<RespuestaPaginada<any>> {
+    const pagina = filtros.pagina ?? 1
+    const limite = filtros.limite ?? 20
+
+    // Resolver la institución a consultar: para usuarios institución se usa la
+    // propia (por creadoPor); para admins se requiere institucionId explícito.
+    let institucionId: string
+    if (user.rol === 'institucion') {
+      const instSnap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (instSnap.empty) {
+        throw new NotFoundException('No tienes una institución registrada. Crea una institución primero.')
+      }
+      institucionId = instSnap.docs[0].id
+    } else if (user.rol === 'admin') {
+      if (!filtros.institucionId) {
+        throw new BadRequestException('Como administrador, debes proporcionar el ID de la institución (institucionId).')
+      }
+      institucionId = filtros.institucionId
+    } else {
+      throw new ForbiddenException('Solo instituciones y administradores pueden consultar postulantes')
+    }
+
+    // Vacantes de la institución
+    const vacantesSnap = await this.db.collection(COLECCIONES.vacantes)
+      .where('institucionId', '==', institucionId).get()
+    const vacantes = vacantesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    if (vacantes.length === 0) return paginar([], 0, pagina, limite)
+    const mapaVacantes = new Map(vacantes.map(v => [v.id, v]))
+
+    // Postulaciones de esas vacantes (consultas `in` en lotes de 30)
+    const idsVacantes = [...mapaVacantes.keys()]
+    const postulaciones: any[] = []
+    for (let i = 0; i < idsVacantes.length; i += 30) {
+      const lote = idsVacantes.slice(i, i + 30)
+      const snap = await this.db.collection(COLECCIONES.postulaciones)
+        .where('vacanteId', 'in', lote)
+        .get()
+      postulaciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as any)))
+    }
+    // Ordenar en memoria por fecha de creación descendente
+    postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+
+    // Enriquecer con datos del postulante (perfiles) en batch
+    const usuarioIds = [...new Set(postulaciones.map(p => p.usuarioId).filter(Boolean))] as string[]
+    const mapaUsuarios = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+
+    let todos = postulaciones.map(p => {
+      const vacante = mapaVacantes.get(p.vacanteId) ?? {}
+      const perfil = mapaUsuarios.get(p.usuarioId) ?? {}
+      return {
+        id: p.id,
+        vacanteId: p.vacanteId,
+        tituloVacante: vacante.titulo ?? null,
+        modalidad: vacante.modalidad ?? null,
+        usuarioId: p.usuarioId,
+        nombrePostulante: perfil.nombreCompleto ?? null,
+        emailPostulante: perfil.email ?? null,
+        urlAvatar: perfil.urlAvatar ?? null,
+        // Compatibilidad: el seed usa `mensaje`; el servicio escribe `cartaPresentacion`
+        cartaPresentacion: p.cartaPresentacion ?? p.mensaje ?? null,
+        estado: p.estado ?? 'pendiente',
+        fechaCreacion: p.fechaCreacion ?? null,
+      }
+    })
+
+    if (filtros.estado) {
+      const termino = filtros.estado.toLowerCase()
+      todos = todos.filter(p => (p.estado ?? '').toLowerCase() === termino)
+    }
+
+    if (filtros.buscar) {
+      const termino = filtros.buscar.toLowerCase()
+      todos = todos.filter(p =>
+        (p.nombrePostulante ?? '').toLowerCase().includes(termino) ||
+        (p.tituloVacante ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    todos = ordenar(todos, filtros.ordenarPor, filtros.direccion ?? 'desc')
+
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   async getAppliedJobIds(usuarioId: string): Promise<string[]> {
