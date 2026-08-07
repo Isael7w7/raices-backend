@@ -179,9 +179,9 @@ gcloud auth login
 gcloud config set project raices-499122
 ```
 
-#### 2. Sincronizar secretos desde `.env.production`
+#### 2. Sincronizar secretos desde `.env`
 
-El archivo `.env.production` (no versionado) debe contener las variables canónicas:
+El archivo `.env` (no versionado) debe contener las variables canónicas:
 ```
 FIREBASE_CREDENTIALS={"type":"service_account",...}   # JSON en UNA sola línea
 RESEND_API_KEY=re_xxx                                # opcional
@@ -193,7 +193,7 @@ Ejecuta (estando en la raíz del repo):
 ./deploy.sh secrets
 
 # Si tu archivo se llama distinto
-./deploy.sh secrets .env.production
+./deploy.sh secrets .env
 
 # Sincronizar secretos Y desplegar a Cloud Run
 ./deploy.sh deploy

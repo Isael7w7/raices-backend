@@ -155,7 +155,7 @@ store_secret_version() {
 # Acepta el alias FIREBASE_SERVICE_ACCOUNT y lo guarda en el secreto
 # FIREBASE_CREDENTIALS (nombre canónico).
 sync_secrets_from_env_file() {
-    local env_file="${1:-.env.production}"
+    local env_file="${1:-.env}"
     if [ ! -f "${env_file}" ]; then
         log_warn "No ${env_file} found. Skipping secret sync (existing secrets will be used)."
         return 0
@@ -206,7 +206,7 @@ ensure_secrets_exist() {
 deploy_to_cloud_run() {
     local image_tag="${1:-latest}"
     local full_image="${IMAGE_NAME}:${image_tag}"
-    local env_file="${2:-.env.production}"
+    local env_file="${2:-.env}"
 
     log_info "Deploying to Cloud Run..."
 
@@ -219,7 +219,7 @@ deploy_to_cloud_run() {
             --description="Raíces Docker images"
     fi
 
-    # Sincroniza secretos desde .env.production (si existe)
+    # Sincroniza secretos desde .env (si existe)
     sync_secrets_from_env_file "${env_file}"
 
     # Abortar si falta algún secreto (evita desplegar con referencias rotas)
@@ -323,7 +323,7 @@ print_summary() {
 main() {
     local action="${1:-deploy}"
     local image_tag="${2:-latest}"
-    local env_file="${3:-.env.production}"
+    local env_file="${3:-.env}"
 
     case "${action}" in
         build)
@@ -342,7 +342,7 @@ main() {
         secrets)
             # Solo sincroniza secretos (sin desplegar). El archivo es el 2º
             # argumento (no hay image_tag en esta acción).
-            local secrets_env_file="${2:-.env.production}"
+            local secrets_env_file="${2:-.env}"
             if ! command -v gcloud &> /dev/null; then
                 log_error "gcloud CLI is not installed. Install from: https://cloud.google.com/sdk/docs/install"
                 exit 1
@@ -380,8 +380,8 @@ main() {
             echo "Examples:"
             echo "  $0 deploy"
             echo "  $0 deploy v1.0.0"
-            echo "  $0 deploy latest .env.production"
-            echo "  $0 secrets .env.production"
+            echo "  $0 deploy latest .env"
+            echo "  $0 secrets .env"
             exit 1
             ;;
     esac

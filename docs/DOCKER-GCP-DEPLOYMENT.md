@@ -41,7 +41,7 @@ raices-backend/
 ├── .dockerignore           ← Archivos excluidos del build
 ├── docker-compose.yml      ← Para testing local
 ├── deploy.sh               ← Script de deploy automatizado
-└── .env.production.example ← Plantilla de variables de entorno
+└── .env.example ← Plantilla de variables de entorno
 ```
 
 ### Archivos importantes para ti:
@@ -50,7 +50,7 @@ raices-backend/
 |---------|---------------|
 | `Dockerfile` | Modificar cuando cambien dependencias o configuración de build |
 | `deploy.sh` | Ejecutar cada vez que hagas deploy |
-| `.env.production` | **NUNCA** subir a Git, contiene secretos |
+| `.env` | **NUNCA** subir a Git, contiene secretos |
 
 ---
 
@@ -99,13 +99,13 @@ cd raices-backend
 
 ## 4. Variables de Entorno
 
-### Crear archivo de producción:
+### Crear archivo de entorno:
 ```bash
 # Copiar plantilla
-cp .env.production.example .env.production
+cp .env.example .env
 
 # Editar con tus valores
-nano .env.production
+nano .env
 ```
 
 ### Variables necesarias:
@@ -122,9 +122,9 @@ nano .env.production
 | `CORS_ORIGINS` | Dominios permitidos | Tu dominio de frontend |
 
 ### ⚠️ REGLAS DE SEGURIDAD:
-- **NUNCA** subas `.env.production` a Git
+- **NUNCA** subas `.env` a Git
 - **NUNCA** compartas tus llaves privadas
-- Usa el archivo `.env.production.example` como referencia
+- Usa el archivo `.env.example` como referencia
 - Si una clave se compromete, revócala inmediatamente
 
 ---
@@ -157,7 +157,7 @@ Comandos útiles:
 ### Problema: "Variables de entorno no están disponibles"
 ```
 Causa: No se pasaron al deploy
-Solución: Verificar que .env.production existe y tiene las variables
+Solución: Verificar que .env existe y tiene las variables
 Verificar: gcloud run services describe raices-backend --region=us-central1
 ```
 
