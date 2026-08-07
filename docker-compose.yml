@@ -1,5 +1,9 @@
 version: '3.8'
 
+# NOTA DE SEGURIDAD: este archivo NO contiene secretos. Los valores se leen
+# del archivo local .env (ignorado por git). En producción (Cloud Run) los
+# secretos se montan desde GCP Secret Manager con --set-secrets; este
+# compose es solo para desarrollo local.
 services:
   backend:
     build:
@@ -11,10 +15,16 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=7000
+      # Secretos leídos desde .env local (NUNCA versionados)
+      - FIREBASE_CREDENTIALS=${FIREBASE_CREDENTIALS}
       - FIREBASE_API_KEY=${FIREBASE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      # Configuración no sensible
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-      - FIREBASE_SERVICE_ACCOUNT=${FIREBASE_SERVICE_ACCOUNT}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Si se omite, el código usa FIREBASE_PROJECT_ID como fallback
+      - VERTEX_AI_PROJECT_ID=${VERTEX_AI_PROJECT_ID:-}
+      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
+      - VERTEX_AI_MODEL=${VERTEX_AI_MODEL:-gemini-2.0-flash}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     volumes:
       - uploads:/app/uploads

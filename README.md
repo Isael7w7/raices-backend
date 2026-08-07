@@ -41,7 +41,7 @@ Las variables de entorno se configuran en el archivo `.env` (nunca subir a Git).
 | Variable | Descripción | Ejemplo |
 |----------|-------------|---------|
 | `FIREBASE_PROJECT_ID` | ID del proyecto Firebase | `mi-proyecto-id` |
-| `FIREBASE_SERVICE_ACCOUNT` | JSON de cuenta de servicio (una línea) | `{"type":"service_account",...}` |
+| `FIREBASE_CREDENTIALS` | JSON de la cuenta de servicio en una línea (secreto montado desde GCP Secret Manager en Cloud Run). Alias retrocompatible: `FIREBASE_SERVICE_ACCOUNT` | `{"type":"service_account",...}` |
 
 ### Variables Opcionales
 
@@ -50,9 +50,12 @@ Las variables de entorno se configuran en el archivo `.env` (nunca subir a Git).
 | `PORT` | Puerto del servidor | `7000` |
 | `NODE_ENV` | Entorno de ejecución | `development` |
 | `FIREBASE_API_KEY` | API Key de Firebase Auth | — |
-| `ANTHROPIC_API_KEY` | API Key de Anthropic para IA | — |
+| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Vertex AI (fallback: `FIREBASE_PROJECT_ID`) | — |
+| `VERTEX_AI_LOCATION` | Región de Vertex AI | `us-central1` |
+| `VERTEX_AI_MODEL` | Modelo Gemini a usar | `gemini-2.0-flash` |
 | `CORS_ORIGINS` | Dominios permitidos (separados por coma) | — |
-| `RESEND_API_KEY` | API Key de Resend para emails | — |
+| `RESEND_API_KEY` | API Key de Resend para emails (secreto) | — |
+| `FIREBASE_STORAGE_BUCKET` | Bucket de Cloud Storage (se deriva del proyecto si se omite) | — |
 
 ### Variables de Negocio
 
@@ -131,8 +134,10 @@ raices-backend/
 
 ## 🛡️ Seguridad
 
-- **NUNCA** subir archivos `.env` a Git
-- Las credenciales de Firebase se validan al iniciar
+- **NUNCA** subir archivos `.env` ni archivos de cuenta de servicio (`*service-account*.json`, `*credentials.json`) a Git
+- Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`, `FIREBASE_API_KEY`) se consumen vía `ConfigService` (variables de entorno) y, en producción, se montan desde **GCP Secret Manager** en Cloud Run (`--set-secrets`) — nunca se inyectan en la imagen Docker
+- Vertex AI se autentica con **Application Default Credentials** (cuenta de servicio de Cloud Run); no requiere API key embebida
+- Las credenciales de Firebase se validan al iniciar (JSON bien formado, `project_id` consistente)
 - Rate limiting habilitado (100 requests/minuto)
 - CORS configurado para orígenes específicos
 
@@ -164,10 +169,54 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
-### Google Cloud Run
+### Google Cloud Run (Secret Manager)
+
+Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`) se gestionan en **GCP Secret Manager** y se montan en Cloud Run con `--set-secrets`; las variables no sensibles (`NODE_ENV`, `PORT`, `CORS_ORIGINS`, `VERTEX_AI_*`) se pasan como env vars normales.
+
+#### 1. Requisitos previos (una sola vez)
 ```bash
-# Ejecutar script de deploy
+gcloud auth login
+gcloud config set project raices-499122
+```
+
+#### 2. Sincronizar secretos desde `.env.production`
+
+El archivo `.env.production` (no versionado) debe contener las variables canónicas:
+```
+FIREBASE_CREDENTIALS={"type":"service_account",...}   # JSON en UNA sola línea
+RESEND_API_KEY=re_xxx                                # opcional
+```
+
+Ejecuta (estando en la raíz del repo):
+```bash
+# Solo sincronizar secretos a GCP (crea los secretos si no existen y añade la versión)
+./deploy.sh secrets
+
+# Si tu archivo se llama distinto
+./deploy.sh secrets .env.production
+
+# Sincronizar secretos Y desplegar a Cloud Run
 ./deploy.sh deploy
+```
+
+> **Nota**: el script crea automáticamente el secreto `FIREBASE_CREDENTIALS`, guarda una nueva versión y otorga acceso a la cuenta de servicio del Cloud Run (`roles/secretmanager.secretAccessor`). Si tu archivo aún usa el alias `FIREBASE_SERVICE_ACCOUNT`, se migrará al secreto `FIREBASE_CREDENTIALS` (con un aviso).
+
+#### 3. Verificar
+```bash
+# Listar secretos
+gcloud secrets list --project raices-499122
+
+# Ver las versiones de un secreto
+gcloud secrets versions list FIREBASE_CREDENTIALS --project raices-499122
+```
+
+Si prefieres crear los secretos a mano:
+```bash
+gcloud secrets create FIREBASE_CREDENTIALS --project raices-499122 --replication-policy=automatic
+printf '%s' '{"type":"service_account",...}' | gcloud secrets versions add FIREBASE_CREDENTIALS --data-file=-
+gcloud secrets add-iam-policy-binding FIREBASE_CREDENTIALS \
+  --member="serviceAccount:firebase-adminsdk-fbsvc@raices-499122.iam.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor --project raices-499122
 ```
 
 Ver [docs/DOCKER-GCP-DEPLOYMENT.md](docs/DOCKER-GCP-DEPLOYMENT.md) para más detalles.

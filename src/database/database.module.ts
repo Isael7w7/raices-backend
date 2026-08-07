@@ -1,4 +1,5 @@
 import { Global, Module, OnModuleInit } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { firestoreProvider, firebaseAuthProvider, logSecurityConfig } from './firebase.provider'
 import { TenantService } from '../common/tenant/tenant.service'
 
@@ -8,7 +9,9 @@ import { TenantService } from '../common/tenant/tenant.service'
   exports: [firestoreProvider, firebaseAuthProvider, TenantService],
 })
 export class DatabaseModule implements OnModuleInit {
+  constructor(private readonly config: ConfigService) {}
+
   onModuleInit() {
-    logSecurityConfig()
+    logSecurityConfig(this.config)
   }
 }

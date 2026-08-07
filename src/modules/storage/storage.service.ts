@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import * as fs from 'fs'
 import * as path from 'path'
 import { v4 as uuid } from 'uuid'
@@ -6,7 +7,6 @@ import { getStorage } from 'firebase-admin/storage'
 import { Bucket } from '@google-cloud/storage'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
-const DEFAULT_BUCKET = 'raices-499122.appspot.com'
 
 /** Maximum number of retry attempts for transient GCS operations */
 const MAX_RETRIES = 3
@@ -20,10 +20,14 @@ export class StorageService {
   private readonly bucketName: string | null
   private bucket: Bucket | null = null
 
-  constructor() {
+  constructor(private readonly config: ConfigService) {
     // ── 1. Autodetect bucket name ──────────────────────────────
+    // SECURITY: se lee de ConfigService; si no se define, se deriva del
+    // proyecto (${FIREBASE_PROJECT_ID}.appspot.com) sin hardcodear proyectos.
+    const projectId = this.config.get<string>('FIREBASE_PROJECT_ID')
+    const defaultBucket = projectId ? `${projectId}.appspot.com` : undefined
     const rawBucketName =
-      process.env.FIREBASE_STORAGE_BUCKET || DEFAULT_BUCKET
+      this.config.get<string>('FIREBASE_STORAGE_BUCKET') || defaultBucket || ''
 
     // Clean gs:// prefix and trailing slashes if present
     const cleanBucketName = rawBucketName
@@ -55,8 +59,8 @@ export class StorageService {
         '⚠️  FIREBASE_STORAGE_BUCKET no configurado. Usando almacenamiento local.',
       )
       this.logger.warn(
-        `   Para usar Cloud Storage, define la variable FIREBASE_STORAGE_BUCKET ` +
-          `(ej: "${DEFAULT_BUCKET}")`,
+        '   Para usar Cloud Storage, define la variable FIREBASE_STORAGE_BUCKET ' +
+          '(ej: "${FIREBASE_PROJECT_ID}.appspot.com")',
       )
     }
   }

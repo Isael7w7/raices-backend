@@ -7,7 +7,7 @@
  *   npx ts-node scripts/cleanup-old-collections.ts
  *
  * Requisitos:
- *   - Tener FIREBASE_PROJECT_ID y FIREBASE_SERVICE_ACCOUNT en .env
+ *   - Tener FIREBASE_PROJECT_ID y FIREBASE_CREDENTIALS (o FIREBASE_SERVICE_ACCOUNT) en .env
  *   - Tener instaladas las dependencias (pnpm install)
  *
  * ⚠️ ADVERTENCIA: Este script ELIMINA DATOS permanentemente.
@@ -78,11 +78,12 @@ if (!projectId) {
 }
 
 if (getApps().length === 0) {
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT
+  // FIREBASE_CREDENTIALS es el nombre canónico; FIREBASE_SERVICE_ACCOUNT queda como alias
+  const serviceAccountJson = process.env.FIREBASE_CREDENTIALS || process.env.FIREBASE_SERVICE_ACCOUNT
   if (serviceAccountJson) {
     initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), projectId })
   } else {
-    console.warn('⚠️  No FIREBASE_SERVICE_ACCOUNT found. Using application default credentials.')
+    console.warn('⚠️  No FIREBASE_CREDENTIALS found. Using application default credentials.')
     initializeApp({ projectId })
   }
 }

@@ -1,4 +1,5 @@
 import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Inject, Logger, Optional } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
 import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
@@ -23,9 +24,12 @@ export class AuthService {
     @Inject(FIRESTORE) private readonly db: Firestore,
     @Inject(FIREBASE_AUTH) private readonly auth: FirebaseAuth,
     private readonly emailService: EmailService,
+    private readonly config: ConfigService,
     @Optional() private readonly analytics?: FirebaseAnalyticsService,
   ) {
-    this.firebaseApiKey = process.env.FIREBASE_API_KEY ?? ''
+    // SECURITY: la API key de Firebase Auth se lee de ConfigService (secreto
+    // montado desde GCP Secret Manager en Cloud Run). Sin valores hardcodeados.
+    this.firebaseApiKey = this.config.get<string>('FIREBASE_API_KEY') ?? ''
     if (!this.firebaseApiKey) {
       this.logger.warn('FIREBASE_API_KEY is not set. Auth REST API calls will fail.')
     }

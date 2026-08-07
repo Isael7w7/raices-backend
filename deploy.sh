@@ -4,6 +4,9 @@ set -euo pipefail
 # ============================================
 # Raíces Backend - GCP Cloud Run Deployment
 # ============================================
+# SECURITY: Los secretos (FIREBASE_CREDENTIALS, RESEND_API_KEY) se gestionan
+# en GCP Secret Manager y se montan en Cloud Run con --set-secrets. NUNCA se
+# inyectan en la imagen Docker ni se hardcodean en el repositorio.
 
 # Colors for output
 RED='\033[0;31m'
@@ -19,8 +22,11 @@ REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="raices-backend"
 # Use Artifact Registry (recommended) instead of Container Registry
 IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/raices/${SERVICE_NAME}"
-# Firebase service account for Cloud Run
+# Firebase service account for Cloud Run (needs access to the secrets)
 FIREBASE_SA="firebase-adminsdk-fbsvc@${PROJECT_ID}.iam.gserviceaccount.com"
+
+# Secretos que se leen de Secret Manager (montados como env vars en Cloud Run)
+SENSITIVE_ENV_NAMES=(FIREBASE_CREDENTIALS RESEND_API_KEY)
 
 # ============================================
 # Functions
@@ -39,32 +45,32 @@ log_error() {
 
 check_prerequisites() {
     log_info "Checking prerequisites..."
-    
+
     # Check if gcloud is installed
     if ! command -v gcloud &> /dev/null; then
         log_error "gcloud CLI is not installed. Please install it first."
         log_info "Install from: https://cloud.google.com/sdk/docs/install"
         exit 1
     fi
-    
+
     # Check if Firebase CLI is installed
     if ! command -v firebase &> /dev/null; then
         log_warn "Firebase CLI not found. Firestore indexes deployment will be skipped."
         log_info "Install from: npm install -g firebase-tools"
     fi
-    
+
     # Check if Docker is running
     if ! docker info &> /dev/null; then
         log_error "Docker is not running. Please start Docker Desktop."
         exit 1
     fi
-    
+
     # Check if authenticated with gcloud
     if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then
         log_error "Not authenticated with gcloud. Run: gcloud auth login"
         exit 1
     fi
-    
+
     log_info "Prerequisites check passed ✓"
 }
 
@@ -77,24 +83,24 @@ authenticate_gcp() {
 
 deploy_firestore_indexes() {
     log_info "Deploying Firestore composite indexes..."
-    
+
     if ! command -v firebase &> /dev/null; then
         log_warn "Firebase CLI not installed. Skipping Firestore indexes deployment."
         log_warn "Install with: npm install -g firebase-tools"
         return 0
     fi
-    
+
     if [ ! -f "firestore.indexes.json" ]; then
         log_warn "firestore.indexes.json not found. Skipping indexes deployment."
         return 0
     fi
-    
+
     # Ensure Firebase is logged in
     if ! firebase projects:list &>/dev/null; then
         log_warn "Firebase not authenticated. Run: firebase login"
         return 0
     fi
-    
+
     if firebase deploy --only firestore:indexes --project "${PROJECT_ID}" 2>&1 | while IFS= read -r line; do
         log_info "  ${line}"
     done; then
@@ -107,23 +113,103 @@ deploy_firestore_indexes() {
 build_and_push_image() {
     local tag="${1:-latest}"
     local full_image="${IMAGE_NAME}:${tag}"
-    
+
     log_info "Building Docker image: ${full_image}..."
     docker build -t "${full_image}" .
-    
+
     log_info "Pushing image to Artifact Registry..."
     docker push "${full_image}"
-    
+
     log_info "Image pushed successfully ✓"
 }
 
+# ── Secret Manager ────────────────────────────────────────────
+# Habilita la API y garantiza que el secreto exista, dándole acceso a la
+# cuenta de servicio del Cloud Run para poder montarlo.
+ensure_secret() {
+    local name="$1"
+    if ! gcloud secrets describe "${name}" --project "${PROJECT_ID}" &>/dev/null; then
+        log_info "Creating secret ${name}..."
+        gcloud secrets create "${name}" \
+            --project "${PROJECT_ID}" \
+            --replication-policy=automatic
+    fi
+    gcloud secrets add-iam-policy-binding "${name}" \
+        --member="serviceAccount:${FIREBASE_SA}" \
+        --role=roles/secretmanager.secretAccessor \
+        --project "${PROJECT_ID}" >/dev/null 2>&1 || true
+}
+
+# Guarda un valor en el secreto (nueva versión).
+store_secret_version() {
+    local name="$1"
+    local value="$2"
+    ensure_secret "${name}"
+    printf '%s' "${value}" | gcloud secrets versions add "${name}" \
+        --data-file=- --project "${PROJECT_ID}" >/dev/null
+    log_info "Secret ${name} updated ✓"
+}
+
+# Lee los secretos desde el archivo .env de despliegue y los carga en
+# Secret Manager (solo si el archivo existe y tiene las variables).
+# Acepta el alias FIREBASE_SERVICE_ACCOUNT y lo guarda en el secreto
+# FIREBASE_CREDENTIALS (nombre canónico).
+sync_secrets_from_env_file() {
+    local env_file="${1:-.env.production}"
+    if [ ! -f "${env_file}" ]; then
+        log_warn "No ${env_file} found. Skipping secret sync (existing secrets will be used)."
+        return 0
+    fi
+
+    log_info "Enabling Secret Manager API..."
+    gcloud services enable secretmanager.googleapis.com --project "${PROJECT_ID}" >/dev/null 2>&1 || true
+
+    local line value target
+    while IFS= read -r line; do
+        # Skip comments and empty lines
+        if [[ "$line" =~ ^# ]] || [[ -z "$line" ]]; then
+            continue
+        fi
+        target=""
+        for name in "${SENSITIVE_ENV_NAMES[@]}"; do
+            if [[ "$line" =~ ^${name}= ]]; then
+                target="${name}"
+            fi
+        done
+        # Alias retrocompatible: FIREBASE_SERVICE_ACCOUNT → secreto FIREBASE_CREDENTIALS
+        if [[ "$line" =~ ^FIREBASE_SERVICE_ACCOUNT= ]]; then
+            target="FIREBASE_CREDENTIALS"
+            log_warn "FIREBASE_SERVICE_ACCOUNT detectado: guardado como secreto FIREBASE_CREDENTIALS (renombra la variable en ${env_file} para el nombre canónico)."
+        fi
+        if [ -n "${target}" ]; then
+            value="${line#*=}"
+            if [ -z "${value}" ]; then
+                log_warn "Variable ${target} vacía en ${env_file} — omitida."
+                continue
+            fi
+            store_secret_version "${target}" "${value}"
+        fi
+    done < "${env_file}"
+}
+
+# Verifica que el secreto obligatorio exista. RESEND_API_KEY es opcional
+# (EmailService cae a modo mock si no está configurado).
+ensure_secrets_exist() {
+    if ! gcloud secrets describe "FIREBASE_CREDENTIALS" --project "${PROJECT_ID}" &>/dev/null; then
+        log_error "Secret 'FIREBASE_CREDENTIALS' does not exist in Secret Manager."
+        log_info "Create it with: $0 secrets <env_file>  (o: gcloud secrets create FIREBASE_CREDENTIALS)"
+        exit 1
+    fi
+}
+
+# ── Cloud Run ─────────────────────────────────────────────────
 deploy_to_cloud_run() {
     local image_tag="${1:-latest}"
     local full_image="${IMAGE_NAME}:${image_tag}"
     local env_file="${2:-.env.production}"
-    
+
     log_info "Deploying to Cloud Run..."
-    
+
     # Check if Artifact Registry repo exists
     if ! gcloud artifacts repositories describe raices --location="${REGION}" &>/dev/null; then
         log_warn "Artifact Registry repo 'raices' not found. Creating..."
@@ -132,6 +218,12 @@ deploy_to_cloud_run() {
             --location="${REGION}" \
             --description="Raíces Docker images"
     fi
+
+    # Sincroniza secretos desde .env.production (si existe)
+    sync_secrets_from_env_file "${env_file}"
+
+    # Abortar si falta algún secreto (evita desplegar con referencias rotas)
+    ensure_secrets_exist
 
     # Build deployment command
     local deploy_cmd="gcloud run deploy ${SERVICE_NAME}"
@@ -146,33 +238,58 @@ deploy_to_cloud_run() {
     deploy_cmd+=" --max-instances=10"
     deploy_cmd+=" --timeout=300"
     deploy_cmd+=" --service-account=${FIREBASE_SA}"
-    
-    # Add environment variables from .env file if it exists
+
+    # Variables NO sensibles como env vars directas (base mínima).
+    # FIREBASE_PROJECT_ID y CORS_ORIGINS se agregan aquí (o desde el .env);
+    # el loop de abajo los omite para evitar flags duplicados.
+    local env_vars="NODE_ENV=production"
+    env_vars+=",FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-${PROJECT_ID}}"
+    if [ -n "${CORS_ORIGINS:-}" ]; then
+        env_vars+=",CORS_ORIGINS=${CORS_ORIGINS}"
+    fi
+
+    # Agregar variables no sensibles adicionales desde el archivo .env si existe
     if [ -f "${env_file}" ]; then
-        log_info "Loading environment variables from ${env_file}..."
-        local env_vars=""
         while IFS= read -r line; do
-            # Skip comments and empty lines
             if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
-                # Skip PORT (reserved by Cloud Run) and FIREBASE_SERVICE_ACCOUNT (uses ADC)
-                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^FIREBASE_SERVICE_ACCOUNT= ]]; then
+                local skip=0
+                # Skip PORT (reservado por Cloud Run), secretos y vars ya base
+                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || [[ "$line" =~ ^CORS_ORIGINS= ]]; then
+                    skip=1
+                fi
+                for name in "${SENSITIVE_ENV_NAMES[@]}"; do
+                    if [[ "$line" =~ ^${name}= ]]; then
+                        skip=1
+                    fi
+                done
+                if [[ "$skip" -eq 1 ]]; then
                     continue
                 fi
-                if [ -n "${env_vars}" ]; then
-                    env_vars+=","
-                fi
-                env_vars+="${line}"
+                env_vars+=",${line}"
             fi
         done < "${env_file}"
-        if [ -n "${env_vars}" ]; then
-            deploy_cmd+=" --set-env-vars=${env_vars}"
-        fi
     fi
-    
+    deploy_cmd+=" --set-env-vars=${env_vars}"
+
+    # Secretos montados desde Secret Manager (los valores nunca van en la imagen).
+    # Solo se montan los secretos que existen (RESEND_API_KEY es opcional).
+    local secrets_ref=""
+    for name in "${SENSITIVE_ENV_NAMES[@]}"; do
+        if gcloud secrets describe "${name}" --project "${PROJECT_ID}" &>/dev/null; then
+            if [ -n "${secrets_ref}" ]; then
+                secrets_ref+=","
+            fi
+            secrets_ref+="${name}=projects/${PROJECT_ID}/secrets/${name}:latest"
+        else
+            log_warn "Secret '${name}' no existe — se omitirá del --set-secrets."
+        fi
+    done
+    deploy_cmd+=" --set-secrets=${secrets_ref}"
+
     # Execute deployment
     log_info "Running: ${deploy_cmd}"
     eval "${deploy_cmd}"
-    
+
     log_info "Deployment completed successfully ✓"
 }
 
@@ -185,7 +302,7 @@ get_service_url() {
 
 print_summary() {
     local url=$(get_service_url)
-    
+
     echo ""
     echo -e "${GREEN}========================================${NC}"
     echo -e "${GREEN}  Deployment Summary${NC}"
@@ -207,7 +324,7 @@ main() {
     local action="${1:-deploy}"
     local image_tag="${2:-latest}"
     local env_file="${3:-.env.production}"
-    
+
     case "${action}" in
         build)
             check_prerequisites
@@ -222,6 +339,21 @@ main() {
             deploy_to_cloud_run "${image_tag}" "${env_file}"
             print_summary "${image_tag}"
             ;;
+        secrets)
+            # Solo sincroniza secretos (sin desplegar). El archivo es el 2º
+            # argumento (no hay image_tag en esta acción).
+            local secrets_env_file="${2:-.env.production}"
+            if ! command -v gcloud &> /dev/null; then
+                log_error "gcloud CLI is not installed. Install from: https://cloud.google.com/sdk/docs/install"
+                exit 1
+            fi
+            if ! gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null | grep -q .; then
+                log_error "Not authenticated with gcloud. Run: gcloud auth login"
+                exit 1
+            fi
+            sync_secrets_from_env_file "${secrets_env_file}"
+            log_info "Secrets synced ✓"
+            ;;
         indexes)
             deploy_firestore_indexes
             ;;
@@ -235,11 +367,12 @@ main() {
                 --limit=50
             ;;
         *)
-            echo "Usage: $0 {build|deploy|indexes|url|logs} [image_tag] [env_file]"
+            echo "Usage: $0 {build|deploy|indexes|secrets|url|logs} [image_tag] [env_file]"
             echo ""
             echo "Commands:"
             echo "  build   - Build and push Docker image"
-            echo "  deploy  - Deploy Firestore indexes + build, push, and deploy to Cloud Run"
+            echo "  deploy  - Sync secrets + deploy Firestore indexes + build, push, and deploy to Cloud Run"
+            echo "  secrets - Sync secrets from the env file to GCP Secret Manager"
             echo "  indexes - Deploy only Firestore composite indexes"
             echo "  url     - Get the service URL"
             echo "  logs    - View recent logs"
@@ -248,6 +381,7 @@ main() {
             echo "  $0 deploy"
             echo "  $0 deploy v1.0.0"
             echo "  $0 deploy latest .env.production"
+            echo "  $0 secrets .env.production"
             exit 1
             ;;
     esac

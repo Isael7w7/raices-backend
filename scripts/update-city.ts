@@ -9,7 +9,8 @@ const projectId = process.env.FIREBASE_PROJECT_ID
 if (!projectId) { console.error('Missing FIREBASE_PROJECT_ID'); process.exit(1) }
 
 if (getApps().length === 0) {
-  const sa = process.env.FIREBASE_SERVICE_ACCOUNT
+  // FIREBASE_CREDENTIALS es el nombre canónico; FIREBASE_SERVICE_ACCOUNT queda como alias
+  const sa = process.env.FIREBASE_CREDENTIALS || process.env.FIREBASE_SERVICE_ACCOUNT
   if (sa) initializeApp({ credential: cert(JSON.parse(sa)), projectId })
   else initializeApp({ projectId })
 }
