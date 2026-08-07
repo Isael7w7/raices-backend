@@ -4,6 +4,8 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
 
 /** Objeto de autor por defecto cuando el autor no existe o está deshabilitado */
 const AUTOR_NO_DISPONIBLE = Object.freeze({
@@ -153,17 +155,21 @@ export class CommunityService {
     }
   }
 
-  async createPost(autorId: string, contenido: string, grupoId?: string) {
+  async createPost(user: CurrentUserPayload, contenido: string, grupoId?: string, mediaUrl?: string) {
+    const media = normalizarMediaUrl(mediaUrl)
+    verificarMultimediaPermitida(user, media)
     const ref = this.db.collection(COLECCIONES.publicaciones).doc()
     await ref.set({
-      id: ref.id, autorId, contenido, grupoId: grupoId ?? null,
+      id: ref.id, autorId: user.id, contenido, grupoId: grupoId ?? null,
+      mediaUrl: media,
       cantidadMeGustas: 0, fechaCreacion: new Date().toISOString(),
     })
 
-    const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
+    const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(user.id).get()
     const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null
     return {
-      id: ref.id, autorId, contenido, grupoId: grupoId ?? null, cantidadMeGustas: 0,
+      id: ref.id, autorId: user.id, contenido, grupoId: grupoId ?? null,
+      mediaUrl: media, cantidadMeGustas: 0,
       fechaCreacion: new Date().toISOString(),
       nombreCompleto: autor?.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
       urlAvatar: autor?.urlAvatar ?? null,
@@ -214,15 +220,23 @@ export class CommunityService {
     })
   }
 
-  async updatePost(id: string, usuarioId: string, contenido: string) {
+  async updatePost(id: string, user: CurrentUserPayload, contenido: string, mediaUrl?: string) {
+    const media = normalizarMediaUrl(mediaUrl)
+    verificarMultimediaPermitida(user, media)
     const doc = await this.db.collection(COLECCIONES.publicaciones).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Publicación no encontrada')
     const pub = doc.data() as any
-    if (pub.autorId !== usuarioId) throw new ForbiddenException('No tienes permiso para editar esta publicación')
+    if (pub.autorId !== user.id) throw new ForbiddenException('No tienes permiso para editar esta publicación')
 
-    await doc.ref.update({ contenido, fechaActualizacion: new Date().toISOString() })
-    return { id, autorId: pub.autorId, contenido, grupoId: pub.grupoId ?? null,
-      cantidadMeGustas: pub.cantidadMeGustas ?? 0, fechaCreacion: pub.fechaCreacion }
+    const cambios: Record<string, any> = { contenido, fechaActualizacion: new Date().toISOString() }
+    // Si se omite mediaUrl, se conserva el existente; si llega '' o null, se limpia
+    if (mediaUrl !== undefined) cambios.mediaUrl = media
+    await doc.ref.update(cambios)
+    return {
+      id, autorId: pub.autorId, contenido, grupoId: pub.grupoId ?? null,
+      mediaUrl: mediaUrl !== undefined ? media : (pub.mediaUrl ?? null),
+      cantidadMeGustas: pub.cantidadMeGustas ?? 0, fechaCreacion: pub.fechaCreacion,
+    }
   }
 
   async removePost(id: string, usuarioId: string, rol: string) {

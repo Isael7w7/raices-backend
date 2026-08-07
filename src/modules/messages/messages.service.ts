@@ -2,6 +2,8 @@ import { Injectable, Inject, ForbiddenException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
 
 @Injectable()
 export class MessagesService {
@@ -60,13 +62,18 @@ export class MessagesService {
       .sort((a: any, b: any) => new Date(a.fechaCreacion ?? 0).getTime() - new Date(b.fechaCreacion ?? 0).getTime())
   }
 
-  async sendMessage(remitenteId: string, destinatarioId: string, contenido: string) {
-    if (remitenteId === destinatarioId) throw new ForbiddenException('No puedes enviarte mensajes a ti mismo')
+  async sendMessage(user: CurrentUserPayload, destinatarioId: string, contenido: string, mediaUrl?: string) {
+    if (user.id === destinatarioId) throw new ForbiddenException('No puedes enviarte mensajes a ti mismo')
+    const media = normalizarMediaUrl(mediaUrl)
+    verificarMultimediaPermitida(user, media)
     const destinatario = await this.db.collection(COLECCIONES.perfiles).doc(destinatarioId).get()
     if (!destinatario.exists || !destinatario.data()?.activo) throw new ForbiddenException('Usuario destinatario no existe')
 
     const ref = this.db.collection(COLECCIONES.mensajesDirectos).doc()
-    const msg = { id: ref.id, remitenteId, destinatarioId, contenido, leido: false, fechaCreacion: new Date().toISOString() }
+    const msg = {
+      id: ref.id, remitenteId: user.id, destinatarioId, contenido,
+      mediaUrl: media, leido: false, fechaCreacion: new Date().toISOString(),
+    }
     await ref.set(msg)
     return msg
   }

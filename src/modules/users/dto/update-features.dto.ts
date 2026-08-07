@@ -19,4 +19,7 @@ export class UpdateFeaturesDto {
 
   @ApiPropertyOptional({ description: 'Permitir guardar instituciones como favoritas', example: true })
   @IsOptional() @IsBoolean() favoritos?: boolean
+
+  @ApiPropertyOptional({ description: 'Permitir acceso a contenido multimedia (fotos, videos, audios)', example: true })
+  @IsOptional() @IsBoolean() multimedia?: boolean
 }

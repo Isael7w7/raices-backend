@@ -18,6 +18,7 @@ export class MensajeDto {
   @ApiProperty({ example: 'remitente-uid' }) remitenteId!: string
   @ApiProperty({ example: 'destinatario-uid' }) destinatarioId!: string
   @ApiProperty({ example: 'Hola, ¿estás disponible?' }) contenido!: string
+  @ApiPropertyOptional({ example: 'https://storage.../media.jpg', nullable: true, description: 'URL del contenido multimedia adjunto, si lo hay' }) mediaUrl?: string | null
   @ApiProperty({ example: false }) leido!: boolean
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' }) fechaCreacion!: string
 }

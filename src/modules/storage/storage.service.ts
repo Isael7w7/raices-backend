@@ -200,6 +200,12 @@ export class StorageService {
       png: 'image/png',
       webp: 'image/webp',
       gif: 'image/gif',
+      heic: 'image/heic',
+      heif: 'image/heif',
+      mp4: 'video/mp4',
+      webm: 'video/webm',
+      mov: 'video/quicktime',
+      avi: 'video/x-msvideo',
       pdf: 'application/pdf',
       svg: 'image/svg+xml',
     }

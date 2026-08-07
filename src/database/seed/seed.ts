@@ -30,6 +30,7 @@ const FEATURES_POR_DEFECTO = {
   resenas: true,
   descubrimiento: true,
   favoritos: true,
+  multimedia: true,
 };
 
 const projectId = process.env.FIREBASE_PROJECT_ID || "raices-demo";

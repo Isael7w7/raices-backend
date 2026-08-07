@@ -7,6 +7,12 @@ function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-
   return { exists, id: docId, data: () => data }
 }
 
+function usuario(id: string, features: Record<string, boolean> = {
+  chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true,
+}, rol = 'pcd') {
+  return { id, email: `${id}@test.com`, rol, nombreCompleto: 'Usuario', verificado: false, features } as any
+}
+
 describe('MessagesService', () => {
   let service: MessagesService
   let firestoreMock: Record<string, any>
@@ -87,21 +93,63 @@ describe('MessagesService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(destDoc) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
 
-      const result = await service.sendMessage('u1', 'u2', 'Hola')
+      const result = await service.sendMessage(usuario('u1'), 'u2', 'Hola')
       expect(result.contenido).toBe('Hola')
       expect(result.remitenteId).toBe('u1')
       expect(result.destinatarioId).toBe('u2')
     })
 
     it('should throw ForbiddenException when sending to self', async () => {
-      await expect(service.sendMessage('u1', 'u1', 'Hola')).rejects.toThrow(ForbiddenException)
+      await expect(service.sendMessage(usuario('u1'), 'u1', 'Hola')).rejects.toThrow(ForbiddenException)
     })
 
     it('should throw ForbiddenException when destinatario does not exist', async () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
-      await expect(service.sendMessage('u1', 'nonexistent', 'Hola')).rejects.toThrow(ForbiddenException)
+      await expect(service.sendMessage(usuario('u1'), 'nonexistent', 'Hola')).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should persist mediaUrl when multimedia is enabled', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const destDoc = mockDoc({ id: 'u2', activo: true }, true, 'u2')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(destDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+
+      const result = await service.sendMessage(usuario('u1'), 'u2', 'Mira esto', 'https://storage/media.jpg')
+
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ mediaUrl: 'https://storage/media.jpg' }))
+      expect(result.mediaUrl).toBe('https://storage/media.jpg')
+    })
+
+    it('should throw ForbiddenException when multimedia is disabled and mediaUrl is provided', async () => {
+      await expect(
+        service.sendMessage(usuario('u1', { multimedia: false }), 'u2', 'Mira esto', 'https://storage/media.jpg'),
+      ).rejects.toThrow('Funcionalidad "multimedia" desactivada')
+    })
+
+    it('should allow admin to send media even if multimedia flag is false', async () => {
+      const destDoc = mockDoc({ id: 'u2', activo: true }, true, 'u2')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(destDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+
+      const result = await service.sendMessage(usuario('u1', { multimedia: false }, 'admin'), 'u2', 'Mira esto', 'https://storage/media.jpg')
+      expect(result.mediaUrl).toBe('https://storage/media.jpg')
+    })
+
+    it('should allow text-only messages even when multimedia is disabled', async () => {
+      const destDoc = mockDoc({ id: 'u2', activo: true }, true, 'u2')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(destDoc) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+
+      const result = await service.sendMessage(usuario('u1', { multimedia: false }), 'u2', 'Hola')
+      expect(result.mediaUrl).toBeNull()
     })
   })
 

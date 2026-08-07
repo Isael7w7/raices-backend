@@ -46,6 +46,6 @@ export class MessagesController {
   @ApiCreatedResponse({ type: MensajeDto, description: 'Mensaje enviado con éxito' })
   @ApiResponse({ status: 403, description: 'Funcionalidad de chat desactivada para tu cuenta, o no puedes enviarte mensajes a ti mismo, o usuario destino no existe' })
   send(@Param('userId') destinatarioId: string, @Body() dto: EnviarDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.svc.sendMessage(user.id, destinatarioId, dto.contenido)
+    return this.svc.sendMessage(user, destinatarioId, dto.contenido, dto.mediaUrl)
   }
 }

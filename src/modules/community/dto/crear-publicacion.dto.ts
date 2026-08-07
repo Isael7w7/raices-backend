@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsString, IsOptional } from 'class-validator'
 
 export class CrearPublicacionDto {
@@ -7,4 +7,7 @@ export class CrearPublicacionDto {
 
   @ApiProperty({ description: 'ID del grupo (opcional)', required: false })
   @IsOptional() @IsString() grupoId?: string
+
+  @ApiPropertyOptional({ description: 'URL del contenido multimedia adjunto (imagen/video). Requiere el permiso multimedia activo.', example: 'https://storage.googleapis.com/.../media.jpg' })
+  @IsOptional() @IsString() mediaUrl?: string
 }

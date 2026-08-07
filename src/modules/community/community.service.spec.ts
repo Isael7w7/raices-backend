@@ -14,6 +14,12 @@ function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-
   }
 }
 
+function usuario(id: string, features: Record<string, boolean> = {
+  chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true,
+}, rol = 'pcd') {
+  return { id, email: `${id}@test.com`, rol, nombreCompleto: 'Usuario', verificado: false, features } as any
+}
+
 describe('CommunityService', () => {
   let service: CommunityService
   let firestoreMock: Record<string, any>
@@ -115,10 +121,41 @@ describe('CommunityService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
 
-      const result = await service.createPost('u1', 'Mi publicación')
+      const result = await service.createPost(usuario('u1'), 'Mi publicación')
       expect(result.contenido).toBe('Mi publicación')
       expect(result.nombreCompleto).toBe('Juan')
       expect(result.cantidadMeGustas).toBe(0)
+    })
+
+    it('should persist mediaUrl when multimedia is enabled', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const autorData = { nombreCompleto: 'Juan', urlAvatar: 'url' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
+
+      const result = await service.createPost(usuario('u1'), 'Con imagen', undefined, 'https://storage/media.jpg')
+
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ mediaUrl: 'https://storage/media.jpg' }))
+      expect(result.mediaUrl).toBe('https://storage/media.jpg')
+    })
+
+    it('should throw ForbiddenException when multimedia is disabled and mediaUrl is provided', async () => {
+      await expect(
+        service.createPost(usuario('u1', { multimedia: false }), 'Con imagen', undefined, 'https://storage/media.jpg'),
+      ).rejects.toThrow('Funcionalidad "multimedia" desactivada')
+    })
+
+    it('should allow text-only posts even when multimedia is disabled', async () => {
+      const autorData = { nombreCompleto: 'Juan' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
+
+      const result = await service.createPost(usuario('u1', { multimedia: false }), 'Solo texto')
+      expect(result.mediaUrl).toBeNull()
     })
   })
 
@@ -183,15 +220,51 @@ describe('CommunityService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pubData, true, 'p1')), update: jest.fn().mockResolvedValue(undefined) }) })
 
-      const result = await service.updatePost('p1', 'u1', 'New content')
+      const result = await service.updatePost('p1', usuario('u1'), 'New content')
       expect(result.contenido).toBe('New content')
+    })
+
+    it('should update mediaUrl when provided', async () => {
+      const pubData = { id: 'p1', autorId: 'u1', contenido: 'Old', grupoId: null as string | null, cantidadMeGustas: 0, fechaCreacion: '2024-01-01', mediaUrl: null }
+      const doc = mockDoc(pubData, true, 'p1')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(doc) }) })
+
+      const result = await service.updatePost('p1', usuario('u1'), 'New content', 'https://storage/media.jpg')
+
+      expect(doc.ref.update).toHaveBeenCalledWith(expect.objectContaining({ mediaUrl: 'https://storage/media.jpg' }))
+      expect(result.mediaUrl).toBe('https://storage/media.jpg')
+    })
+
+    it('should preserve existing media when mediaUrl is omitted', async () => {
+      const pubData = { id: 'p1', autorId: 'u1', contenido: 'Old', grupoId: null as string | null, cantidadMeGustas: 0, fechaCreacion: '2024-01-01', mediaUrl: 'https://storage/old.jpg' }
+      const doc = mockDoc(pubData, true, 'p1')
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(doc) }) })
+
+      const result = await service.updatePost('p1', usuario('u1'), 'New content')
+      expect(result.mediaUrl).toBe('https://storage/old.jpg')
+      expect(doc.ref.update).not.toHaveBeenCalledWith(expect.objectContaining({ mediaUrl: expect.anything() }))
+    })
+
+    it('should throw ForbiddenException when multimedia is disabled and mediaUrl is provided', async () => {
+      const pubData = { id: 'p1', autorId: 'u1', contenido: 'Old' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pubData, true, 'p1')) }) })
+
+      await expect(
+        service.updatePost('p1', usuario('u1', { multimedia: false }), 'X', 'https://storage/media.jpg'),
+      ).rejects.toThrow('Funcionalidad "multimedia" desactivada')
     })
 
     it('should throw NotFoundException when post does not exist', async () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
-      await expect(service.updatePost('nonexistent', 'u1', 'X')).rejects.toThrow(NotFoundException)
+      await expect(service.updatePost('nonexistent', usuario('u1'), 'X')).rejects.toThrow(NotFoundException)
     })
 
     it('should throw ForbiddenException when user is not the author', async () => {
@@ -200,7 +273,7 @@ describe('CommunityService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(pubData, true, 'p1')) }) })
 
-      await expect(service.updatePost('p1', 'u1', 'X')).rejects.toThrow(ForbiddenException)
+      await expect(service.updatePost('p1', usuario('u1'), 'X')).rejects.toThrow(ForbiddenException)
     })
   })
 

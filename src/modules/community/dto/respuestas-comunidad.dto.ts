@@ -25,6 +25,7 @@ export class PublicacionDto {
   @ApiPropertyOptional({ example: 'Juan Pérez' }) nombreCompleto?: string
   @ApiPropertyOptional({ example: 'https://storage.../avatar.jpg', nullable: true }) urlAvatar?: string | null
   @ApiPropertyOptional({ example: false }) usuarioMeGusta?: boolean
+  @ApiPropertyOptional({ example: 'https://storage.../media.jpg', nullable: true, description: 'URL del contenido multimedia adjunto, si lo hay' }) mediaUrl?: string | null
 }
 
 export class PaginaPublicacionesDto extends RespuestaPaginadaDto<PublicacionDto> {

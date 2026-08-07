@@ -101,6 +101,7 @@ describe('FirebaseAuthGuard', () => {
           resenas: true,
           descubrimiento: true,
           favoritos: true,
+          multimedia: true,
         },
       })
     })

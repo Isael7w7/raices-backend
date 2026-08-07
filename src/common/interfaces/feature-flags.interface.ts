@@ -9,6 +9,8 @@ export interface FeatureFlags {
   resenas: boolean
   descubrimiento: boolean
   favoritos: boolean
+  /** Acceso a contenido multimedia (fotos, videos, audios) */
+  multimedia: boolean
 }
 
 /** Valores por defecto: todas las funcionalidades habilitadas. */
@@ -19,4 +21,5 @@ export const FEATURES_POR_DEFECTO: FeatureFlags = {
   resenas: true,
   descubrimiento: true,
   favoritos: true,
+  multimedia: true,
 }

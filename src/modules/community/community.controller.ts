@@ -57,7 +57,7 @@ export class CommunityController {
   @ApiResponse({ status: 403, description: 'Funcionalidad de comunidad desactivada para tu cuenta' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   createPost(@Body() dto: CrearPublicacionDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.svc.createPost(user.id, dto.contenido, dto.grupoId)
+    return this.svc.createPost(user, dto.contenido, dto.grupoId, dto.mediaUrl)
   }
 
   @Post('publicaciones/:id/comentarios')
@@ -96,7 +96,7 @@ export class CommunityController {
   @ApiResponse({ status: 403, description: 'Funcionalidad de comunidad desactivada para tu cuenta o no eres el autor' })
   @ApiResponse({ status: 404, description: 'Publicación no encontrada' })
   updatePost(@Param('id') id: string, @Body() dto: ActualizarPublicacionDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.svc.updatePost(id, user.id, dto.contenido)
+    return this.svc.updatePost(id, user, dto.contenido, dto.mediaUrl)
   }
 
   @Delete('publicaciones/:id')

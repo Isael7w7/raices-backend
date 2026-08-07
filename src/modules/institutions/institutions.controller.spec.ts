@@ -92,7 +92,7 @@ describe('InstitutionsController', () => {
       const inst = { id: 'inst-1', nombre: 'Centro', verificada: false, creadoPor: 'user1' }
       mockService.findOneProtegido.mockResolvedValue(inst)
 
-      const result = await controller.findOneProtegido('inst-1', { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+      const result = await controller.findOneProtegido('inst-1', { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
 
       expect(mockService.findOneProtegido).toHaveBeenCalledWith('inst-1', 'user1', 'institucion')
       expect(result).toEqual(inst)
@@ -106,7 +106,7 @@ describe('InstitutionsController', () => {
       const inst = { id: 'inst-1', nombre: 'Mi Centro', creadoPor: 'user1' }
       mockService.findMine.mockResolvedValue(inst)
 
-      const result = await controller.findMine({ id: 'user1', email: 'user1@test.com', rol: 'pcd', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+      const result = await controller.findMine({ id: 'user1', email: 'user1@test.com', rol: 'pcd', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
 
       expect(mockService.findMine).toHaveBeenCalledWith('user1')
       expect(result).toEqual(inst)
@@ -121,7 +121,7 @@ describe('InstitutionsController', () => {
       const created = { id: 'new-id', ...dto, creadoPor: 'user1' }
       mockService.create.mockResolvedValue(created)
 
-      const result = await controller.create(dto as any, { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+      const result = await controller.create(dto as any, { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
 
       expect(mockService.create).toHaveBeenCalledWith(dto, 'user1', 'institucion')
       expect(result).toEqual(created)
@@ -136,7 +136,7 @@ describe('InstitutionsController', () => {
       const updated = { id: 'inst-1', nombre: 'Actualizado', creadoPor: 'user1' }
       mockService.updateMine.mockResolvedValue(updated)
 
-      const result = await controller.updateMine({ id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } }, dto as any)
+      const result = await controller.updateMine({ id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } }, dto as any)
 
       expect(mockService.updateMine).toHaveBeenCalledWith('user1', dto)
       expect(result).toEqual(updated)
@@ -151,7 +151,7 @@ describe('InstitutionsController', () => {
       const updated = { id: 'inst-1', nombre: 'Actualizado' }
       mockService.update.mockResolvedValue(updated)
 
-      const result = await controller.update('inst-1', dto as any, { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+      const result = await controller.update('inst-1', dto as any, { id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
 
       expect(mockService.update).toHaveBeenCalledWith('inst-1', dto, 'user1', 'institucion')
       expect(result).toEqual(updated)
@@ -165,7 +165,7 @@ describe('InstitutionsController', () => {
       const removed = { exito: true, mensaje: 'Institución eliminada correctamente' }
       mockService.remove.mockResolvedValue(removed)
 
-      const result = await controller.remove('inst-1', { id: 'user1', email: 'user1@test.com', rol: 'admin', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+      const result = await controller.remove('inst-1', { id: 'user1', email: 'user1@test.com', rol: 'admin', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
 
       expect(mockService.remove).toHaveBeenCalledWith('inst-1', 'user1', 'admin')
       expect(result).toEqual(removed)
