@@ -272,7 +272,7 @@ src/
 │   └── ai/
 │       ├── ai.module.ts
 │       ├── ai.service.ts
-│       ├── anthropic.provider.ts
+│       ├── vertexai.provider.ts        # ← Vertex AI (Gemini)
 │       └── dto/
 └── config/
     ├── app.config.ts
