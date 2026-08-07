@@ -496,6 +496,41 @@ export class UsersService {
   // ─── Features de dependiente ────────────────────────────────────────
 
   /**
+   * Retorna los permisos (features) de un dependiente plano o cuenta PCD
+   * vinculada. Solo el tutor dueño o un administrador pueden consultarlos;
+   * para cuentas vinculadas se leen los features reales del perfil de la PCD
+   * (fuente de verdad).
+   */
+  async getDependentPermissions(usuarioId: string, dependienteId: string, rol: string) {
+    const doc = await this.col(COLECCIONES.dependientes).doc(dependienteId).get()
+    if (!doc.exists) throw new NotFoundException('Dependiente no encontrado')
+    const data = doc.data()!
+
+    // Solo el tutor dueño o un administrador: se usa NotFound (no Forbidden)
+    // para no filtrar la existencia de dependientes ajenos.
+    if (rol !== 'admin' && data.tutorId !== usuarioId) {
+      throw new NotFoundException('Dependiente no encontrado')
+    }
+
+    let features: FeatureFlags = data.features ?? { ...FEATURES_POR_DEFECTO }
+    if (data.esCuentaVinculada || data.pcdUserId) {
+      const pcdId = data.pcdUserId ?? dependienteId
+      const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdId).get()
+      if (pcdDoc.exists && pcdDoc.data()?.features) {
+        features = { ...FEATURES_POR_DEFECTO, ...pcdDoc.data()!.features }
+      }
+    }
+
+    return {
+      dependienteId,
+      nombre: data.nombreCompleto ?? null,
+      esCuentaVinculada: data.esCuentaVinculada === true || !!data.pcdUserId,
+      pcdUserId: data.pcdUserId ?? null,
+      features,
+    }
+  }
+
+  /**
    * Actualiza las banderas de funcionalidades de un dependiente plano.
    */
   async updateDependentFeatures(usuarioId: string, dependienteId: string, features: Partial<FeatureFlags>) {

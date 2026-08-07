@@ -214,6 +214,26 @@ export class RespuestaFeaturesDto {
   features!: Record<string, boolean>
 }
 
+export class RespuestaPermisosDependienteDto {
+  @ApiProperty({ example: 'dep-uid' })
+  dependienteId!: string
+
+  @ApiProperty({ example: 'María García', nullable: true })
+  nombre!: string | null
+
+  @ApiProperty({ example: false, description: 'true si es una cuenta PCD vinculada' })
+  esCuentaVinculada!: boolean
+
+  @ApiProperty({ example: 'pcd-uid', nullable: true })
+  pcdUserId!: string | null
+
+  @ApiProperty({
+    example: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
+    description: 'Permisos activos del dependiente (chat, postulaciones, comunidad, reseñas, descubrimiento, favoritos, multimedia)',
+  })
+  features!: Record<string, boolean>
+}
+
 /**
  * Interfaz común de "mis personas": consolida dependientes planos y
  * cuentas PCD vinculadas en un solo arreglo.
@@ -228,7 +248,7 @@ export class MisPersonaDto {
   @ApiProperty({ example: false, description: 'true si es una cuenta PCD vinculada con correo; false si es un dependiente plano' })
   esCuentaVinculada!: boolean
 
-  @ApiProperty({ example: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
+  @ApiProperty({ example: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
   features!: Record<string, boolean>
 
   @ApiProperty({ example: 'https://storage.../avatar.jpg', nullable: true, description: 'Foto real del perfil (solo cuentas vinculadas)' })

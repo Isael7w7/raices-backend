@@ -537,7 +537,7 @@ describe('UsersService', () => {
         discapacidad: null,
         esCuentaVinculada: false,
         pcdUserId: null,
-        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
         fechaCreacion: '2024-01-01T00:00:00.000Z',
       })
     })
@@ -578,7 +578,7 @@ describe('UsersService', () => {
         nombreCompleto: 'Ana', parentesco: null as string | null, fechaCreacion: '2024-01-01T00:00:00.000Z', datosPerfil: '{}',
       }
       const perfilData = {
-        features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+        features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
       }
       const extData = {
         usuarioId: 'pcd1', tiposDiscapacidad: '["tea","motriz"]', severidadDiscapacidad: 'moderada', etapaVida: 'adulto',
@@ -770,7 +770,7 @@ describe('UsersService', () => {
       const perfilesSnap = {
         docs: [{
           id: 'pcd1',
-          data: () => ({ features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } }),
+          data: () => ({ features: { chat: false, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } }),
         }],
       }
       const extendidosSnap = {
@@ -867,7 +867,7 @@ describe('UsersService', () => {
       expect(ana.features.chat).toBe(false)
       expect(ana.features.postulaciones).toBe(true)
       expect(maria).toMatchObject({ nombre: 'María', esCuentaVinculada: false, fotoUrl: null, pcdUserId: null })
-      expect(maria.features).toEqual({ chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true })
+      expect(maria.features).toEqual({ chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true })
     })
 
     it('should paginate results', async () => {
@@ -1311,6 +1311,98 @@ describe('UsersService', () => {
     })
   })
 
+  // ── getDependentPermissions ─────────────────────────────────────────
+
+  describe('getDependentPermissions', () => {
+    const featuresPorDefecto = { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true }
+
+    it('should return permissions of a flat dependiente owned by the tutor', async () => {
+      const depData = {
+        id: 'dep1', tutorId: 'user1', nombreCompleto: 'María García',
+        features: { ...featuresPorDefecto, chat: false },
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
+      })
+
+      const result = await service.getDependentPermissions('user1', 'dep1', 'tutor')
+
+      expect(result).toEqual({
+        dependienteId: 'dep1',
+        nombre: 'María García',
+        esCuentaVinculada: false,
+        pcdUserId: null,
+        features: { ...featuresPorDefecto, chat: false },
+      })
+    })
+
+    it('should return real features from the PCD profile for a linked account', async () => {
+      const depData = {
+        id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1', nombreCompleto: 'Ana',
+      }
+      const perfilData = { features: { ...featuresPorDefecto, chat: false } }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ // dependiente doc
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
+        })
+        .mockReturnValueOnce({ // perfil real de la PCD (fuente de verdad de features)
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(perfilData)) }),
+        })
+
+      const result: any = await service.getDependentPermissions('user1', 'pcd1', 'tutor')
+
+      expect(result.esCuentaVinculada).toBe(true)
+      expect(result.pcdUserId).toBe('pcd1')
+      expect(result.features.chat).toBe(false)
+      expect(result.features.postulaciones).toBe(true)
+    })
+
+    it('should fall back to defaults when a linked PCD profile has no features', async () => {
+      const depData = { id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1', nombreCompleto: 'Ana' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+        })
+
+      const result: any = await service.getDependentPermissions('user1', 'pcd1', 'tutor')
+      expect(result.features).toEqual(featuresPorDefecto)
+    })
+
+    it('should allow admin to read permissions of any dependiente', async () => {
+      const depData = { id: 'dep2', tutorId: 'other-tutor', nombreCompleto: 'Otro' }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
+      })
+
+      const result = await service.getDependentPermissions('admin1', 'dep2', 'admin')
+      expect(result.dependienteId).toBe('dep2')
+      expect(result.nombre).toBe('Otro')
+    })
+
+    it('should throw NotFoundException when dependiente belongs to another tutor', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep2', tutorId: 'other-tutor' })) }),
+      })
+
+      await expect(service.getDependentPermissions('user1', 'dep2', 'tutor')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when dependiente does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+
+      await expect(service.getDependentPermissions('user1', 'ghost', 'tutor')).rejects.toThrow(NotFoundException)
+    })
+  })
+
   // ── updateDependentFeatures ──────────────────────────────────────────
 
   describe('updateDependentFeatures', () => {
@@ -1318,7 +1410,7 @@ describe('UsersService', () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
       const depData = {
         id: 'dep1', tutorId: 'user1',
-        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
       }
 
       firestoreMock.collection.mockReturnValue({
@@ -1378,7 +1470,7 @@ describe('UsersService', () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
       const linkedDep = {
         id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1',
-        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
       }
 
       firestoreMock.collection.mockReturnValue({
@@ -1477,7 +1569,7 @@ describe('UsersService', () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
       const pcdData = {
         id: 'pcd1', tutorId: 'tutor1',
-        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true },
+        features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
       }
 
       firestoreMock.collection.mockReturnValue({

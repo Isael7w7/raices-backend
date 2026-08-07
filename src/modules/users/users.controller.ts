@@ -7,7 +7,7 @@ import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dt
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
-import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, MisPersonaDto, PaginaMisPersonasDto } from './dto/respuestas-usuario.dto'
+import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, MisPersonaDto, PaginaMisPersonasDto } from './dto/respuestas-usuario.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
@@ -119,6 +119,19 @@ export class UsersController {
     return this.svc.addDependent(user.id, dto)
   }
 
+  @Get('dependientes/:dependienteId/permisos')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Permisos de dependiente', description: 'Retorna los permisos (features) de un dependiente plano o cuenta PCD vinculada. Solo el tutor dueño o un administrador pueden consultarlos.' })
+  @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
+  @ApiOkResponse({ type: RespuestaPermisosDependienteDto, description: 'Permisos del dependiente' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere tutor o admin)' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  getDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string) {
+    return this.svc.getDependentPermissions(user.id, dependienteId, user.rol)
+  }
+
   @Get('dependientes/:id')
   @ApiOperation({ summary: 'Detalle de dependiente', description: 'Retorna la información de un dependiente específico por su ID.' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
@@ -174,6 +187,19 @@ export class UsersController {
   @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Features actualizadas' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   updateDependentFeaturesPatch(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: UpdateFeaturesDto) {
+    return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
+  }
+
+  @Patch('dependientes/:dependienteId/permisos')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Guardar permisos de dependiente', description: 'Alias de PATCH /dependientes/:dependienteId/features: actualiza los switches de permisos (chat, postulaciones, comunidad, reseñas, etc.) de un dependiente plano. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
+  @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
+  @ApiBody({ type: UpdateFeaturesDto })
+  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Permisos actualizados' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  saveDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: UpdateFeaturesDto) {
     return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
   }
 
