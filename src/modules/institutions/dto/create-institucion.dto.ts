@@ -15,7 +15,7 @@ export class CreateInstitucionDto {
   @ApiProperty({ description: 'Nombre de la institución', example: 'Centro de Rehabilitación DIF Mérida' })
   @IsString()
   @IsNotEmpty()
-  nombre: string
+  nombre!: string
 
   @ApiPropertyOptional({ description: 'Descripción de la institución', example: 'Terapias físicas, ocupacionales y de lenguaje.' })
   @IsOptional()
@@ -26,7 +26,7 @@ export class CreateInstitucionDto {
   @IsString()
   @IsNotEmpty()
   @IsIn(['funcional', 'educativo', 'laboral', 'social'])
-  categoria: string
+  categoria!: string
 
   @ApiPropertyOptional({ description: 'Subcategoría', example: 'terapias' })
   @IsOptional()

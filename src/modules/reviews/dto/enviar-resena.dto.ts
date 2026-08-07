@@ -8,7 +8,7 @@ export class EnviarResenaDto {
   @IsInt({ message: 'La calificación debe ser un número entero' })
   @Min(1, { message: 'La calificación no puede ser menor a 1' })
   @Max(5, { message: 'La calificación no puede ser mayor a 5' })
-  calificacion: number
+  calificacion!: number
 
   @ApiProperty({ description: 'Comentario opcional', required: false, example: 'Excelente servicio' })
   @IsOptional()

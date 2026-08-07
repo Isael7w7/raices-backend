@@ -3,28 +3,28 @@ import { RespuestaPaginadaAnidadaDto } from '../../../common/dto/paginacion.dto'
 
 export class InstitucionDto {
   @ApiProperty({ example: 'inst-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 'Centro de Rehabilitación DIF Mérida' })
-  nombre: string
+  nombre!: string
 
   @ApiProperty({ example: 'Terapias físicas, ocupacionales y de lenguaje.', nullable: true })
-  descripcion: string | null
+  descripcion!: string | null
 
   @ApiProperty({ enum: ['funcional', 'educativo', 'laboral', 'social'], example: 'funcional' })
-  categoria: string | null
+  categoria!: string | null
 
   @ApiProperty({ example: 'terapias', nullable: true })
-  subcategoria: string | null
+  subcategoria!: string | null
 
   @ApiProperty({ example: 'Calle 50 x 65 #123', nullable: true })
-  direccion: string | null
+  direccion!: string | null
 
   @ApiProperty({ example: 'Mérida', nullable: true })
-  ciudad: string | null
+  ciudad!: string | null
 
   @ApiProperty({ example: 'Yucatán', nullable: true })
-  estado: string | null
+  estado!: string | null
 
   @ApiPropertyOptional({ example: 20.9674 })
   lat?: number | null
@@ -33,25 +33,25 @@ export class InstitucionDto {
   lng?: number | null
 
   @ApiProperty({ example: '9999990001', nullable: true })
-  telefono: string | null
+  telefono!: string | null
 
   @ApiProperty({ example: '9991110001', nullable: true })
-  whatsapp: string | null
+  whatsapp!: string | null
 
   @ApiProperty({ example: 'contacto@difmerida.mx', nullable: true })
-  email: string | null
+  email!: string | null
 
   @ApiProperty({ example: 'https://difmerida.mx', nullable: true })
-  sitioWeb: string | null
+  sitioWeb!: string | null
 
   @ApiProperty({ example: 'https://storage.../logo.png', nullable: true })
-  urlLogo: string | null
+  urlLogo!: string | null
 
   @ApiProperty({ example: 'https://storage.../cover.jpg', nullable: true })
-  urlPortada: string | null
+  urlPortada!: string | null
 
   @ApiProperty({ example: ['tea', 'motriz'], type: [String] })
-  tiposDiscapacidad: string[]
+  tiposDiscapacidad!: string[]
 
   @ApiPropertyOptional({ example: 0 })
   edadMinima?: number | null
@@ -60,34 +60,34 @@ export class InstitucionDto {
   edadMaxima?: number | null
 
   @ApiProperty({ example: 'Lun-Vie 8:00-16:00', nullable: true })
-  horarioAtencion: string | null
+  horarioAtencion!: string | null
 
   @ApiProperty({ enum: ['gratuito', 'pago', 'mixto'], example: 'gratuito' })
-  tipoPlan: string | null
+  tipoPlan!: string | null
 
   @ApiProperty({ example: ['Terapia ABA', 'Fonoaudiología'], type: [String] })
-  servicios: string[]
+  servicios!: string[]
 
   @ApiProperty({ example: ['https://storage.../foto1.jpg'], type: [String] })
-  fotos: string[]
+  fotos!: string[]
 
   @ApiProperty({ example: 4.5 })
-  calificacionPromedio: number
+  calificacionPromedio!: number
 
   @ApiProperty({ example: 12 })
-  cantidadCalificaciones: number
+  cantidadCalificaciones!: number
 
   @ApiProperty({ example: true })
-  activa: boolean
+  activa!: boolean
 
   @ApiProperty({ example: false })
-  verificada: boolean
+  verificada!: boolean
 
   @ApiProperty({ example: 'owner-uid' })
-  creadoPor: string
+  creadoPor!: string
 
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' })
-  fechaCreacion: string
+  fechaCreacion!: string
 
   @ApiPropertyOptional({ example: '2026-08-06T00:00:00.000Z' })
   fechaActualizacion?: string
@@ -98,5 +98,5 @@ export class InstitucionDto {
 
 export class PaginaInstitucionesDto extends RespuestaPaginadaAnidadaDto<InstitucionDto> {
   @ApiProperty({ description: 'Instituciones de la página', type: [InstitucionDto] })
-  datos: InstitucionDto[]
+  datos!: InstitucionDto[]
 }

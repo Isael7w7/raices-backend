@@ -3,16 +3,16 @@ import { RespuestaPaginadaDto } from '../../../common/dto/paginacion.dto'
 
 export class ResenaDto {
   @ApiProperty({ example: 'resena-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 4 })
-  calificacion: number
+  calificacion!: number
 
   @ApiProperty({ example: 'Excelente atención.', nullable: true })
-  comentario: string | null
+  comentario!: string | null
 
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' })
-  fechaCreacion: string
+  fechaCreacion!: string
 
   @ApiPropertyOptional({ example: 'Juan Pérez', nullable: true })
   nombreCompleto?: string | null
@@ -29,26 +29,26 @@ export class ResenaDto {
 
 export class PaginaResenasDto extends RespuestaPaginadaDto<ResenaDto> {
   @ApiProperty({ description: 'Reseñas de la página', type: [ResenaDto] })
-  datos: ResenaDto[]
+  datos!: ResenaDto[]
 }
 
 export class ResenaGuardadaDto {
   @ApiProperty({ example: 'resena-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 'user-uid' })
-  usuarioId: string
+  usuarioId!: string
 
   @ApiProperty({ example: 'inst-uid' })
-  institucionId: string
+  institucionId!: string
 
   @ApiProperty({ example: 4 })
-  calificacion: number
+  calificacion!: number
 
   @ApiProperty({ example: 'Excelente atención.', nullable: true })
-  comentario: string | null
+  comentario!: string | null
 
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' })
-  fechaCreacion: string
+  fechaCreacion!: string
 }
 

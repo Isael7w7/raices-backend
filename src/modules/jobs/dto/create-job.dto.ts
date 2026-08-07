@@ -3,7 +3,7 @@ import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray } from 'class-vali
 
 export class CreateJobDto {
   @ApiProperty({ description: 'Título de la vacante', example: 'Terapeuta Ocupacional' })
-  @IsString() @IsNotEmpty() titulo: string
+  @IsString() @IsNotEmpty() titulo!: string
 
   @ApiProperty({ description: 'Descripción detallada de la vacante', required: false, example: 'Buscamos terapeuta ocupacional para atención a niños con TEA...' })
   @IsOptional() @IsString() descripcion?: string
