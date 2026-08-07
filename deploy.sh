@@ -164,7 +164,7 @@ sync_secrets_from_env_file() {
     log_info "Enabling Secret Manager API..."
     gcloud services enable secretmanager.googleapis.com --project "${PROJECT_ID}" >/dev/null 2>&1 || true
 
-    local line value target
+    local line value target found_firebase=""
     while IFS= read -r line; do
         # Skip comments and empty lines
         if [[ "$line" =~ ^# ]] || [[ -z "$line" ]]; then
@@ -188,8 +188,15 @@ sync_secrets_from_env_file() {
                 continue
             fi
             store_secret_version "${target}" "${value}"
+            if [ "${target}" = "FIREBASE_CREDENTIALS" ]; then
+                found_firebase=1
+            fi
         fi
     done < "${env_file}"
+
+    if [ -z "${found_firebase}" ]; then
+        log_warn "FIREBASE_CREDENTIALS no está definido en ${env_file} (ni como FIREBASE_SERVICE_ACCOUNT). El secreto NO se actualizará; si no existe en Secret Manager, el deploy se abortará."
+    fi
 }
 
 # Verifica que el secreto obligatorio exista. RESEND_API_KEY es opcional
@@ -253,8 +260,10 @@ deploy_to_cloud_run() {
         while IFS= read -r line; do
             if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
                 local skip=0
-                # Skip PORT (reservado por Cloud Run), secretos y vars ya base
-                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || [[ "$line" =~ ^CORS_ORIGINS= ]]; then
+                # Skip PORT (reservado por Cloud Run), NODE_ENV (ya fijada a production),
+                # GOOGLE_APPLICATION_CREDENTIALS (ruta local inexistente en Cloud Run),
+                # secretos y vars ya base
+                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^NODE_ENV= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || [[ "$line" =~ ^CORS_ORIGINS= ]] || [[ "$line" =~ ^GOOGLE_APPLICATION_CREDENTIALS= ]]; then
                     skip=1
                 fi
                 for name in "${SENSITIVE_ENV_NAMES[@]}"; do
@@ -262,6 +271,11 @@ deploy_to_cloud_run() {
                         skip=1
                     fi
                 done
+                # Alias del secreto de Firebase: solo vía Secret Manager, nunca
+                # como env var directa (evita filtrar el JSON en --set-env-vars).
+                if [[ "$line" =~ ^FIREBASE_SERVICE_ACCOUNT= ]]; then
+                    skip=1
+                fi
                 if [[ "$skip" -eq 1 ]]; then
                     continue
                 fi
