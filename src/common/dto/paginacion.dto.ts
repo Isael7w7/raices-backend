@@ -39,16 +39,16 @@ export interface RespuestaPaginada<T> {
 /** Metadatos de paginación anidados: { total, pagina, limite, totalPaginas } */
 export class PaginacionMetaDto {
   @ApiProperty({ description: 'Total de elementos', example: 45 })
-  total: number
+  total!: number
 
   @ApiProperty({ description: 'Página actual', example: 1 })
-  pagina: number
+  pagina!: number
 
   @ApiProperty({ description: 'Elementos por página', example: 20 })
-  limite: number
+  limite!: number
 
   @ApiProperty({ description: 'Total de páginas', example: 3 })
-  totalPaginas: number
+  totalPaginas!: number
 }
 
 /**
@@ -58,19 +58,19 @@ export class PaginacionMetaDto {
  */
 export class RespuestaPaginadaDto<T> {
   @ApiProperty({ description: 'Elementos de la página', type: () => [Object] })
-  datos: T[]
+  datos!: T[]
 
   @ApiProperty({ description: 'Total de elementos', example: 45 })
-  total: number
+  total!: number
 
   @ApiProperty({ description: 'Página actual', example: 1 })
-  pagina: number
+  pagina!: number
 
   @ApiProperty({ description: 'Elementos por página', example: 20 })
-  limite: number
+  limite!: number
 
   @ApiProperty({ description: 'Total de páginas', example: 3 })
-  totalPaginas: number
+  totalPaginas!: number
 }
 
 /**
@@ -80,10 +80,10 @@ export class RespuestaPaginadaDto<T> {
  */
 export class RespuestaPaginadaAnidadaDto<T> {
   @ApiProperty({ description: 'Elementos de la página', type: () => [Object] })
-  datos: T[]
+  datos!: T[]
 
   @ApiProperty({ type: PaginacionMetaDto })
-  paginacion: PaginacionMetaDto
+  paginacion!: PaginacionMetaDto
 }
 
 /**

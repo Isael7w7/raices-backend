@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { AuthService } from './auth.service'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { EmailService } from '../email/email.service'
@@ -67,6 +68,13 @@ describe('AuthService', () => {
         { provide: FIREBASE_AUTH, useValue: authMock },
         { provide: EmailService, useValue: emailMock },
         { provide: FirebaseAnalyticsService, useValue: analyticsMock },
+        {
+          provide: ConfigService,
+          useValue: {
+            // Lee de process.env igual que ConfigService real (útil para tests)
+            get: jest.fn((key: string, defaultValue?: unknown) => process.env[key] ?? defaultValue),
+          },
+        },
       ],
     }).compile()
 

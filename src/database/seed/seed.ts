@@ -33,7 +33,9 @@ const FEATURES_POR_DEFECTO = {
 };
 
 const projectId = process.env.FIREBASE_PROJECT_ID || "raices-demo";
-const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+// FIREBASE_CREDENTIALS es el nombre canónico; FIREBASE_SERVICE_ACCOUNT queda como alias
+const serviceAccountJson =
+  process.env.FIREBASE_CREDENTIALS || process.env.FIREBASE_SERVICE_ACCOUNT;
 
 if (getApps().length === 0) {
   if (serviceAccountJson) {
@@ -49,7 +51,7 @@ if (getApps().length === 0) {
       });
     } catch (e) {
       console.warn(
-        "⚠️ No se pudo parsear FIREBASE_SERVICE_ACCOUNT de las variables de entorno.",
+        "⚠️ No se pudo parsear FIREBASE_CREDENTIALS de las variables de entorno.",
       );
       initializeApp({ projectId });
     }

@@ -3,6 +3,7 @@ packages:
 
 allowBuilds:
   '@firebase/util': true
+  '@google/genai': true
   '@nestjs/core': true
   '@scarf/scarf': true
   '@swc/core': true

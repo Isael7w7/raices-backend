@@ -7,7 +7,7 @@
  *   npx ts-node scripts/create-user.ts
  *
  * Requisitos:
- *   - Tener FIREBASE_PROJECT_ID y FIREBASE_SERVICE_ACCOUNT en .env
+ *   - Tener FIREBASE_PROJECT_ID y FIREBASE_CREDENTIALS (o FIREBASE_SERVICE_ACCOUNT) en .env
  *   - Tener instaladas las dependencias (pnpm install)
  */
 
@@ -36,12 +36,13 @@ if (!projectId) {
 }
 
 if (getApps().length === 0) {
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT
+  // FIREBASE_CREDENTIALS es el nombre canónico; FIREBASE_SERVICE_ACCOUNT queda como alias
+  const serviceAccountJson = process.env.FIREBASE_CREDENTIALS || process.env.FIREBASE_SERVICE_ACCOUNT
   if (serviceAccountJson) {
     initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), projectId })
     console.log('Firebase Admin inicializado con Service Account')
   } else {
-    console.warn('No hay FIREBASE_SERVICE_ACCOUNT. Usando Application Default Credentials.')
+    console.warn('No hay FIREBASE_CREDENTIALS. Usando Application Default Credentials.')
     initializeApp({ projectId })
   }
 }

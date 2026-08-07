@@ -3,101 +3,101 @@ import { RespuestaPaginadaDto } from '../../../common/dto/paginacion.dto'
 
 export class PerfilNecesidadesDto {
   @ApiProperty({ example: ['tea', 'motriz'], type: [String] })
-  tiposDiscapacidad: string[] | null
+  tiposDiscapacidad!: string[] | null
 
   @ApiProperty({ example: 'moderada', nullable: true })
-  severidadDiscapacidad: string | null
+  severidadDiscapacidad!: string | null
 
   @ApiProperty({ example: ['lenguaje_señas', 'aac'], type: [String] })
-  modosComunicacion: string[] | null
+  modosComunicacion!: string[] | null
 
   @ApiProperty({ example: ['silla_ruedas'], type: [String] })
-  necesidadesMovilidad: string[] | null
+  necesidadesMovilidad!: string[] | null
 
   @ApiProperty({ example: ['tablet'], type: [String] })
-  accesoTecnologia: string[] | null
+  accesoTecnologia!: string[] | null
 
   @ApiProperty({ example: ['centro'], type: [String] })
-  zonasPreferidas: string[] | null
+  zonasPreferidas!: string[] | null
 
   @ApiProperty({ example: ['apoyo_emocional'], type: [String] })
-  necesidades: string[] | null
+  necesidades!: string[] | null
 
   @ApiProperty({ example: ['integracion_social'], type: [String] })
-  metasActuales: string[] | null
+  metasActuales!: string[] | null
 
   @ApiProperty({ example: ['trabajo'], type: [String] })
-  areasApoyo: string[] | null
+  areasApoyo!: string[] | null
 
   @ApiProperty({ example: ['escuela_regular'], type: [String] })
-  historialEducacion: string[] | null
+  historialEducacion!: string[] | null
 
   @ApiProperty({ example: ['terapia_ocupacional'], type: [String] })
-  historialTerapia: string[] | null
+  historialTerapia!: string[] | null
 
   @ApiProperty({ example: 'adulto', nullable: true })
-  etapaVida: string | null
+  etapaVida!: string | null
 
   @ApiProperty({ example: 'ansiedad', nullable: true })
-  preocupacionesActuales: string | null
+  preocupacionesActuales!: string | null
 
   @ApiProperty({ example: 'medio', nullable: true })
-  nivelApoyo: string | null
+  nivelApoyo!: string | null
 }
 
 export class InstitucionPerfilDto {
   @ApiProperty({ example: 'inst-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 'Centro de Rehabilitación', nullable: true })
-  nombre: string | null
+  nombre!: string | null
 
   @ApiProperty({ example: 'funcional', nullable: true })
-  categoria: string | null
+  categoria!: string | null
 
   @ApiProperty({ example: 'Terapias físicas.', nullable: true })
-  descripcion: string | null
+  descripcion!: string | null
 
   @ApiProperty({ example: '9999990001', nullable: true })
-  telefono: string | null
+  telefono!: string | null
 
   @ApiProperty({ example: ['tea'], type: [String] })
-  tiposDiscapacidad: string[]
+  tiposDiscapacidad!: string[]
 
   @ApiProperty({ example: 'Mérida', nullable: true })
-  ciudad: string | null
+  ciudad!: string | null
 
   @ApiProperty({ example: 'Yucatán', nullable: true })
-  estado: string | null
+  estado!: string | null
 
   @ApiProperty({ example: 'https://storage.../logo.png', nullable: true })
-  urlLogo: string | null
+  urlLogo!: string | null
 
   @ApiProperty({ example: true })
-  activa: boolean
+  activa!: boolean
 
   @ApiProperty({ example: false })
-  verificada: boolean
+  verificada!: boolean
 
   @ApiProperty({ example: 4.5 })
-  calificacionPromedio: number
+  calificacionPromedio!: number
 
   @ApiProperty({ example: 12 })
-  cantidadCalificaciones: number
+  cantidadCalificaciones!: number
 }
 
 export class PerfilUsuarioDto {
   @ApiProperty({ example: 'uid-123' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 'Juan Pérez' })
-  nombreCompleto: string
+  nombreCompleto!: string
 
   @ApiProperty({ example: 'usuario@correo.mx' })
-  email: string
+  email!: string
 
   @ApiProperty({ enum: ['pcd', 'tutor', 'institucion', 'admin'], example: 'pcd' })
-  rol: string
+  rol!: string
 
   @ApiPropertyOptional({ example: 'Mérida' })
   ciudad?: string
@@ -129,89 +129,89 @@ export class PerfilUsuarioDto {
 
 export class RespuestaAvatarDto {
   @ApiProperty({ description: 'URL del avatar guardado', example: 'https://storage.../avatars/abc.jpg' })
-  urlAvatar: string
+  urlAvatar!: string
 }
 
 export class DependienteDto {
   @ApiProperty({ example: 'dep-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 'María García' })
-  nombreCompleto: string
+  nombreCompleto!: string
 
   @ApiProperty({ example: 'hijo', nullable: true })
-  parentesco: string | null
+  parentesco!: string | null
 
   @ApiProperty({ example: ['tea', 'motriz'], type: [String] })
-  tiposDiscapacidad: string[]
+  tiposDiscapacidad!: string[]
 
   @ApiProperty({ example: '6-12', nullable: true })
-  rangoEdad: string | null
+  rangoEdad!: string | null
 
   @ApiProperty({ example: 'infancia', nullable: true })
-  etapaVida: string | null
+  etapaVida!: string | null
 
   @ApiProperty({ example: 'Requiere acompañamiento', nullable: true })
-  notas: string | null
+  notas!: string | null
 
   @ApiProperty({ example: 'moderada', nullable: true })
-  discapacidad: string | null
+  discapacidad!: string | null
 
   @ApiProperty({ example: false })
-  esCuentaVinculada: boolean
+  esCuentaVinculada!: boolean
 
   @ApiProperty({ example: 'pcd-uid', nullable: true })
-  pcdUserId: string | null
+  pcdUserId!: string | null
 
   @ApiProperty({ example: { chat: true, postulaciones: true } })
-  features: Record<string, boolean>
+  features!: Record<string, boolean>
 
   @ApiPropertyOptional({ example: 'https://storage.../avatar.jpg', nullable: true, description: 'Foto real del perfil (solo cuentas vinculadas, en el listado enriquecido)' })
   fotoUrl?: string | null
 
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' })
-  fechaCreacion: string
+  fechaCreacion!: string
 }
 
 export class ConteoDependientesDto {
   @ApiProperty({ example: 3 })
-  total: number
+  total!: number
 
   @ApiProperty({ example: 5 })
-  limite: number
+  limite!: number
 
   @ApiProperty({ example: 2 })
-  restantes: number
+  restantes!: number
 }
 
 export class RespuestaVinculacionDto {
   @ApiProperty({ example: true })
-  vinculado: boolean
+  vinculado!: boolean
 
   @ApiProperty({ example: 'pcd-uid' })
-  pcdUserId: string
+  pcdUserId!: string
 
   @ApiProperty({ example: 'tutor-uid' })
-  tutorId: string
+  tutorId!: string
 }
 
 export class RespuestaDesvinculacionDto {
   @ApiProperty({ example: true })
-  desvinculado: boolean
+  desvinculado!: boolean
 
   @ApiProperty({ example: 'pcd-uid' })
-  pcdUserId: string
+  pcdUserId!: string
 
   @ApiProperty({ example: 'tutor-uid' })
-  tutorId: string
+  tutorId!: string
 }
 
 export class RespuestaFeaturesDto {
   @ApiProperty({ example: 'dep-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: { chat: true, postulaciones: false } })
-  features: Record<string, boolean>
+  features!: Record<string, boolean>
 }
 
 /**
@@ -220,28 +220,28 @@ export class RespuestaFeaturesDto {
  */
 export class MisPersonaDto {
   @ApiProperty({ example: 'dep-uid' })
-  id: string
+  id!: string
 
   @ApiProperty({ example: 'María García' })
-  nombre: string
+  nombre!: string
 
   @ApiProperty({ example: false, description: 'true si es una cuenta PCD vinculada con correo; false si es un dependiente plano' })
-  esCuentaVinculada: boolean
+  esCuentaVinculada!: boolean
 
   @ApiProperty({ example: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true } })
-  features: Record<string, boolean>
+  features!: Record<string, boolean>
 
   @ApiProperty({ example: 'https://storage.../avatar.jpg', nullable: true, description: 'Foto real del perfil (solo cuentas vinculadas)' })
-  fotoUrl: string | null
+  fotoUrl!: string | null
 
   @ApiProperty({ example: 'pcd-uid', nullable: true })
-  pcdUserId: string | null
+  pcdUserId!: string | null
 
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z', nullable: true })
-  fechaCreacion: string | null
+  fechaCreacion!: string | null
 }
 
 export class PaginaMisPersonasDto extends RespuestaPaginadaDto<MisPersonaDto> {
   @ApiProperty({ type: [MisPersonaDto], description: 'Personas de la página' })
-  datos: MisPersonaDto[]
+  datos!: MisPersonaDto[]
 }

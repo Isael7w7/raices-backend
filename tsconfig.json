@@ -6,10 +6,11 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "strict": false,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "useUnknownInCatchVariables": true,
+    // strict incluye noImplicitAny, strictNullChecks, strictFunctionTypes,
+    // strictBindCallApply, strictPropertyInitialization, noImplicitThis,
+    // useUnknownInCatchVariables y alwaysStrict. Las propiedades obligatorias
+    // de los DTO (poblados por class-transformer) usan asignación definida (!).
+    "strict": true,
     "esModuleInterop": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,

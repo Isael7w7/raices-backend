@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
 import { DatabaseModule } from '../../src/database/database.module'
 import { AuthModule } from '../../src/modules/auth/auth.module'
 import { UsersModule } from '../../src/modules/users/users.module'
@@ -17,6 +18,8 @@ import { HealthModule } from '../../src/modules/health/health.module'
  */
 @Module({
   imports: [
+    // ConfigService es inyectado por DatabaseModule y otros servicios
+    ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
     AuthModule,
     UsersModule,

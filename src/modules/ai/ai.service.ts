@@ -1,4 +1,6 @@
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { VertexAI, GenerativeModel } from '@google-cloud/vertexai'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -12,23 +14,77 @@ const RESPUESTAS_MOCK = [
   'Eso es muy valioso saberlo. Basándome en tu etapa de vida, el siguiente paso recomendado sería conectar con un especialista. ¿Quieres ver opciones?',
 ]
 
+/**
+ * Configuración de Vertex AI (Gemini). Los valores se leen de variables de
+ * entorno montadas desde GCP Secret Manager / config del contenedor:
+ *
+ * - VERTEX_AI_PROJECT_ID  (fallback: FIREBASE_PROJECT_ID)
+ * - VERTEX_AI_LOCATION    (default: us-central1)
+ * - VERTEX_AI_MODEL       (default: gemini-2.0-flash)
+ *
+ * Autenticación: el SDK usa Application Default Credentials (ADC). En Cloud
+ * Run se resuelve con la cuenta de servicio adjunta al servicio; en local con
+ * `gcloud auth application-default login` o GOOGLE_APPLICATION_CREDENTIALS.
+ * No se requiere API key en texto plano.
+ */
 @Injectable()
 export class AiService {
   private readonly logger = new Logger('AiService')
-  private client: any = null
+  private chatModel: GenerativeModel | null = null
+  private jsonModel: GenerativeModel | null = null
 
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {
-    if (process.env.ANTHROPIC_API_KEY) {
-      try {
-        const Anthropic = require('@anthropic-ai/sdk')
-        this.client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY })
-        this.logger.log('Anthropic SDK inicializado con API key real')
-      } catch {
-        this.logger.warn('Anthropic SDK no disponible — usando respuestas mock')
-      }
-    } else {
-      this.logger.warn('ANTHROPIC_API_KEY no configurada — usando respuestas mock')
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly config: ConfigService,
+  ) {
+    this.initializeModel()
+  }
+
+  private initializeModel(): void {
+    const project = this.config.get<string>('VERTEX_AI_PROJECT_ID') ?? this.config.get<string>('FIREBASE_PROJECT_ID')
+    const location = this.config.get<string>('VERTEX_AI_LOCATION') ?? 'us-central1'
+    const modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
+
+    if (!project) {
+      this.logger.warn('Vertex AI: VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID no configurado — usando respuestas mock')
+      return
     }
+
+    try {
+      const vertexAI = new VertexAI({ project, location })
+      this.chatModel = vertexAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { maxOutputTokens: 300 },
+      })
+      this.jsonModel = vertexAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          maxOutputTokens: 800,
+          // Garantiza JSON parseable (evita truncamiento → fallback mock)
+          responseMimeType: 'application/json',
+        },
+      })
+      this.logger.log(`✅ Vertex AI inicializado: project=${project}, location=${location}, model=${modelName}`)
+    } catch (e: any) {
+      this.logger.warn(`⚠️  Vertex AI no disponible (${e?.message ?? e}) — usando respuestas mock`)
+      this.chatModel = null
+      this.jsonModel = null
+    }
+  }
+
+  /** Extrae el texto de la respuesta de Gemini de forma segura. */
+  private extractText(result: any): string {
+    const parts = result?.response?.candidates?.[0]?.content?.parts
+    if (!Array.isArray(parts)) return ''
+    return parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
+  }
+
+  /** Parsea JSON de la respuesta de Gemini tolerando bloques ```json. */
+  private parseJsonResponse(text: string): any {
+    let cleaned = text.trim()
+    const fence = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
+    if (fence) cleaned = fence[1].trim()
+    return JSON.parse(cleaned)
   }
 
   private async getUserProfile(usuarioId: string) {
@@ -40,7 +96,7 @@ export class AiService {
   async chat(usuarioId: string, mensaje: string, historial: any[] = []) {
     const perfil = await this.getUserProfile(usuarioId)
 
-    if (!this.client) {
+    if (!this.chatModel) {
       await new Promise((r) => setTimeout(r, 600))
       const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
       return { respuesta, simulado: true }
@@ -54,14 +110,24 @@ export class AiService {
 Perfil del usuario: etapa=${perfil?.etapaVida ?? 'no especificada'}, discapacidades=${tiposDiscapacidad}.
 NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y directo.`
 
-    const response = await this.client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 300,
-      system: sistema,
-      messages: [...historial.slice(-6), { role: 'user', content: mensaje }],
-    })
-
-    return { respuesta: response.content[0].text, simulado: false }
+    try {
+      const chat = this.chatModel.startChat({
+        systemInstruction: sistema,
+        history: historial.slice(-6).map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: String(m.content) }],
+        })),
+      })
+      const result = await chat.sendMessage(mensaje)
+      const respuesta = this.extractText(result)
+      if (!respuesta) throw new Error('Respuesta vacía de Vertex AI')
+      return { respuesta, simulado: false }
+    } catch (e: any) {
+      this.logger.warn(`Vertex AI chat falló (${e?.message ?? e}) — usando respuestas mock`)
+      await new Promise((r) => setTimeout(r, 600))
+      const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
+      return { respuesta, simulado: true }
+    }
   }
 
   private async getUserHistory(usuarioId: string) {
@@ -96,7 +162,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
     const sinDiagnostico = tiposDiscapacidad.length === 0
     const datosUsuario = registroUsuario.data()
 
-    if (!this.client || !perfil) {
+    if (!this.jsonModel || !perfil) {
       const pasos = sinDiagnostico ? [
         'Agenda una evaluación diagnóstica — visita una institución de Terapia en tu ciudad para obtener un diagnóstico formal',
         'Completa tu perfil con tus necesidades actuales para recibir recomendaciones más precisas',
@@ -141,12 +207,11 @@ Si no hay diagnóstico, el primer paso DEBE ser buscar evaluación diagnóstica.
 Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razonamiento":"explicación breve en español","sugerenciasInstitucion":[{"categoria":"Terapia|Educación|Empleo","razon":"por qué"}]}`
 
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 500,
-        messages: [{ role: 'user', content: prompt }],
-      })
-      return { ...JSON.parse(response.content[0].text), simulado: false }
-    } catch {
+      const result = await this.jsonModel.generateContent(prompt)
+      const text = this.extractText(result)
+      return { ...this.parseJsonResponse(text), simulado: false }
+    } catch (e: any) {
+      this.logger.warn(`Vertex AI recommend falló (${e?.message ?? e}) — mostrando sugerencias generales`)
       return {
         proximosPasos: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
         razonamiento: 'Error al procesar — mostrando sugerencias generales', sugerenciasInstitucion: [], simulado: true,
@@ -172,7 +237,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
     const etapaVida = datosPerfil.etapaVida ?? 'no especificada'
     const notas = datosPerfil.notas ?? ''
 
-    if (!this.client) {
+    if (!this.jsonModel) {
       return {
         proximosPasos: [
           `Buscar instituciones especializadas en ${discapacidades} para ${dep.nombreCompleto}`,
@@ -190,12 +255,11 @@ Genera 3 próximos pasos concretos y accionables para apoyar a esta persona espe
 Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razonamiento":"explicación breve"}`
 
     try {
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-6', max_tokens: 400,
-        messages: [{ role: 'user', content: prompt }],
-      })
-      return { ...JSON.parse(response.content[0].text), simulado: false }
-    } catch {
+      const result = await this.jsonModel.generateContent(prompt)
+      const text = this.extractText(result)
+      return { ...this.parseJsonResponse(text), simulado: false }
+    } catch (e: any) {
+      this.logger.warn(`Vertex AI recommendForDependent falló (${e?.message ?? e}) — mostrando sugerencias generales`)
       return {
         proximosPasos: [
           `Busca instituciones de ${discapacidades} cerca de ti`,
