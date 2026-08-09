@@ -9,6 +9,7 @@ import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
 import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, MisPersonaDto, PaginaMisPersonasDto } from './dto/respuestas-usuario.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -36,6 +37,7 @@ export class UsersController {
   profile(@CurrentUser() user: CurrentUserPayload) { return this.svc.getProfile(user.id) }
 
   @Put('perfil')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones de perfil por minuto
   @ApiOperation({ summary: 'Actualizar perfil básico', description: 'Actualiza nombre, ciudad, estado o urlAvatar del usuario autenticado.' })
   @ApiBody({ type: ActualizarPerfilDto })
   @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil actualizado' })
@@ -80,6 +82,7 @@ export class UsersController {
   }
 
   @Post('perfil-necesidades')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 guardados por minuto
   @ApiOperation({ summary: 'Guardar perfil de necesidades', description: 'Guarda tipos de discapacidad, necesidades, metas, historial, etc.' })
   @ApiBody({ type: GuardarPerfilNecesidadesDto })
   @ApiCreatedResponse({ type: PerfilNecesidadesDto, description: 'Perfil de necesidades guardado con éxito' })
@@ -90,6 +93,7 @@ export class UsersController {
   }
 
   @Get('dependientes/count')
+  @UseETag()
   @ApiOperation({ summary: 'Conteo de dependientes', description: 'Retorna el número de dependientes registrados y el límite restante permitido.' })
   @ApiOkResponse({ type: ConteoDependientesDto, description: 'Conteo y límite restante' })
   dependentsCount(@CurrentUser() user: CurrentUserPayload) { return this.svc.getDependentsCount(user.id) }
@@ -109,6 +113,7 @@ export class UsersController {
   }
 
   @Post('dependientes')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 dependientes por minuto
   @UseGuards(LimitDependientesGuard)
   @LimitDependientes()
   @ApiOperation({ summary: 'Agregar dependiente', description: 'Crea un dependiente directo. Valida automáticamente el límite máximo de dependientes por tutor.' })
@@ -120,6 +125,7 @@ export class UsersController {
   }
 
   @Get('dependientes/:dependienteId/permisos')
+  @UseETag()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
@@ -133,6 +139,7 @@ export class UsersController {
   }
 
   @Get('dependientes/:id')
+  @UseETag()
   @ApiOperation({ summary: 'Detalle de dependiente', description: 'Retorna la información de un dependiente específico por su ID.' })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
   @ApiOkResponse({ type: DependienteDto, description: 'Dependiente encontrado' })
@@ -142,6 +149,7 @@ export class UsersController {
   }
 
   @Put('dependientes/:id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones por minuto
   @ApiOperation({ summary: 'Actualizar dependiente' })
   @ApiBody({ type: CrearDependienteDto })
   @ApiParam({ name: 'id', description: 'ID del dependiente' })
@@ -164,6 +172,7 @@ export class UsersController {
   // ─── Endpoints de vinculación y features ────────────────────────────
 
   @Post('vincular-pcd')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vinculaciones por minuto
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('tutor')
   @ApiBearerAuth('jwt-auth')

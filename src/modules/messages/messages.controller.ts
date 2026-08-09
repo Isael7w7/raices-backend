@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, 
 import { MessagesService } from './messages.service'
 import { EnviarDto } from './dto/enviar.dto'
 import { ConversacionDto, MensajeDto } from './dto/respuestas-mensajes.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Mensajes')
 @ApiBearerAuth('jwt-auth')
@@ -17,6 +19,7 @@ export class MessagesController {
   constructor(private readonly svc: MessagesService) {}
 
   @Get('conversaciones')
+  @UseETag()
   @ApiOperation({ summary: 'Lista de conversaciones' })
   @ApiOkResponse({ type: [ConversacionDto], description: 'Lista de conversaciones con socio, último mensaje y conteo de no leídos' })
   conversations(@CurrentUser() user: CurrentUserPayload) {
@@ -24,6 +27,7 @@ export class MessagesController {
   }
 
   @Get('no-leidos')
+  @UseETag()
   @ApiOperation({ summary: 'Conteo de mensajes no leídos' })
   @ApiOkResponse({ type: Number, description: 'Número total de no leídos' })
   unreadCount(@CurrentUser() user: CurrentUserPayload) {
@@ -31,6 +35,7 @@ export class MessagesController {
   }
 
   @Get('con/:userId')
+  @UseETag()
   @ApiOperation({ summary: 'Mensajes con un usuario' })
   @ApiParam({ name: 'userId', description: 'ID del usuario con quien se conversa' })
   @ApiOkResponse({ type: [MensajeDto], description: 'Lista de mensajes ordenados cronológicamente' })
@@ -39,6 +44,7 @@ export class MessagesController {
   }
 
   @Post('enviar/:userId')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 mensajes por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('chat')
   @ApiOperation({ summary: 'Enviar mensaje' })

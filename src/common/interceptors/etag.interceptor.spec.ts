@@ -5,10 +5,13 @@ import { createHash } from 'crypto';
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
 
-function mockRequest(method = 'GET', headers: Record<string, string> = {}) {
+function mockRequest(method = 'GET', headers: Record<string, string> = {}, opts: { url?: string; user?: any } = {}) {
   return {
     method,
     headers,
+    url: opts.url ?? '/test',
+    originalUrl: opts.url ?? '/test',
+    user: opts.user,
   };
 }
 
@@ -25,6 +28,9 @@ function mockResponse() {
     return res;
   });
   res.send = jest.fn(() => res);
+  Object.defineProperty(res, 'statusCode', {
+    get: () => res._status,
+  });
   return res;
 }
 
@@ -49,6 +55,8 @@ describe('ETagInterceptor', () => {
   let interceptor: ETagInterceptor;
 
   beforeEach(() => {
+    // La caché es estática y compartida: limpiarla evita fugas entre tests
+    ETagInterceptor.clearCache();
     interceptor = new ETagInterceptor();
   });
 
@@ -138,6 +146,90 @@ describe('ETagInterceptor', () => {
     });
   });
 
+  describe('In-memory cache (early 304 without executing handler)', () => {
+    it('should respond 304 WITHOUT executing the handler when cache is fresh and ETag matches', () => {
+      const body = { id: 'user1', name: 'Test User' };
+      const expectedEtag = `"${createHash('md5').update(JSON.stringify(body)).digest('hex')}"`;
+
+      // Primera petición: pobla la caché (ejecuta el handler)
+      const res1 = mockResponse();
+      const ctx1 = mockExecutionContext(mockRequest('GET'), res1);
+      const handleSpy1 = jest.fn(() => of(body));
+      interceptor.intercept(ctx1, { handle: handleSpy1 } as any).subscribe();
+
+      // Segunda petición con If-None-Match coincidente: NO debe ejecutar el handler
+      const res2 = mockResponse();
+      const ctx2 = mockExecutionContext(mockRequest('GET', { 'if-none-match': expectedEtag }), res2);
+      const handleSpy2 = jest.fn(() => of(body));
+      let result: any;
+      interceptor.intercept(ctx2, { handle: handleSpy2 } as any).subscribe((r) => (result = r));
+
+      expect(handleSpy1).toHaveBeenCalledTimes(1);
+      expect(handleSpy2).not.toHaveBeenCalled();
+      expect(res2.status).toHaveBeenCalledWith(304);
+      expect(res2.send).toHaveBeenCalled();
+      expect(result).toBeUndefined();
+      // RFC 7232: el 304 debe incluir el ETag para permitir revalidación
+      expect(res2.setHeader).toHaveBeenCalledWith('ETag', expectedEtag);
+    });
+
+    it('should execute the handler when the cache entry has expired', () => {
+      const body = { id: 'user1', name: 'Test User' };
+      const expectedEtag = `"${createHash('md5').update(JSON.stringify(body)).digest('hex')}"`;
+
+      // Poblar la caché
+      interceptor.intercept(
+        mockExecutionContext(mockRequest('GET'), mockResponse()),
+        mockCallHandler(body),
+      ).subscribe();
+
+      // Fingir que pasó más tiempo que el TTL (por defecto 30s)
+      jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 31000);
+
+      const res = mockResponse();
+      const ctx = mockExecutionContext(mockRequest('GET', { 'if-none-match': expectedEtag }), res);
+      const handleSpy = jest.fn(() => of(body));
+      let result: any;
+      interceptor.intercept(ctx, { handle: handleSpy } as any).subscribe((r) => (result = r));
+
+      // La caché expiró → el handler SÍ se ejecuta (no se confía en la caché vieja)
+      expect(handleSpy).toHaveBeenCalledTimes(1);
+      // Pero como el cuerpo no cambió, el ETag recién calculado coincide → 304
+      expect(res.status).toHaveBeenCalledWith(304);
+      expect(result).toBeUndefined();
+
+      jest.restoreAllMocks();
+    });
+
+    it('should not leak cache entries between different users', () => {
+      const bodyA = { id: 'user1', name: 'Test User' };
+      const etagA = `"${createHash('md5').update(JSON.stringify(bodyA)).digest('hex')}"`;
+
+      // Poblar caché con el usuario A
+      interceptor.intercept(
+        mockExecutionContext(mockRequest('GET', {}, { user: { id: 'usuario-a' } }), mockResponse()),
+        mockCallHandler(bodyA),
+      ).subscribe();
+
+      // El usuario B con el mismo If-None-Match NO debe recibir 304: su caché
+      // es distinta (clave incluye userId), por lo que el handler se ejecuta.
+      const bodyB = { id: 'user2', name: 'Otro User' }; // contenido distinto
+      const res = mockResponse();
+      const ctx = mockExecutionContext(
+        mockRequest('GET', { 'if-none-match': etagA }, { user: { id: 'usuario-b' } }),
+        res,
+      );
+      const handleSpy = jest.fn(() => of(bodyB));
+      let result: any;
+      interceptor.intercept(ctx, { handle: handleSpy } as any).subscribe((r) => (result = r));
+
+      // Sin fuga de caché: B ejecuta el handler y recibe SU cuerpo (200)
+      expect(handleSpy).toHaveBeenCalledTimes(1);
+      expect(result).toEqual(bodyB);
+      expect(res._status).toBe(200);
+    });
+  });
+
   describe('Non-GET requests', () => {
     it('should pass through POST requests without ETag logic', () => {
       const body = { created: true };
@@ -211,6 +303,26 @@ describe('ETagInterceptor', () => {
 
       expect(res.setHeader).toHaveBeenCalledWith('ETag', expect.any(String));
       expect(result).toBeNull();
+    });
+
+    it('should not crash when the handler returns undefined', () => {
+      const body: undefined = undefined;
+      const req = mockRequest('GET');
+      const res = mockResponse();
+      const ctx = mockExecutionContext(req, res);
+      const callHandler = mockCallHandler(body);
+
+      let result: any;
+      let error: any;
+      interceptor.intercept(ctx, callHandler).subscribe({
+        next: (r) => (result = r),
+        error: (e) => (error = e),
+      });
+
+      expect(error).toBeUndefined();
+      expect(result).toBeUndefined();
+      // No debe haber intentado calcular ETag sobre undefined
+      expect(res.setHeader).not.toHaveBeenCalledWith('ETag', expect.any(String));
     });
 
     it('should handle complex nested body', () => {

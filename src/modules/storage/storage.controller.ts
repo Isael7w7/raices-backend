@@ -2,6 +2,7 @@ import { Controller, Post, UseGuards, UseInterceptors, UploadedFile, BadRequestE
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ApiTags, ApiOperation, ApiCreatedResponse, ApiBearerAuth, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger'
 import { StorageService } from './storage.service'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Feature } from '../../common/decorators/feature.decorator'
@@ -15,6 +16,7 @@ export class StorageController {
   constructor(private readonly storage: StorageService) {}
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 subidas por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('multimedia')
   @ApiBearerAuth('jwt-auth')

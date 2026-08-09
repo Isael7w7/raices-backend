@@ -22,6 +22,10 @@ REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="raices-backend"
 # Use Artifact Registry (recommended) instead of Container Registry
 IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/raices/${SERVICE_NAME}"
+# Modo ADC: si FIREBASE_CREDENTIALS está vacío, el secreto NO es obligatorio;
+# el backend autentica con la cuenta de servicio adjunta al Cloud Run.
+# Forzar el modo con secreto obligatorio: REQUIRE_SECRETS=true
+REQUIRE_SECRETS="${REQUIRE_SECRETS:-false}"
 # Firebase service account for Cloud Run (needs access to the secrets)
 FIREBASE_SA="firebase-adminsdk-fbsvc@${PROJECT_ID}.iam.gserviceaccount.com"
 
@@ -201,11 +205,16 @@ sync_secrets_from_env_file() {
 
 # Verifica que el secreto obligatorio exista. RESEND_API_KEY es opcional
 # (EmailService cae a modo mock si no está configurado).
+# En modo ADC (REQUIRE_SECRETS=false, por defecto) solo advierte: el backend
+# autentica con la cuenta de servicio adjunta del servicio de Cloud Run.
 ensure_secrets_exist() {
     if ! gcloud secrets describe "FIREBASE_CREDENTIALS" --project "${PROJECT_ID}" &>/dev/null; then
-        log_error "Secret 'FIREBASE_CREDENTIALS' does not exist in Secret Manager."
-        log_info "Create it with: $0 secrets <env_file>  (o: gcloud secrets create FIREBASE_CREDENTIALS)"
-        exit 1
+        if [ "${REQUIRE_SECRETS}" = "true" ]; then
+            log_error "Secret 'FIREBASE_CREDENTIALS' does not exist in Secret Manager."
+            log_info "Create it with: $0 secrets <env_file>  (o: gcloud secrets create FIREBASE_CREDENTIALS)"
+            exit 1
+        fi
+        log_warn "Secret 'FIREBASE_CREDENTIALS' no existe — desplegando en modo ADC (cuenta de servicio adjunta)."
     fi
 }
 
@@ -298,7 +307,11 @@ deploy_to_cloud_run() {
             log_warn "Secret '${name}' no existe — se omitirá del --set-secrets."
         fi
     done
-    deploy_cmd+=" --set-secrets=${secrets_ref}"
+    if [ -n "${secrets_ref}" ]; then
+        deploy_cmd+=" --set-secrets=${secrets_ref}"
+    else
+        log_warn "Sin secretos de Secret Manager para montar — el backend usa ADC (cuenta de servicio adjunta)."
+    fi
 
     # Execute deployment
     log_info "Running: ${deploy_cmd}"

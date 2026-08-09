@@ -7,6 +7,7 @@ import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { PostulacionDto } from './dto/postulacion.dto'
 import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
 import { VacanteDto, PaginaVacantesDto, PaginaPostulacionesDto, PostulacionCreadaDto, PostulacionEstadoActualizadoDto, PaginaPostulantesInstitucionDto } from './dto/respuestas-empleo.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
@@ -14,6 +15,7 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Empleo')
 @Controller('empleo')
@@ -21,6 +23,7 @@ export class JobsController {
   constructor(private readonly svc: JobsService) {}
 
   @Get()
+  @UseETag()
   @ApiOperation({ summary: 'Listar vacantes', description: 'Retorna vacantes activas de instituciones activas con paginación' })
   @ApiQuery({ name: 'ciudad', required: false, description: 'Filtrar por ciudad' })
   @ApiQuery({ name: 'modalidad', required: false, description: 'Filtrar por modalidad: presencial, remoto, híbrido' })
@@ -32,6 +35,7 @@ export class JobsController {
   }
 
   @Get('postuladas')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'IDs de vacantes postuladas', description: 'Retorna solo los IDs para saber en cuáles ya aplicaste' })
@@ -41,6 +45,7 @@ export class JobsController {
   }
 
   @Get('mis-postulaciones')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Mis postulaciones', description: 'Retorna las postulaciones del usuario con paginación' })
@@ -52,6 +57,7 @@ export class JobsController {
   }
 
   @Post()
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 vacantes por minuto
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
@@ -93,6 +99,7 @@ export class JobsController {
   }
 
   @Get('postulantes-institucion')
+  @UseETag()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
@@ -124,6 +131,7 @@ export class JobsController {
   }
 
   @Get(':id')
+  @UseETag()
   @ApiOperation({ summary: 'Detalle de vacante' })
   @ApiParam({ name: 'id', description: 'ID de la vacante' })
   @ApiOkResponse({ type: VacanteDto, description: 'Detalle completo de la vacante con información de institución' })
@@ -133,6 +141,7 @@ export class JobsController {
   }
 
   @Post(':id/postularse')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 postulaciones por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('postulaciones')
   @ApiBearerAuth('jwt-auth')
@@ -147,6 +156,7 @@ export class JobsController {
   }
 
   @Patch('postulaciones/:id/estado')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 cambios de estado por minuto
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')

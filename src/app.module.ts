@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common'
-import { ConfigModule } from '@nestjs/config'
+import { ConfigModule, ConfigService } from '@nestjs/config'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
 import { DatabaseModule } from './database/database.module'
@@ -26,10 +26,18 @@ import { HealthModule } from './modules/health/health.module'
     // SECURITY: Acceso centralizado a variables de entorno (los secretos se
     // montan desde GCP Secret Manager en Cloud Run y desde .env en local).
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    // Rate limiting global configurable por env (por IP).
+    // THROTTLE_TTL (ms) / THROTTLE_LIMIT: protege el consumo de Firestore ante
+    // picos y abuso. Los endpoints sensibles tienen límites propios vía @Throttle.
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [{
+        // `||` en vez de `??`: si la variable existe pero está vacía, Number('') = 0
+        // rompería el throttling (bloquearía todo o nada).
+        ttl: Number(config.get<string>('THROTTLE_TTL') || 60000),
+        limit: Number(config.get<string>('THROTTLE_LIMIT') || 60),
+      }],
+    }),
     DatabaseModule,
     CommonGuardsModule,
     AuthModule,

@@ -4,9 +4,11 @@ import { map } from 'rxjs/operators'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { NotificationsService } from './notifications.service'
 import { NotificacionDto } from './dto/respuestas-notificacion.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Notificaciones')
 @ApiBearerAuth('jwt-auth')
@@ -16,12 +18,14 @@ export class NotificationsController {
   constructor(private readonly svc: NotificationsService) {}
 
   @Get()
+  @UseETag()
   @ApiOperation({ summary: 'Listar notificaciones', description: 'Retorna las últimas 50 notificaciones del usuario' })
   @ApiOkResponse({ type: [NotificacionDto], description: 'Lista de notificaciones (máx. 50)' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   list(@CurrentUser() user: CurrentUserPayload) { return this.svc.findByUser(user.id) }
 
   @Patch(':id/leer')
+  @Throttle({ default: { limit: 30, ttl: 60000 } }) // 30 lecturas por minuto
   @HttpCode(204)
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   @ApiParam({ name: 'id', description: 'ID de la notificación' })

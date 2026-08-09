@@ -11,11 +11,13 @@ import { InstitutionsService } from './institutions.service'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { InstitucionDto, PaginaInstitucionesDto } from './dto/respuestas-institucion.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Instituciones')
 @Controller('instituciones')
@@ -24,6 +26,7 @@ export class InstitutionsController {
 
   // ─── GET /instituciones/mi-institucion ────────────────────────────
   @Get('mi-institucion')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
@@ -39,6 +42,7 @@ export class InstitutionsController {
 
   // ─── PUT /instituciones/mi-institucion ────────────────────────────
   @Put('mi-institucion')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones por minuto
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
@@ -55,6 +59,7 @@ export class InstitutionsController {
 
   // ─── GET /instituciones ───────────────────────────────────────────
   @Get()
+  @UseETag()
   @ApiOperation({
     summary: 'Listar instituciones',
     description: 'Obtiene la lista completa de instituciones activas con paginación y búsqueda.',
@@ -77,6 +82,7 @@ export class InstitutionsController {
 
   // ─── GET /instituciones/:id/detalle (admin o propietario) ──────────
   @Get(':id/detalle')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
@@ -94,6 +100,7 @@ export class InstitutionsController {
 
   // ─── GET /instituciones/:id ───────────────────────────────────────
   @Get(':id')
+  @UseETag()
   @ApiOperation({
     summary: 'Detalle de institución',
     description: 'Obtiene los detalles de una institución pública por su ID. Solo se exponen instituciones activas y verificadas.',
@@ -107,6 +114,7 @@ export class InstitutionsController {
 
   // ─── POST /instituciones ──────────────────────────────────────────
   @Post()
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 creaciones por minuto
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
@@ -124,6 +132,7 @@ export class InstitutionsController {
 
   // ─── PUT /instituciones/:id ───────────────────────────────────────
   @Put(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones por minuto
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({

@@ -3,11 +3,13 @@ import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, 
 import { FavoritesService } from './favorites.service'
 import { InstitucionDto } from '../institutions/dto/respuestas-institucion.dto'
 import { RespuestaAlternarFavoritoDto } from './dto/respuestas-favorito.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Favoritos')
 @ApiBearerAuth('jwt-auth')
@@ -17,16 +19,19 @@ export class FavoritesController {
   constructor(private readonly svc: FavoritesService) {}
 
   @Get()
+  @UseETag()
   @ApiOperation({ summary: 'Instituciones guardadas', description: 'Retorna las instituciones que el usuario ha marcado como favoritas con datos completos' })
   @ApiOkResponse({ type: [InstitucionDto], description: 'Lista de instituciones favoritas' })
   findAll(@CurrentUser() user: CurrentUserPayload) { return this.svc.findByUser(user.id) }
 
   @Get('ids')
+  @UseETag()
   @ApiOperation({ summary: 'IDs de favoritos', description: 'Retorna solo los IDs de instituciones guardadas (respuesta ligera)' })
   @ApiOkResponse({ type: [String], description: 'Arreglo de IDs' })
   getIds(@CurrentUser() user: CurrentUserPayload) { return this.svc.getFavoriteIds(user.id) }
 
   @Post(':institutionId/alternar')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 alternancias por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('favoritos')
   @ApiOperation({ summary: 'Agregar/quitar de favoritos', description: 'Alterna el estado de favorito. Si ya existe lo elimina, si no existe lo crea.' })

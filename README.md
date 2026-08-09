@@ -138,7 +138,8 @@ raices-backend/
 - Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`, `FIREBASE_API_KEY`) se consumen vía `ConfigService` (variables de entorno) y, en producción, se montan desde **GCP Secret Manager** en Cloud Run (`--set-secrets`) — nunca se inyectan en la imagen Docker
 - Vertex AI se autentica con **Application Default Credentials** (cuenta de servicio de Cloud Run); no requiere API key embebida
 - Las credenciales de Firebase se validan al iniciar (JSON bien formado, `project_id` consistente)
-- Rate limiting habilitado (100 requests/minuto)
+- Rate limiting habilitado (60 requests/minuto por IP, configurable con `THROTTLE_TTL`/`THROTTLE_LIMIT`; límites más estrictos en endpoints de escritura y IA)
+- ETag + caché en memoria (30s, configurable con `ETAG_CACHE_TTL_MS`) en todos los GET: responde `304 Not Modified` sin consultar Firestore cuando el cliente reenvía `If-None-Match`
 - CORS configurado para orígenes específicos
 
 ---

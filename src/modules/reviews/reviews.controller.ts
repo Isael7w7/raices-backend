@@ -5,11 +5,13 @@ import { EnviarResenaDto } from './dto/enviar-resena.dto'
 import { ActualizarResenaDto } from './dto/actualizar-resena.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { ResenaDto, PaginaResenasDto, ResenaGuardadaDto } from './dto/respuestas-resena.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Reseñas')
 @Controller('resenas')
@@ -17,6 +19,7 @@ export class ReviewsController {
   constructor(private readonly svc: ReviewsService) {}
 
   @Get('institucion/:id')
+  @UseETag()
   @ApiOperation({ summary: 'Reseñas de una institución', description: 'Retorna reseñas con paginación' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
@@ -25,6 +28,7 @@ export class ReviewsController {
   byInstitution(@Param('id') id: string, @Query() paginacion: PaginacionDto) { return this.svc.findByInstitution(id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Get('mias')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Mis reseñas', description: 'Retorna las reseñas del usuario con paginación' })
@@ -34,6 +38,7 @@ export class ReviewsController {
   mine(@CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) { return this.svc.myReviews(user.id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Put(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 ediciones por minuto
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Editar reseña', description: 'Actualiza calificación y/o comentario. Solo el autor. Recalcula promedio.' })
@@ -59,6 +64,7 @@ export class ReviewsController {
   }
 
   @Post('institucion/:id')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 reseñas por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('resenas')
   @ApiBearerAuth('jwt-auth')

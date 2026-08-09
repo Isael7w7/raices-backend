@@ -10,11 +10,13 @@ import {
   GrupoDto, PaginaGruposDto, PublicacionDto, PaginaPublicacionesDto, ComentarioDto, PaginaComentariosDto,
   RespuestaMeGustaDto, RespuestaUnirseDto, RespuestaSalirDto, EstadisticasComunidadDto, MiembroDto, PaginaMiembrosDto,
 } from './dto/respuestas-comunidad.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Comunidad')
 @Controller('comunidad')
@@ -22,6 +24,7 @@ export class CommunityController {
   constructor(private readonly svc: CommunityService) {}
 
   @Get('grupos')
+  @UseETag()
   @ApiOperation({ summary: 'Listar grupos públicos', description: 'Retorna grupos de comunidad con paginación, ordenados por miembros' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
@@ -29,6 +32,7 @@ export class CommunityController {
   groups(@Query() paginacion: PaginacionDto) { return this.svc.getGroups(paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Get('publicaciones')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Listar publicaciones', description: 'Retorna publicaciones con paginación, información del autor y me gusta' })
@@ -41,6 +45,7 @@ export class CommunityController {
   }
 
   @Get('publicaciones/:id/comentarios')
+  @UseETag()
   @ApiOperation({ summary: 'Comentarios de una publicación', description: 'Retorna comentarios con paginación' })
   @ApiParam({ name: 'id', description: 'ID de la publicación' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
@@ -49,6 +54,7 @@ export class CommunityController {
   comments(@Param('id') id: string, @Query() paginacion: PaginacionDto) { return this.svc.getComments(id, paginacion.pagina, paginacion.limite) }
 
   @Post('publicaciones')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 publicaciones por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('comunidad')
   @ApiBearerAuth('jwt-auth')
@@ -61,6 +67,7 @@ export class CommunityController {
   }
 
   @Post('publicaciones/:id/comentarios')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 comentarios por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('comunidad')
   @ApiBearerAuth('jwt-auth')
@@ -74,6 +81,7 @@ export class CommunityController {
   }
 
   @Post('publicaciones/:id/me-gusta')
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 me gusta por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('comunidad')
   @ApiBearerAuth('jwt-auth')
@@ -87,6 +95,7 @@ export class CommunityController {
   }
 
   @Put('publicaciones/:id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 ediciones por minuto
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('comunidad')
   @ApiBearerAuth('jwt-auth')
@@ -114,6 +123,7 @@ export class CommunityController {
   }
 
   @Post('grupos')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 grupos por minuto
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Crear grupo', description: 'Crea un nuevo grupo de comunidad' })
@@ -124,6 +134,7 @@ export class CommunityController {
   }
 
   @Post('grupos/:id/unirse')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Unirse a grupo', description: 'Registra al usuario como miembro del grupo' })
@@ -135,6 +146,7 @@ export class CommunityController {
   }
 
   @Post('grupos/:id/salir')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
   @HttpCode(200)
@@ -148,6 +160,7 @@ export class CommunityController {
   }
 
   @Get('estadisticas')
+  @UseETag()
   @ApiOperation({ summary: 'Estadísticas de comunidad', description: 'Retorna métricas: total grupos, publicaciones, comentarios' })
   @ApiOkResponse({ type: EstadisticasComunidadDto, description: 'Estadísticas de la comunidad' })
   stats() {
@@ -155,6 +168,7 @@ export class CommunityController {
   }
 
   @Get('miembros')
+  @UseETag()
   @ApiOperation({ summary: 'Miembros/testimonios públicos', description: 'Retorna perfiles activos con bio para la sección de testimonios de la comunidad. Endpoint público, sin autenticación.' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
