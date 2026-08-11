@@ -1,7 +1,8 @@
 # 🚀 Guía de Integración Frontend — Raíces para Florecer
 
-**Última actualización:** 11 de agosto, 2026  
-**Backend API:** `https://raices-backend-jftu6lrbda-uc.a.run.app/api`  
+**Última actualización:** 11 de agosto, 2026  \
+**Stack del frontend:** React 18 + Vite + React Router v6 (+ opcional Axios)  \
+**Backend API:** `https://raices-backend-jftu6lrbda-uc.a.run.app/api`  \
 **Documentación Swagger:** `https://raices-backend-jftu6lrbda-uc.a.run.app/docs`
 
 ---
@@ -23,7 +24,7 @@
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
 │   Frontend  │────▶│   Backend   │────▶│  Firebase   │
-│  (Cliente)  │◀────│  (NestJS)   │◀────│  (Auth)     │
+│  (React)    │◀────│  (NestJS)   │◀────│  (Auth)     │
 └─────────────┘     └─────────────┘     └─────────────┘
        │                   │                   │
        │  1. Login         │                   │
@@ -32,15 +33,16 @@
        │                   │  3. ID Token      │
        │                   │◀──────────────────│
        │  4. { tokenAcceso, tokenRefresco }    │
+       │     + Set-Cookie httpOnly            │
        │◀──────────────────│                   │
        │                   │                   │
        │  5. Request API   │                   │
-       │  Authorization:   │                   │
        │  Bearer <token>   │                   │
+       │  o cookie httpOnly│                   │
+       │  (automática)     │                   │
        │──────────────────▶│  6. Verificar     │
        │                   │  token con        │
        │                   │  verifyIdToken()  │
-       │                   │──────────────────▶│
        │  7. Respuesta     │                   │
        │◀──────────────────│                   │
 ```
@@ -73,330 +75,287 @@ interface FeatureFlags {
 }
 ```
 
+> **Nuevo (11 de agosto, 2026):** además del body, `login` y `renovar-token`
+> entregan los tokens como **cookies httpOnly** (`token_acceso`, `token_refresco`).
+> El backend acepta autenticación por cookie **o** por header `Authorization: Bearer`.
+> Ver [Flujo Recomendado: Cookies httpOnly](#4-flujo-recomendado-cookies-httponly-sin-localstorage).
+
 ---
 
 ## 🔐 Autenticación
 
-### 1. Servicio de Autenticación
+### 1. Contexto de Autenticación
 
-```typescript
-// auth.service.ts
-import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
-import { Router } from '@angular/router';
+El equivalente React del "servicio de autenticación": un `AuthContext` que
+guarda el **perfil del usuario en memoria** (nunca el token) y expone el hook
+`useAuth()`. Con el flujo de cookies httpOnly, **el token no toca el JS**:
+el navegador lo adjunta solo.
+
+```tsx
+// src/auth/auth-context.tsx
+import { createContext, useContext, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
+
+const API_URL = 'https://raices-backend-jftu6lrbda-uc.a.run.app/api'
 
 interface LoginResponse {
-  tokenAcceso: string;
-  tokenRefresco: string;
-  expiraEn: number;
-  usuario: Usuario;
+  tokenAcceso: string
+  tokenRefresco: string
+  expiraEn: number
+  usuario: Usuario
 }
 
-@Injectable({
-  providedIn: 'root'
-})
-export class AuthService {
-  private readonly API_URL = 'https://raices-backend-jftu6lrbda-uc.a.run.app/api';
-  private readonly TOKEN_KEY = 'tokenAcceso';
-  private readonly REFRESH_KEY = 'tokenRefresco';
-  private readonly USER_KEY = 'usuario';
-  
-  private usuarioActual$ = new BehaviorSubject<Usuario | null>(null);
-  private tokenRefreshTimeout: any;
-
-  constructor(
-    private http: HttpClient,
-    private router: Router
-  ) {
-    this.cargarSesion();
-  }
-
-  // =====================
-  // MÉTODOS PÚBLICOS
-  // =====================
-
-  /**
-   * Registrar nuevo usuario
-   */
-  async registro(datos: RegistroDto): Promise<void> {
-    await this.http.post(`${this.API_URL}/autenticacion/registro`, datos)
-      .toPromise();
-    // El registro NO retorna tokens - debes hacer login después
-  }
-
-  /**
-   * Iniciar sesión
-   */
-  async login(email: string, password: string): Promise<Usuario> {
-    const response = await this.http.post<LoginResponse>(
-      `${this.API_URL}/autenticacion/inicio-sesion`,
-      { email, password }
-    ).toPromise();
-
-    this.guardarSesion(response!);
-    this.programarRenovacion(response!.expiraEn);
-    
-    return response!.usuario;
-  }
-
-  /**
-   * Cerrar sesión
-   */
-  logout(): void {
-    localStorage.removeItem(this.TOKEN_KEY);
-    localStorage.removeItem(this.REFRESH_KEY);
-    localStorage.removeItem(this.USER_KEY);
-    
-    if (this.tokenRefreshTimeout) {
-      clearTimeout(this.tokenRefreshTimeout);
-    }
-    
-    this.usuarioActual$.next(null);
-    this.router.navigate(['/login']);
-  }
-
-  /**
-   * Obtener token actual
-   */
-  getToken(): string | null {
-    return localStorage.getItem(this.TOKEN_KEY);
-  }
-
-  /**
-   * Obtener usuario actual
-   */
-  getUsuario(): Observable<Usuario | null> {
-    return this.usuarioActual$.asObservable();
-  }
-
-  /**
-   * Verificar si está autenticado
-   */
-  estaAutenticado(): boolean {
-    const token = this.getToken();
-    return token !== null && !this.tokenExpirado(token);
-  }
-
-  /**
-   * Verificar si tiene un feature habilitado
-   */
-  tieneFeature(feature: keyof FeatureFlags): boolean {
-    const usuario = this.usuarioActual$.value;
-    return usuario?.features?.[feature] ?? false;
-  }
-
-  /**
-   * Verificar si tiene uno de los roles requeridos
-   */
-  tieneRol(...roles: string[]): boolean {
-    const usuario = this.usuarioActual$.value;
-    return usuario ? roles.includes(usuario.rol) : false;
-  }
-
-  // =====================
-  // MÉTODOS PRIVADOS
-  // =====================
-
-  private guardarSesion(response: LoginResponse): void {
-    localStorage.setItem(this.TOKEN_KEY, response.tokenAcceso);
-    localStorage.setItem(this.REFRESH_KEY, response.tokenRefresco);
-    localStorage.setItem(this.USER_KEY, JSON.stringify(response.usuario));
-    
-    this.usuarioActual$.next(response.usuario);
-  }
-
-  private cargarSesion(): void {
-    const token = localStorage.getItem(this.TOKEN_KEY);
-    const usuarioStr = localStorage.getItem(this.USER_KEY);
-    
-    if (token && usuarioStr && !this.tokenExpirado(token)) {
-      const usuario = JSON.parse(usuarioStr);
-      this.usuarioActual$.next(usuario);
-      this.programarRenovacion(this.calcularTiempoRestante(token));
-    }
-  }
-
-  private async renovarToken(): Promise<void> {
-    const tokenRefresco = localStorage.getItem(this.REFRESH_KEY);
-    if (!tokenRefresco) {
-      this.logout();
-      return;
-    }
-
-    try {
-      const response = await this.http.post<LoginResponse>(
-        `${this.API_URL}/autenticacion/renovar-token`,
-        { tokenRefresco }
-      ).toPromise();
-
-      this.guardarSesion(response!);
-      this.programarRenovacion(response!.expiraEn);
-    } catch (error) {
-      console.error('Error renovando token:', error);
-      this.logout();
-    }
-  }
-
-  private programarRenovacion(expiraEn: number): void {
-    // Renovar 5 minutos antes de expirar
-    const tiempoRenovacion = (expiraEn - 300) * 1000;
-    
-    if (this.tokenRefreshTimeout) {
-      clearTimeout(this.tokenRefreshTimeout);
-    }
-    
-    this.tokenRefreshTimeout = setTimeout(
-      () => this.renovarToken(),
-      tiempoRenovacion
-    );
-  }
-
-  private tokenExpirado(token: string): boolean {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      const expiraEn = payload.exp * 1000;
-      return Date.now() >= expiraEn;
-    } catch {
-      return true;
-    }
-  }
-
-  private calcularTiempoRestante(token: string): number {
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      const expiraEn = payload.exp * 1000;
-      return Math.max(0, (expiraEn - Date.now()) / 1000);
-    } catch {
-      return 0;
-    }
-  }
+interface AuthContextValue {
+  usuario: Usuario | null
+  login: (email: string, password: string) => Promise<Usuario>
+  logout: () => Promise<void>
+  renovarToken: () => Promise<void>
+  tieneFeature: (feature: keyof FeatureFlags) => boolean
+  tieneRol: (...roles: string[]) => boolean
 }
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [usuario, setUsuario] = useState<Usuario | null>(null)
+
+  // Rehidratación al cargar la app: como el JS no puede leer la cookie
+  // httpOnly, se consulta GET /autenticacion/yo (el navegador manda la cookie
+  // sola gracias a credentials: 'include').
+  useEffect(() => {
+    fetch(`${API_URL}/autenticacion/yo`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((u) => { if (u) setUsuario(u) })
+      .catch(() => { /* sin sesión: estado inicial null */ })
+  }, [])
+
+  async function login(email: string, password: string): Promise<Usuario> {
+    const res = await fetch(`${API_URL}/autenticacion/inicio-sesion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',          // ← el navegador guarda las cookies httpOnly
+      body: JSON.stringify({ email, password }),
+    })
+    if (!res.ok) throw new Error('Credenciales incorrectas')
+    const data: LoginResponse = await res.json()
+    setUsuario(data.usuario)           // solo el perfil: el token vive en la cookie
+    return data.usuario
+  }
+
+  async function logout(): Promise<void> {
+    // Las cookies httpOnly NO se pueden borrar desde JS: el backend debe
+    // eliminarlas vía POST /autenticacion/cerrar-sesion (obligatorio).
+    try {
+      await fetch(`${API_URL}/autenticacion/cerrar-sesion`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } finally {
+      setUsuario(null)
+    }
+  }
+
+  async function renovarToken(): Promise<void> {
+    // El backend lee token_refresco de la cookie httpOnly: no hace falta body.
+    const res = await fetch(`${API_URL}/autenticacion/renovar-token`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!res.ok) throw new Error('Sesión expirada')
+    const data: LoginResponse = await res.json()
+    setUsuario(data.usuario)
+  }
+
+  function tieneFeature(feature: keyof FeatureFlags): boolean {
+    return usuario?.features?.[feature] ?? false
+  }
+
+  function tieneRol(...roles: string[]): boolean {
+    return usuario ? roles.includes(usuario.rol) : false
+  }
+
+  return (
+    <AuthContext.Provider value={{ usuario, login, logout, renovarToken, tieneFeature, tieneRol }}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+// Hook para consumir el contexto desde cualquier componente
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext)
+  if (!ctx) throw new Error('useAuth debe usarse dentro de <AuthProvider>')
+  return ctx
+}
+```
+
+**Migración desde el flujo legado (Bearer):** si por compatibilidad el cliente
+aún envía el header `Authorization: Bearer`, guardar `tokenAcceso` **solo en
+memoria** (una variable/ref, nunca en `localStorage`) y adjuntarlo en cada
+request. La cookie httpOnly es la vía segura recomendada.
+
+---
+
+### 2. Cliente HTTP (fetch wrapper)
+
+Con cookies httpOnly el navegador adjunta la cookie sola, así que este wrapper
+es opcional. Se mantiene para (a) agregar el header Bearer en el flujo legado y
+(b) centralizar el manejo de errores y el reintento ante 401.
+
+```typescript
+// src/api/http.ts
+import { useAuth } from '../auth/auth-context' // solo para el flujo legado
+
+const API_URL = 'https://raices-backend-jftu6lrbda-uc.a.run.app/api'
+
+// Token en memoria (flujo legado Bearer). Con cookies httpOnly no es necesario.
+let tokenEnMemoria: string | null = null
+
+export function guardarTokenLegado(token: string | null) {
+  tokenEnMemoria = token
+}
+
+interface RequestOptions extends RequestInit {
+  autenticado?: boolean
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { autenticado = true, headers, ...rest } = options
+
+  const res = await fetch(`${API_URL}${path}`, {
+    ...rest,
+    credentials: 'include', // clave: enviar/recibir cookies httpOnly
+    headers: {
+      'Content-Type': 'application/json',
+      ...(autenticado && tokenEnMemoria ? { Authorization: `Bearer ${tokenEnMemoria}` } : {}),
+      ...headers,
+    },
+  })
+
+  if (!res.ok) {
+    throw new ApiError(res.status, await res.text())
+  }
+  return res.status === 204 ? (undefined as T) : res.json()
+}
+```
+
+> **Nota (flujo cookies):** con `credentials: 'include'` y cookies httpOnly, el
+> wrapper no necesita el header Bearer — el navegador adjunta la cookie sola.
+> El manejo de 401 → renovar → reintentar se puede implementar con un `fetch`
+> reinvocado (o un interceptor de Axios) usando `useAuth().renovarToken()`.
+
+---
+
+### 3. Configuración en React
+
+```tsx
+// src/main.tsx
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import { AuthProvider } from './auth/auth-context'
+import { App } from './App'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>
+)
 ```
 
 ---
 
-### 2. Interceptor HTTP (Agregar Token Automáticamente)
+### 4. Flujo Recomendado: Cookies httpOnly (sin localStorage)
+
+> Este es el flujo **recomendado**: los tokens nunca tocan el JavaScript del
+> cliente (ni localStorage), por lo que un XSS no puede robarlos.
+
+**Cómo funciona**
+
+1. `login()` con `credentials: 'include'` → el backend responde con los tokens
+   en el body **y** con las cookies `httpOnly` (`token_acceso` de 1h y
+   `token_refresco` de 30 días). El navegador las guarda automáticamente.
+2. En cada request, el navegador adjunta la cookie sola: **no hay que manejar
+   ningún token desde JS** (ni headers ni interceptors).
+3. Al recargar la página, rehidratar con `GET /autenticacion/yo`
+   (`credentials: 'include'`): el JS no puede leer la cookie, así que esta es
+   la única forma de saber quién es el usuario.
+4. Para renovar: `POST /autenticacion/renovar-token` sin body — el backend lee
+   `token_refresco` de la cookie.
+5. Para cerrar sesión: `POST /autenticacion/cerrar-sesion` — el backend borra
+   las cookies (el JS no puede borrar cookies httpOnly).
+
+**Ejemplo (fetch nativo)**
 
 ```typescript
-// auth.interceptor.ts
-import { Injectable } from '@angular/core';
-import {
-  HttpInterceptor,
-  HttpRequest,
-  HttpHandler,
-  HttpEvent,
-  HttpErrorResponse
-} from '@angular/common/http';
-import { Observable, throwError, BehaviorSubject } from 'rxjs';
-import { catchError, filter, take, switchMap } from 'rxjs/operators';
-import { AuthService } from './auth.service';
+// Login: el navegador recibe y guarda las cookies httpOnly
+const res = await fetch(`${API_URL}/autenticacion/inicio-sesion`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include',          // ← clave: enviar/recibir cookies
+  body: JSON.stringify({ email, password }),
+});
+const { usuario } = await res.json();
 
-@Injectable()
-export class AuthInterceptor implements HttpInterceptor {
-  private isRefreshing = false;
-  private refreshTokenSubject: BehaviorSubject<any> = new BehaviorSubject<any>(null);
+// Cualquier request autenticado: solo credentials: 'include'
+const perfil = await fetch(`${API_URL}/autenticacion/yo`, {
+  credentials: 'include',          // el navegador manda la cookie solo
+}).then(r => r.json());
 
-  constructor(private authService: AuthService) {}
-
-  intercept(
-    request: HttpRequest<any>,
-    next: HttpHandler
-  ): Observable<HttpEvent<any>> {
-    
-    // Agregar token a las peticiones
-    const token = this.authService.getToken();
-    
-    if (token) {
-      request = this.agregarToken(request, token);
-    }
-
-    return next.handle(request).pipe(
-      catchError((error: HttpErrorResponse) => {
-        // Si es error 401 y no es el login, intentar refresh
-        if (error.status === 401 && !request.url.includes('inicio-sesion')) {
-          return this.manejarError401(request, next);
-        }
-        return throwError(() => error);
-      })
-    );
-  }
-
-  private agregarToken(request: HttpRequest<any>, token: string): HttpRequest<any> {
-    return request.clone({
-      setHeaders: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  }
-
-  private manejarError401(
-    request: HttpRequest<any>,
-    next: HttpHandler
-  ): Observable<HttpEvent<any>> {
-    
-    if (!this.isRefreshing) {
-      this.isRefreshing = true;
-      this.refreshTokenSubject.next(null);
-
-      return this.renovarToken().pipe(
-        switchMap((nuevoToken: string) => {
-          this.isRefreshing = false;
-          this.refreshTokenSubject.next(nuevoToken);
-          return next.handle(this.agregarToken(request, nuevoToken));
-        }),
-        catchError((error) => {
-          this.isRefreshing = false;
-          this.authService.logout();
-          return throwError(() => error);
-        })
-      );
-    }
-
-    // Esperar a que se renueve el token
-    return this.refreshTokenSubject.pipe(
-      filter(token => token != null),
-      take(1),
-      switchMap(token => {
-        return next.handle(this.agregarToken(request, token));
-      })
-    );
-  }
-
-  private renovarToken(): Observable<string> {
-    // Implementar lógica de renovación
-    // similar a AuthService.renovarToken()
-    return new Observable();
-  }
-}
+// Logout: el servidor borra las cookies httpOnly
+await fetch(`${API_URL}/autenticacion/cerrar-sesion`, {
+  method: 'POST',
+  credentials: 'include',
+});
 ```
 
----
-
-### 3. Configuración en Angular
+**Mismo flujo con Axios**
 
 ```typescript
-// app.module.ts
-import { NgModule } from '@angular/core';
-import { HTTP_INTERCEPTORS, HttpClientModule } from '@angular/common/http';
-import { AuthInterceptor } from './auth.interceptor';
+// axios instance con withCredentials: true (envía/recibe cookies siempre)
+const api = axios.create({
+  baseURL: 'https://raices-backend-jftu6lrbda-uc.a.run.app/api',
+  withCredentials: true,
+});
 
-@NgModule({
-  imports: [
-    HttpClientModule,
-    // ... otros imports
-  ],
-  providers: [
-    {
-      provide: HTTP_INTERCEPTORS,
-      useClass: AuthInterceptor,
-      multi: true
-    }
-  ],
-  bootstrap: [AppComponent]
-})
-export class AppModule {}
+// Login → el navegador guarda las cookies httpOnly
+const { data } = await api.post('/autenticacion/inicio-sesion', { email, password });
+const usuario = data.usuario;
+
+// Renovar sin body: el backend lee token_refresco de la cookie
+await api.post('/autenticacion/renovar-token');
+
+// Logout: el backend borra las cookies httpOnly
+await api.post('/autenticacion/cerrar-sesion');
 ```
+
+**⚠️ Importante (deploy cross-site)**
+
+Si el frontend y la API están en **orígenes distintos** (p. ej. frontend en
+`raices.techmaleon.com.mx` y API en Cloud Run `*.run.app`), la cookie
+`SameSite=Lax` (default) **no se envía** en requests cross-site. Para que el
+flujo de cookies funcione hay que configurar en el backend:
+
+```
+COOKIE_SAMESITE=none
+COOKIE_SECURE=true      # obligatorio con none; el deploy de Cloud Run ya lo activa
+```
+
+`SameSite=None` reabre la superficie CSRF, pero el backend ya la mitiga
+validando el header `Origin` en peticiones de escritura autenticadas por cookie.
+
+**Resumen de endpoints de sesión**
+
+| Endpoint | Uso |
+|----------|-----|
+| `POST /autenticacion/inicio-sesion` | Login → tokens en body + cookies httpOnly |
+| `POST /autenticacion/renovar-token` | Renovar (body o cookie `token_refresco`) |
+| `POST /autenticacion/cerrar-sesion` | Cerrar sesión → borra cookies (204) |
+| `GET /autenticacion/yo` | Perfil del usuario autenticado (rehidratación) |
 
 ---
 
@@ -405,7 +364,7 @@ export class AppModule {}
 ### 1. Estructura de Features
 
 ```typescript
-// feature-flags.ts
+// src/types/features.ts
 export interface FeatureFlags {
   chat: boolean;           // Mensajería entre usuarios
   postulaciones: boolean;  // Sistema de empleo
@@ -423,349 +382,234 @@ export const FEATURES_POR_DEFECTO: FeatureFlags = {
   resenas: true,
   descubrimiento: true,
   favoritos: true,
-  multimedia: true
+  multimedia: true,
 };
 ```
 
-### 2. Guard de Features (Angular)
+### 2. Guard de Ruta: RequireFeature
 
-```typescript
-// feature.guard.ts
-import { Injectable } from '@angular/core';
-import {
-  CanActivate,
-  ActivatedRouteSnapshot,
-  RouterStateSnapshot,
-  Router
-} from '@angular/router';
-import { AuthService } from './auth.service';
+```tsx
+// src/components/RequireFeature.tsx
+import { Navigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../auth/auth-context'
 
-@Injectable({
-  providedIn: 'root'
-})
-export class FeatureGuard implements CanActivate {
-  
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
+export function RequireFeature({
+  feature,
+  children,
+}: {
+  feature: keyof FeatureFlags
+  children: ReactNode
+}) {
+  const { usuario, tieneFeature } = useAuth()
+  const location = useLocation()
 
-  canActivate(
-    route: ActivatedRouteSnapshot,
-    state: RouterStateSnapshot
-  ): boolean {
-    
-    const featureRequerida = route.data['feature'] as keyof FeatureFlags;
-    
-    if (!featureRequerida) {
-      return true; // No se requiere feature específica
-    }
-
-    if (this.authService.tieneFeature(featureRequerida)) {
-      return true;
-    }
-
-    // Redirigir a página de "acceso denegado"
-    this.router.navigate(['/acceso-denegado'], {
-      queryParams: { feature: featureRequerida }
-    });
-    
-    return false;
+  if (!usuario) {
+    return <Navigate to="/login" state={{ from: location }} replace />
   }
+  if (!tieneFeature(feature)) {
+    return <Navigate to="/acceso-denegado" replace />
+  }
+  return children
 }
 ```
 
-### 3. Guard de Roles (Angular)
+### 3. Guard de Ruta: RequireRole
 
-```typescript
-// role.guard.ts
-import { Injectable } from '@angular/core';
-import {
-  CanActivate,
-  ActivatedRouteSnapshot,
-  Router
-} from '@angular/router';
-import { AuthService } from './auth.service';
+```tsx
+// src/components/RequireRole.tsx
+import { Navigate, useLocation } from 'react-router-dom'
+import { useAuth } from '../auth/auth-context'
 
-@Injectable({
-  providedIn: 'root'
-})
-export class RoleGuard implements CanActivate {
-  
-  constructor(
-    private authService: AuthService,
-    private router: Router
-  ) {}
+export function RequireRole({
+  roles,
+  children,
+}: {
+  roles: string[]
+  children: ReactNode
+}) {
+  const { usuario, tieneRol } = useAuth()
+  const location = useLocation()
 
-  canActivate(route: ActivatedRouteSnapshot): boolean {
-    const rolesRequeridos = route.data['roles'] as string[];
-    
-    if (!rolesRequeridos || rolesRequeridos.length === 0) {
-      return true;
-    }
-
-    if (this.authService.tieneRol(...rolesRequeridos)) {
-      return true;
-    }
-
-    this.router.navigate(['/acceso-denegado']);
-    return false;
+  if (!usuario) {
+    return <Navigate to="/login" state={{ from: location }} replace />
   }
+  if (!tieneRol(...roles)) {
+    return <Navigate to="/acceso-denegado" replace />
+  }
+  return children
 }
 ```
 
-### 4. Configuración de Rutas
+### 4. Configuración de Rutas (React Router v6)
 
-```typescript
-// app-routing.module.ts
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
-import { AuthGuard } from './auth.guard';
-import { FeatureGuard } from './feature.guard';
-import { RoleGuard } from './role.guard';
+```tsx
+// src/App.tsx
+import { Routes, Route } from 'react-router-dom'
+import { RequireRole } from './components/RequireRole'
+import { RequireFeature } from './components/RequireFeature'
 
-const routes: Routes = [
-  // Públicas
-  { path: 'login', component: LoginComponent },
-  { path: 'registro', component: RegistroComponent },
-  
-  // Protegidas - Cualquier usuario autenticado
-  {
-    path: 'perfil',
-    component: PerfilComponent,
-    canActivate: [AuthGuard]
-  },
-  
-  // Protegidas - Requieren feature específica
-  {
-    path: 'empleo',
-    canActivate: [AuthGuard, FeatureGuard],
-    data: { feature: 'postulaciones' },
-    children: [
-      {
-        path: '',
-        component: ListaVacantesComponent
-      },
-      {
-        path: ':id',
-        component: DetalleVacanteComponent
-      }
-    ]
-  },
-  
-  // Protegidas - Requieren rol específico
-  {
-    path: 'institucion',
-    canActivate: [AuthGuard, RoleGuard],
-    data: { roles: ['institucion', 'admin'] },
-    children: [
-      {
-        path: 'mis-vacantes',
-        component: MisVacantesComponent
-      },
-      {
-        path: 'postulantes',
-        component: PostulantesComponent
-      }
-    ]
-  },
-  
-  // Admin
-  {
-    path: 'admin',
-    canActivate: [AuthGuard, RoleGuard],
-    data: { roles: ['admin'] },
-    children: [
-      {
-        path: '',
-        component: DashboardAdminComponent
-      },
-      {
-        path: 'usuarios',
-        component: UsuariosAdminComponent
-      },
-      {
-        path: 'instituciones',
-        component: InstitucionesAdminComponent
-      }
-    ]
-  }
-];
+export function App() {
+  return (
+    <Routes>
+      {/* Públicas */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/registro" element={<Registro />} />
+      <Route path="/acceso-denegado" element={<AccesoDenegado />} />
 
-@NgModule({
-  imports: [RouterModule.forRoot(routes)],
-  exports: [RouterModule]
-})
-export class AppRoutingModule {}
+      {/* Protegidas - Cualquier usuario autenticado */}
+      <Route
+        path="/perfil"
+        element={
+          <RequireRole roles={['pcd', 'tutor', 'institucion', 'admin']}>
+            <Perfil />
+          </RequireRole>
+        }
+      />
+
+      {/* Protegidas - Requieren feature específica */}
+      <Route
+        path="/empleo/*"
+        element={
+          <RequireFeature feature="postulaciones">
+            <EmpleoLayout />
+          </RequireFeature>
+        }
+      />
+
+      {/* Protegidas - Requieren rol específico */}
+      <Route
+        path="/institucion/*"
+        element={
+          <RequireRole roles={['institucion', 'admin']}>
+            <InstitucionLayout />
+          </RequireRole>
+        }
+      />
+
+      {/* Admin */}
+      <Route
+        path="/admin/*"
+        element={
+          <RequireRole roles={['admin']}>
+            <AdminLayout />
+          </RequireRole>
+        }
+      />
+    </Routes>
+  )
+}
 ```
-
----
 
 ### 5. Componente con Verificación de Feature
 
-```typescript
-// empleo.component.ts
-import { Component, OnInit } from '@angular/core';
-import { AuthService } from '../auth.service';
+```tsx
+// src/pages/Empleo.tsx
+import { useAuth } from '../auth/auth-context'
 
-@Component({
-  selector: 'app-empleo',
-  template: `
-    <!-- Header -->
-    <header>
-      <h1>Bolsa de Trabajo Inclusivo</h1>
-    </header>
+export function Empleo() {
+  const { tieneFeature, tieneRol } = useAuth()
 
-    <!-- Solo mostrar si tiene la feature -->
-    <ng-container *ngIf="authService.tieneFeature('postulaciones')">
-      
-      <!-- Botón para instituciones -->
-      <button 
-        *ngIf="authService.tieneRol('institucion', 'admin')"
-        (click)="crearVacante()">
-        + Crear Vacante
-      </button>
-
-      <!-- Lista de vacantes -->
-      <div class="vacantes">
-        <div *ngFor="let vacante of vacantes" class="vacante-card">
-          <h3>{{ vacante.titulo }}</h3>
-          <p>{{ vacante.descripcion }}</p>
-          <p>{{ vacante.institucionNombre }}</p>
-          
-          <!-- Botón postularse solo para PCD/Tutor -->
-          <button 
-            *ngIf="authService.tieneRol('pcd', 'tutor')"
-            (click)="postularse(vacante.id)">
-            Postularme
-          </button>
-          
-          <!-- Ver postulantes solo para Institución -->
-          <button 
-            *ngIf="authService.tieneRol('institucion', 'admin')"
-            (click)="verPostulantes(vacante.id)">
-            Ver Postulantes ({{ vacante.totalPostulantes }})
-          </button>
-        </div>
+  if (!tieneFeature('postulaciones')) {
+    return (
+      <div className="acceso-denegado">
+        <p>Esta función no está disponible para tu cuenta.</p>
       </div>
-    </ng-container>
+    )
+  }
 
-    <!-- Mensaje si no tiene feature -->
-    <div *ngIf="!authService.tieneFeature('postulaciones')" 
-         class="acceso-denegado">
-      <p>Esta función no está disponible para tu cuenta.</p>
+  return (
+    <div>
+      <h1>Bolsa de Trabajo Inclusivo</h1>
+
+      {/* Solo instituciones */}
+      {tieneRol('institucion', 'admin') && (
+        <button onClick={crearVacante}>+ Crear Vacante</button>
+      )}
+
+      {/* Lista de vacantes */}
+      <div className="vacantes">
+        {vacantes.map((vacante) => (
+          <div key={vacante.id} className="vacante-card">
+            <h3>{vacante.titulo}</h3>
+            <p>{vacante.descripcion}</p>
+            <p>{vacante.institucionNombre}</p>
+
+            {/* Solo PCD/Tutor */}
+            {tieneRol('pcd', 'tutor') && (
+              <button onClick={() => postularse(vacante.id)}>Postularme</button>
+            )}
+
+            {/* Solo Institución */}
+            {tieneRol('institucion', 'admin') && (
+              <button onClick={() => verPostulantes(vacante.id)}>
+                Ver Postulantes ({vacante.totalPostulantes})
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
-  `
-})
-export class EmpleoComponent implements OnInit {
-  vacantes: any[] = [];
-
-  constructor(public authService: AuthService) {}
-
-  ngOnInit(): void {
-    this.cargarVacantes();
-  }
-
-  async cargarVacantes(): Promise<void> {
-    // Lógica para cargar vacantes
-  }
-
-  async postularse(vacanteId: string): Promise<void> {
-    // Lógica para postularse
-  }
-
-  verPostulantes(vacanteId: string): void {
-    // Navegar a página de postulantes
-  }
-
-  crearVacante(): void {
-    // Navegar a formulario de crear vacante
-  }
+  )
 }
 ```
 
----
+### 6. Componente IfFeature (renderizado condicional)
 
-### 6. Directiva de Feature
+```tsx
+// src/components/IfFeature.tsx
+import type { ReactNode } from 'react'
+import { useAuth } from '../auth/auth-context'
 
-```typescript
-// feature.directive.ts
-import { Directive, Input, TemplateRef, ViewContainerRef } from '@angular/core';
-import { AuthService } from './auth.service';
-
-@Directive({
-  selector: '[appFeature]'
-})
-export class FeatureDirective {
-  
-  constructor(
-    private templateRef: TemplateRef<any>,
-    private viewContainer: ViewContainerRef,
-    private authService: AuthService
-  ) {}
-
-  @Input() set appFeature(feature: string) {
-    if (this.authService.tieneFeature(feature as any)) {
-      this.viewContainer.createEmbeddedView(this.templateRef);
-    } else {
-      this.viewContainer.clear();
-    }
-  }
+export function IfFeature({
+  feature,
+  children,
+}: {
+  feature: keyof FeatureFlags
+  children: ReactNode
+}) {
+  const { tieneFeature } = useAuth()
+  return tieneFeature(feature) ? children : null
 }
 
-// Uso en HTML:
-// <ng-container *appFeature="'postulaciones'">
-//   <button>Crear Vacante</button>
-// </ng-container>
+// Uso en JSX:
+// <IfFeature feature="postulaciones">
+//   <button onClick={crearVacante}>Crear Vacante</button>
+// </IfFeature>
 ```
 
----
+### 7. Componente IfRole
 
-### 7. Directiva de Rol
+```tsx
+// src/components/IfRole.tsx
+import type { ReactNode } from 'react'
+import { useAuth } from '../auth/auth-context'
 
-```typescript
-// role.directive.ts
-import { Directive, Input, TemplateRef, ViewContainerRef } from '@angular/core';
-import { AuthService } from './auth.service';
-
-@Directive({
-  selector: '[appRole]'
-})
-export class RoleDirective {
-  
-  constructor(
-    private templateRef: TemplateRef<any>,
-    private viewContainer: ViewContainerRef,
-    private authService: AuthService
-  ) {}
-
-  @Input() set appRole(roles: string | string[]) {
-    const rolesArray = Array.isArray(roles) ? roles : [roles];
-    
-    if (this.authService.tieneRol(...rolesArray)) {
-      this.viewContainer.createEmbeddedView(this.templateRef);
-    } else {
-      this.viewContainer.clear();
-    }
-  }
+export function IfRole({
+  roles,
+  children,
+}: {
+  roles: string | string[]
+  children: ReactNode
+}) {
+  const { tieneRol } = useAuth()
+  const rolesArray = Array.isArray(roles) ? roles : [roles]
+  return tieneRol(...rolesArray) ? children : null
 }
 
-// Uso en HTML:
-// <button *appRole="'institucion'">Crear Vacante</button>
-// <button *appRole="['institucion', 'admin']">Administrar</button>
+// Uso en JSX:
+// <IfRole roles="institucion"><button>Administrar</button></IfRole>
+// <IfRole roles={['institucion', 'admin']}><button>Administrar</button></IfRole>
 ```
 
 ---
 
 ## 📡 Ejemplos de Integración
 
-### 1. Obtener Postulantes de una Vacante
+### 1. Servicio de Postulantes
 
 ```typescript
-// postulantes.service.ts
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+// src/services/postulantes.service.ts
+import { request } from '../api/http'
 
 interface Postulante {
   postulacionId: string;
@@ -785,544 +629,297 @@ interface RespuestaPostulantes {
   totalResultados: number;
 }
 
-@Injectable({
-  providedIn: 'root'
-})
-export class PostulantesService {
-  private readonly API_URL = 'https://raices-backend-jftu6lrbda-uc.a.run.app/api';
+export interface FiltrosPostulantes {
+  vacanteId?: string;
+  estado?: string;
+  buscar?: string;
+  page?: number;
+  limite?: number;
+}
 
-  constructor(private http: HttpClient) {}
-
-  /**
-   * Obtener postulantes de una vacante específica
-   * Requiere: rol institucion o admin
-   */
-  obtenerPostulantesPorVacante(
-    vacanteId: string,
-    filtros?: {
-      estado?: string;
-      buscar?: string;
-      page?: number;
-      limite?: number;
-    }
-  ): Observable<RespuestaPostulantes> {
-    
-    let params = new HttpParams().set('vacanteId', vacanteId);
-    
-    if (filtros?.estado) {
-      params = params.set('estado', filtros.estado);
-    }
-    if (filtros?.buscar) {
-      params = params.set('buscar', filtros.buscar);
-    }
-    if (filtros?.page) {
-      params = params.set('page', filtros.page.toString());
-    }
-    if (filtros?.limite) {
-      params = params.set('limite', filtros.limite.toString());
-    }
-
-    return this.http.get<RespuestaPostulantes>(
-      `${this.API_URL}/empleo/postulantes-vacante`,
-      { params }
-    );
+function aQueryParams(filtros?: FiltrosPostulantes): string {
+  const params = new URLSearchParams()
+  if (filtros) {
+    Object.entries(filtros).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.set(key, String(value))
+      }
+    })
   }
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
 
-  /**
-   * Alias: obtener postulantes (compatibilidad con frontend existente)
-   */
-  obtenerPostulacionesPorVacante(
-    vacanteId: string,
-    filtros?: any
-  ): Observable<RespuestaPostulantes> {
-    
-    let params = new HttpParams().set('vacanteId', vacanteId);
-    
-    if (filtros) {
-      Object.keys(filtros).forEach(key => {
-        if (filtros[key] !== undefined && filtros[key] !== null) {
-          params = params.set(key, filtros[key].toString());
-        }
-      });
-    }
+/**
+ * Obtener postulantes de una vacante específica
+ * Requiere: rol institucion o admin
+ */
+export function obtenerPostulantesPorVacante(filtros?: FiltrosPostulantes): Promise<RespuestaPostulantes> {
+  return request(`/empleo/postulantes-vacante${aQueryParams(filtros)}`)
+}
 
-    return this.http.get<RespuestaPostulantes>(
-      `${this.API_URL}/empleo/postulaciones`,
-      { params }
-    );
-  }
-
-  /**
-   * Obtener todos los postulantes de MI institución
-   */
-  obtenerMisPostulantes(
-    filtros?: {
-      vacanteId?: string;
-      estado?: string;
-      buscar?: string;
-      page?: number;
-      limite?: number;
-    }
-  ): Observable<RespuestaPostulantes> {
-    
-    let params = new HttpParams();
-    
-    if (filtros) {
-      Object.keys(filtros).forEach(key => {
-        if (filtros[key as keyof typeof filtros] !== undefined) {
-          params = params.set(key, filtros[key as keyof typeof filtros]!.toString());
-        }
-      });
-    }
-
-    return this.http.get<RespuestaPostulantes>(
-      `${this.API_URL}/empleo/postulantes-institucion`,
-      { params }
-    );
-  }
-
-  /**
-   * Cambiar estado de una postulación
-   */
-  cambiarEstado(
-    postulacionId: string,
-    estado: string,
-    comentarios?: string
-  ): Observable<any> {
-    return this.http.patch(
-      `${this.API_URL}/empleo/postulaciones/${postulacionId}/estado`,
-      { estado, comentarios }
-    );
-  }
+/** Cambiar estado de una postulación */
+export function cambiarEstado(
+  postulacionId: string,
+  estado: string,
+  comentarios?: string
+): Promise<unknown> {
+  return request(`/empleo/postulaciones/${postulacionId}/estado`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado, comentarios }),
+  })
 }
 ```
 
----
-
 ### 2. Componente de Postulantes
 
-```typescript
-// postulantes.component.ts
-import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { PostulantesService } from './postulantes.service';
-import { AuthService } from '../auth.service';
+```tsx
+// src/pages/Postulantes.tsx
+import { useEffect, useState } from 'react'
+import {
+  obtenerPostulantesPorVacante,
+  cambiarEstado,
+  type FiltrosPostulantes,
+  type Postulante,
+} from '../services/postulantes.service'
 
-@Component({
-  selector: 'app-postulantes',
-  template: `
-    <div class="postulantes-container">
-      <h2>Postulantes - {{ vacanteTitulo }}</h2>
-      
-      <!-- Filtros -->
-      <div class="filtros">
-        <select [(ngModel)]="filtroEstado" (change)="aplicarFiltros()">
+export function Postulantes({ vacanteId }: { vacanteId: string }) {
+  const [postulantes, setPostulantes] = useState<Postulante[]>([])
+  const [paginaActual, setPaginaActual] = useState(1)
+  const [totalPaginas, setTotalPaginas] = useState(1)
+  const [filtroEstado, setFiltroEstado] = useState('')
+  const [filtroBuscar, setFiltroBuscar] = useState('')
+
+  useEffect(() => {
+    cargarPostulantes()
+  }, [paginaActual, filtroEstado, filtroBuscar])
+
+  async function cargarPostulantes() {
+    try {
+      const filtros: FiltrosPostulantes = {
+        vacanteId,
+        estado: filtroEstado || undefined,
+        buscar: filtroBuscar || undefined,
+        page: paginaActual,
+        limite: 10,
+      }
+      const response = await obtenerPostulantesPorVacante(filtros)
+      setPostulantes(response.datos)
+      setTotalPaginas(response.totalPaginas)
+    } catch (error) {
+      console.error('Error cargando postulantes:', error)
+    }
+  }
+
+  async function cambiarEstadoPostulacion(postulacionId: string, nuevoEstado: string) {
+    try {
+      await cambiarEstado(postulacionId, nuevoEstado)
+      cargarPostulantes() // recargar lista
+    } catch (error) {
+      console.error('Error cambiando estado:', error)
+    }
+  }
+
+  return (
+    <div className="postulantes-container">
+      <h2>Postulantes</h2>
+
+      {/* Filtros */}
+      <div className="filtros">
+        <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
           <option value="">Todos los estados</option>
           <option value="pendiente">Pendiente</option>
           <option value="aceptada">Aceptada</option>
           <option value="rechazada">Rechazada</option>
           <option value="en_revision">En revisión</option>
         </select>
-        
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder="Buscar por nombre o email..."
-          [(ngModel)]="filtroBuscar"
-          (keyup.enter)="aplicarFiltros()">
-        
-        <button (click)="aplicarFiltros()">Buscar</button>
+          value={filtroBuscar}
+          onChange={(e) => setFiltroBuscar(e.target.value)}
+        />
       </div>
 
-      <!-- Lista de postulantes -->
-      <div class="lista-postulantes">
-        <div *ngFor="let postulante of postulantes" class="postulante-card">
-          <img 
-            [src]="postulante.avatarUrl || 'assets/default-avatar.png'" 
-            [alt]="postulante.nombreCompleto"
-            class="avatar">
-          
-          <div class="info">
-            <h3>{{ postulante.nombreCompleto }}</h3>
-            <p>{{ postulante.email }}</p>
-            <p class="fecha">
-              Postuló: {{ postulante.fechaPostulacion | date:'medium' }}
-            </p>
+      {/* Lista */}
+      <div className="lista-postulantes">
+        {postulantes.map((postulante) => (
+          <div key={postulante.postulacionId} className="postulante-card">
+            <img
+              src={postulante.avatarUrl || '/assets/default-avatar.png'}
+              alt={postulante.nombreCompleto}
+              className="avatar"
+            />
+            <div className="info">
+              <h3>{postulante.nombreCompleto}</h3>
+              <p>{postulante.email}</p>
+              <p className="fecha">
+                Postuló: {new Date(postulante.fechaPostulacion).toLocaleString()}
+              </p>
+            </div>
+            <div className={`estado ${postulante.estado}`}>
+              {postulante.estado}
+            </div>
+            <div className="acciones">
+              {postulante.estado === 'pendiente' && (
+                <>
+                  <button onClick={() => cambiarEstadoPostulacion(postulante.postulacionId, 'aceptada')}>
+                    ✅ Aceptar
+                  </button>
+                  <button onClick={() => cambiarEstadoPostulacion(postulante.postulacionId, 'rechazada')}>
+                    ❌ Rechazar
+                  </button>
+                </>
+              )}
+            </div>
           </div>
+        ))}
+      </div>
 
-          <div class="estado" [ngClass]="postulante.estado">
-            {{ postulante.estado | titlecase }}
-          </div>
-
-          <div class="acciones">
-            <button 
-              *ngIf="postulante.estado === 'pendiente'"
-              (click)="cambiarEstado(postulante.postulacionId, 'aceptada')">
-              ✅ Aceptar
-            </button>
-            <button 
-              *ngIf="postulante.estado === 'pendiente'"
-              (click)="cambiarEstado(postulante.postulacionId, 'rechazada')">
-              ❌ Rechazar
-            </button>
-            <button (click)="verDetalle(postulante)">
-              👁️ Ver Detalle
-            </button>
-          </div>
+      {/* Paginación */}
+      {totalPaginas > 1 && (
+        <div className="paginacion">
+          <button disabled={paginaActual === 1} onClick={() => setPaginaActual(paginaActual - 1)}>
+            ← Anterior
+          </button>
+          <span>Página {paginaActual} de {totalPaginas}</span>
+          <button disabled={paginaActual === totalPaginas} onClick={() => setPaginaActual(paginaActual + 1)}>
+            Siguiente →
+          </button>
         </div>
-      </div>
-
-      <!-- Paginación -->
-      <div class="paginacion" *ngIf="totalPaginas > 1">
-        <button 
-          [disabled]="paginaActual === 1"
-          (click)="cambiarPagina(paginaActual - 1)">
-          ← Anterior
-        </button>
-        <span>Página {{ paginaActual }} de {{ totalPaginas }}</span>
-        <button 
-          [disabled]="paginaActual === totalPaginas"
-          (click)="cambiarPagina(paginaActual + 1)">
-          Siguiente →
-        </button>
-      </div>
+      )}
     </div>
-  `,
-  styles: [`
-    .postulantes-container {
-      padding: 20px;
-    }
-    
-    .filtros {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 20px;
-    }
-    
-    .postulante-card {
-      display: flex;
-      align-items: center;
-      padding: 15px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-    
-    .avatar {
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      margin-right: 15px;
-    }
-    
-    .info {
-      flex: 1;
-    }
-    
-    .estado {
-      padding: 5px 10px;
-      border-radius: 4px;
-      font-weight: bold;
-      margin-right: 15px;
-    }
-    
-    .estado.pendiente { background: #fff3cd; color: #856404; }
-    .estado.aceptada { background: #d4edda; color: #155724; }
-    .estado.rechazada { background: #f8d7da; color: #721c24; }
-    .estado.en_revision { background: #cce5ff; color: #004085; }
-    
-    .acciones {
-      display: flex;
-      gap: 5px;
-    }
-    
-    .paginacion {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 15px;
-      margin-top: 20px;
-    }
-  `]
-})
-export class PostulantesComponent implements OnInit {
-  vacanteId: string = '';
-  vacanteTitulo: string = '';
-  postulantes: any[] = [];
-  paginaActual: number = 1;
-  totalPaginas: number = 1;
-  totalResultados: number = 0;
-  
-  filtroEstado: string = '';
-  filtroBuscar: string = '';
-
-  constructor(
-    private route: ActivatedRoute,
-    private postulantesService: PostulantesService,
-    public authService: AuthService
-  ) {}
-
-  ngOnInit(): void {
-    this.vacanteId = this.route.snapshot.params['vacanteId'] || '';
-    this.cargarPostulantes();
-  }
-
-  async cargarPostulantes(): Promise<void> {
-    try {
-      const response = await this.postulantesService
-        .obtenerPostulantesPorVacante(this.vacanteId, {
-          estado: this.filtroEstado,
-          buscar: this.filtroBuscar,
-          page: this.paginaActual,
-          limite: 10
-        })
-        .toPromise();
-
-      this.postulantes = response?.datos || [];
-      this.totalPaginas = response?.totalPaginas || 1;
-      this.totalResultados = response?.totalResultados || 0;
-    } catch (error) {
-      console.error('Error cargando postulantes:', error);
-    }
-  }
-
-  aplicarFiltros(): void {
-    this.paginaActual = 1;
-    this.cargarPostulantes();
-  }
-
-  cambiarPagina(pagina: number): void {
-    this.paginaActual = pagina;
-    this.cargarPostulantes();
-  }
-
-  async cambiarEstado(
-    postulacionId: string, 
-    nuevoEstado: string
-  ): Promise<void> {
-    try {
-      await this.postulantesService
-        .cambiarEstado(postulacionId, nuevoEstado)
-        .toPromise();
-      
-      // Recargar lista
-      this.cargarPostulantes();
-    } catch (error) {
-      console.error('Error cambiando estado:', error);
-    }
-  }
-
-  verDetalle(postulante: any): void {
-    // Abrir modal o navegar a detalle
-    console.log('Ver detalle:', postulante);
-  }
+  )
 }
 ```
 
----
-
-### 3. Servicio de Empleo (Completo)
+### 3. Servicio de Empleo
 
 ```typescript
-// empleo.service.ts
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+// src/services/empleo.service.ts
+import { request } from '../api/http'
 
-@Injectable({
-  providedIn: 'root'
-})
-export class EmpleoService {
-  private readonly API_URL = 'https://raices-backend-jftu6lrbda-uc.a.run.app/api';
+// =====================
+// VACANTES (Público)
+// =====================
 
-  constructor(private http: HttpClient) {}
-
-  // =====================
-  // VACANTES (Público)
-  // =====================
-
-  /**
-   * Listar vacantes disponibles
-   */
-  listarVacantes(filtros?: {
-    buscar?: string;
-    institucionId?: string;
-    modalidad?: string;
-    discapacidad?: string;
-    page?: number;
-    limite?: number;
-  }): Observable<any> {
-    let params = new HttpParams();
-    
-    if (filtros) {
-      Object.keys(filtros).forEach(key => {
-        const value = filtros[key as keyof typeof filtros];
-        if (value !== undefined && value !== null) {
-          params = params.set(key, value.toString());
-        }
-      });
-    }
-
-    return this.http.get(`${this.API_URL}/empleo`, { params });
+/** Listar vacantes disponibles */
+export function listarVacantes(filtros?: {
+  buscar?: string
+  institucionId?: string
+  modalidad?: string
+  discapacidad?: string
+  page?: number
+  limite?: number
+}): Promise<unknown> {
+  const params = new URLSearchParams()
+  if (filtros) {
+    Object.entries(filtros).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) params.set(key, String(value))
+    })
   }
+  const qs = params.toString()
+  return request(`/empleo${qs ? `?${qs}` : ''}`)
+}
 
-  /**
-   * Obtener detalle de vacante
-   */
-  obtenerVacante(id: string): Observable<any> {
-    return this.http.get(`${this.API_URL}/empleo/${id}`);
+/** Obtener detalle de vacante */
+export function obtenerVacante(id: string): Promise<unknown> {
+  return request(`/empleo/${id}`)
+}
+
+// =====================
+// VACANTES (Institución)
+// =====================
+
+/** Crear nueva vacante — requiere rol institucion o admin */
+export function crearVacante(datos: {
+  titulo: string
+  descripcion: string
+  requisitos?: string[]
+  modalidad?: string
+  salario?: string
+  ubicacion?: string
+  horario?: string
+  tiposDiscapacidad?: string[]
+  contactoEmail?: string
+  contactoTelefono?: string
+}): Promise<unknown> {
+  return request('/empleo', { method: 'POST', body: JSON.stringify(datos) })
+}
+
+/** Actualizar vacante */
+export function actualizarVacante(id: string, datos: unknown): Promise<unknown> {
+  return request(`/empleo/${id}`, { method: 'PUT', body: JSON.stringify(datos) })
+}
+
+/** Eliminar/desactivar vacante */
+export function eliminarVacante(id: string): Promise<unknown> {
+  return request(`/empleo/${id}`, { method: 'DELETE' })
+}
+
+// =====================
+// POSTULACIONES (PCD/Tutor)
+// =====================
+
+/** Postularse a una vacante */
+export function postularse(vacanteId: string, cartaPresentacion: string): Promise<unknown> {
+  return request(`/empleo/${vacanteId}/postularse`, {
+    method: 'POST',
+    body: JSON.stringify({ cartaPresentacion }),
+  })
+}
+
+/** Obtener IDs de vacantes postuladas */
+export function obtenerVacantesPostuladas(): Promise<unknown> {
+  return request('/empleo/postuladas')
+}
+
+/** Obtener mis postulaciones con detalles */
+export function obtenerMisPostulaciones(filtros?: { estado?: string; buscar?: string }): Promise<unknown> {
+  const params = new URLSearchParams()
+  if (filtros?.estado) params.set('estado', filtros.estado)
+  if (filtros?.buscar) params.set('buscar', filtros.buscar)
+  const qs = params.toString()
+  return request(`/empleo/mis-postulaciones${qs ? `?${qs}` : ''}`)
+}
+
+// =====================
+// POSTULANTES (Institución)
+// =====================
+
+/** Obtener postulantes de MI institución */
+export function obtenerPostulantesMiInstitucion(filtros?: {
+  vacanteId?: string
+  estado?: string
+  buscar?: string
+  page?: number
+  limite?: number
+}): Promise<unknown> {
+  const params = new URLSearchParams()
+  if (filtros) {
+    Object.entries(filtros).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) params.set(key, String(value))
+    })
   }
+  const qs = params.toString()
+  return request(`/empleo/postulantes-institucion${qs ? `?${qs}` : ''}`)
+}
 
-  // =====================
-  // VACANTES (Institución)
-  // =====================
+/** Alias: obtener postulantes por vacante */
+export function obtenerPostulacionesPorVacante(vacanteId: string, filtros?: unknown): Promise<unknown> {
+  return request(`/empleo/postulaciones?vacanteId=${encodeURIComponent(vacanteId)}`)
+}
 
-  /**
-   * Crear nueva vacante
-   * Requiere: rol institucion o admin
-   */
-  crearVacante(datos: {
-    titulo: string;
-    descripcion: string;
-    requisitos?: string[];
-    modalidad?: string;
-    salario?: string;
-    ubicacion?: string;
-    horario?: string;
-    tiposDiscapacidad?: string[];
-    contactoEmail?: string;
-    contactoTelefono?: string;
-  }): Observable<any> {
-    return this.http.post(`${this.API_URL}/empleo`, datos);
-  }
-
-  /**
-   * Actualizar vacante
-   */
-  actualizarVacante(id: string, datos: any): Observable<any> {
-    return this.http.put(`${this.API_URL}/empleo/${id}`, datos);
-  }
-
-  /**
-   * Eliminar/desactivar vacante
-   */
-  eliminarVacante(id: string): Observable<any> {
-    return this.http.delete(`${this.API_URL}/empleo/${id}`);
-  }
-
-  // =====================
-  // POSTULACIONES (PCD/Tutor)
-  // =====================
-
-  /**
-   * Postularse a una vacante
-   */
-  postularse(vacanteId: string, cartaPresentacion: string): Observable<any> {
-    return this.http.post(`${this.API_URL}/empleo/${vacanteId}/postularse`, {
-      cartaPresentacion
-    });
-  }
-
-  /**
-   * Obtener IDs de vacantes postuladas
-   */
-  obtenerVacantesPostuladas(): Observable<any> {
-    return this.http.get(`${this.API_URL}/empleo/postuladas`);
-  }
-
-  /**
-   * Obtener mis postulaciones con detalles
-   */
-  obtenerMisPostulaciones(filtros?: {
-    estado?: string;
-    buscar?: string;
-  }): Observable<any> {
-    let params = new HttpParams();
-    
-    if (filtros?.estado) {
-      params = params.set('estado', filtros.estado);
-    }
-    if (filtros?.buscar) {
-      params = params.set('buscar', filtros.buscar);
-    }
-
-    return this.http.get(`${this.API_URL}/empleo/mis-postulaciones`, { params });
-  }
-
-  // =====================
-  // POSTULANTES (Institución)
-  // =====================
-
-  /**
-   * Obtener postulantes de MI institución
-   */
-  obtenerPostulantesMiInstitucion(filtros?: {
-    vacanteId?: string;
-    estado?: string;
-    buscar?: string;
-    page?: number;
-    limite?: number;
-  }): Observable<any> {
-    let params = new HttpParams();
-    
-    if (filtros) {
-      Object.keys(filtros).forEach(key => {
-        const value = filtros[key as keyof typeof filtros];
-        if (value !== undefined && value !== null) {
-          params = params.set(key, value.toString());
-        }
-      });
-    }
-
-    return this.http.get(`${this.API_URL}/empleo/postulantes-institucion`, { params });
-  }
-
-  /**
-   * Obtener postulantes de una vacante específica
-   */
-  obtenerPostulantesPorVacante(vacanteId: string, filtros?: any): Observable<any> {
-    let params = new HttpParams().set('vacanteId', vacanteId);
-    
-    if (filtros) {
-      Object.keys(filtros).forEach(key => {
-        if (filtros[key] !== undefined) {
-          params = params.set(key, filtros[key].toString());
-        }
-      });
-    }
-
-    return this.http.get(`${this.API_URL}/empleo/postulantes-vacante`, { params });
-  }
-
-  /**
-   * Alias: obtener postulantes por vacante
-   */
-  obtenerPostulacionesPorVacante(vacanteId: string, filtros?: any): Observable<any> {
-    let params = new HttpParams().set('vacanteId', vacanteId);
-    
-    if (filtros) {
-      Object.keys(filtros).forEach(key => {
-        if (filtros[key] !== undefined) {
-          params = params.set(key, filtros[key].toString());
-        }
-      });
-    }
-
-    return this.http.get(`${this.API_URL}/empleo/postulaciones`, { params });
-  }
-
-  /**
-   * Cambiar estado de postulación
-   */
-  cambiarEstadoPostulacion(
-    postulacionId: string,
-    estado: string,
-    comentarios?: string
-  ): Observable<any> {
-    return this.http.patch(`${this.API_URL}/empleo/postulaciones/${postulacionId}/estado`, {
-      estado,
-      comentarios
-    });
-  }
+/** Cambiar estado de postulación */
+export function cambiarEstadoPostulacion(
+  postulacionId: string,
+  estado: string,
+  comentarios?: string
+): Promise<unknown> {
+  return request(`/empleo/postulaciones/${postulacionId}/estado`, {
+    method: 'PATCH',
+    body: JSON.stringify({ estado, comentarios }),
+  })
 }
 ```
 
@@ -1333,101 +930,83 @@ export class EmpleoService {
 ### Tipos de Error del Backend
 
 ```typescript
-// error-handler.service.ts
-import { Injectable } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
-import { ToastrService } from 'ngx-toastr';
-
-interface BackendError {
-  statusCode: number;
-  message: string;
-  error: string;
+// src/api/errores.ts
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
 }
 
-@Injectable({
-  providedIn: 'root'
-})
-export class ErrorHandlerService {
-  
-  constructor(private toastr: ToastrService) {}
-
-  manejarError(error: HttpErrorResponse): void {
-    const backendError = error.error as BackendError;
-    
-    switch (error.status) {
-      case 400:
-        this.toastr.error(
-          backendError?.message || 'Datos inválidos',
-          'Error de validación'
-        );
-        break;
-        
-      case 401:
-        this.toastr.error(
-          'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.',
-          'No autorizado'
-        );
-        // Redirigir a login
-        break;
-        
-      case 403:
-        this.toastr.error(
-          backendError?.message || 'No tienes permisos para esta acción',
-          'Acceso denegado'
-        );
-        break;
-        
-      case 404:
-        this.toastr.error(
-          backendError?.message || 'El recurso no fue encontrado',
-          'No encontrado'
-        );
-        break;
-        
-      case 409:
-        this.toastr.error(
-          backendError?.message || 'El recurso ya existe',
-          'Conflicto'
-        );
-        break;
-        
-      case 429:
-        this.toastr.warning(
-          'Has realizado demasiadas peticiones. Espera un momento.',
-          'Límite alcanzado'
-        );
-        break;
-        
-      case 500:
-        this.toastr.error(
-          'Error interno del servidor. Intenta más tarde.',
-          'Error del servidor'
-        );
-        break;
-        
-      default:
-        this.toastr.error(
-          'Ocurrió un error inesperado',
-          'Error'
-        );
-    }
+/**
+ * Traduce una Response de fetch a una excepción ApiError con el mensaje
+ * del backend (NestJS devuelve { statusCode, message, error }).
+ */
+export async function aErrorApi(res: Response): Promise<ApiError> {
+  let mensaje = 'Error del servidor'
+  try {
+    const body = await res.json()
+    mensaje = Array.isArray(body?.message) ? body.message.join(', ') : body?.message ?? mensaje
+  } catch {
+    /* body no es JSON: usar mensaje genérico */
   }
-
-  /**
-   * Verificar si el error es de permisos
-   */
-  esErrorPermisos(error: HttpErrorResponse): boolean {
-    return error.status === 403;
-  }
-
-  /**
-   * Verificar si el error es de autenticación
-   */
-  esErrorAutenticacion(error: HttpErrorResponse): boolean {
-    return error.status === 401;
-  }
+  return new ApiError(res.status, mensaje)
 }
 ```
+
+### Hook de Errores con Toasts
+
+```tsx
+// src/hooks/useManejarError.ts
+import { useCallback } from 'react'
+import { toast } from 'react-hot-toast' // o la librería de toasts de tu preferencia
+import { ApiError } from '../api/errores'
+import { useAuth } from '../auth/auth-context'
+import { useNavigate } from 'react-router-dom'
+
+export function useManejarError() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+
+  return useCallback((error: unknown) => {
+    if (error instanceof ApiError) {
+      switch (error.status) {
+        case 401:
+          toast.error('Tu sesión ha expirado. Inicia sesión nuevamente.')
+          logout()
+          navigate('/login')
+          break
+        case 403:
+          toast.error(error.message || 'No tienes permisos para esta acción')
+          break
+        case 429:
+          toast.error('Has realizado demasiadas peticiones. Espera un momento.')
+          break
+        default:
+          toast.error(error.message || 'Ocurrió un error')
+      }
+    } else {
+      toast.error('Ocurrió un error inesperado')
+    }
+  }, [logout, navigate])
+}
+```
+
+### Tabla de Códigos de Error
+
+| Código | Mensaje | Causa | Solución |
+|--------|---------|-------|----------|
+| `400` | Token de refresco requerido | Falta `tokenRefresco` en body y cookie | Enviar body o cookie |
+| `401` | Token inválido o expirado | Sesión vencida o token corrupto | Renovar con `renovarToken()` o relogin |
+| `403` | Origen no permitido (posible CSRF) | Origin no permitido en request con cookie | Verificar `CORS_ORIGINS` |
+| `403` | Rol insuficiente | Usuario sin el rol requerido | Verificar `tieneRol()` antes de navegar |
+| `403` | Feature desactivada | Feature no habilitada para el usuario | Verificar `tieneFeature()` antes de mostrar UI |
+| `404` | Recurso no encontrado | ID inexistente | Validar ID / mostrar estado vacío |
+| `409` | Conflicto | Recurso duplicado (email, institución) | Mostrar mensaje del backend |
+| `429` | Too Many Requests | Rate limit excedido | Esperar y reintentar |
 
 ---
 
@@ -1435,105 +1014,115 @@ export class ErrorHandlerService {
 
 ### 1. Siempre Verificar Features Antes de Mostrar UI
 
-```typescript
+```tsx
 // ❌ MAL
-<button (click)="crearVacante()">Crear Vacante</button>
+<button onClick={crearVacante}>Crear Vacante</button>
 
 // ✅ BIEN
-<button 
-  *ngIf="authService.tieneFeature('postulaciones')"
-  (click)="crearVacante()">
-  Crear Vacante
-</button>
+<IfFeature feature="postulaciones">
+  <button onClick={crearVacante}>Crear Vacante</button>
+</IfFeature>
 ```
 
 ### 2. Verificar Roles para Acciones Sensibles
 
-```typescript
+```tsx
 // ❌ MAL
-<button (click)="eliminarVacante()">Eliminar</button>
+<button onClick={eliminarVacante}>Eliminar</button>
 
 // ✅ BIEN
-<button 
-  *ngIf="authService.tieneRol('institucion', 'admin')"
-  (click)="eliminarVacante()">
-  Eliminar
-</button>
+<IfRole roles={['institucion', 'admin']}>
+  <button onClick={eliminarVacante}>Eliminar</button>
+</IfRole>
 ```
 
 ### 3. Usar Guards en Rutas
 
-```typescript
+```tsx
 // ❌ MAL - Sin protección
-{ path: 'empleo', component: EmpleoComponent }
+<Route path="empleo" element={<Empleo />} />
 
 // ✅ BIEN - Con guards
-{
-  path: 'empleo',
-  canActivate: [AuthGuard, FeatureGuard],
-  data: { feature: 'postulaciones' },
-  component: EmpleoComponent
-}
+<Route
+  path="empleo"
+  element={
+    <RequireFeature feature="postulaciones">
+      <Empleo />
+    </RequireFeature>
+  }
+/>
 ```
 
 ### 4. Manejar Errores de Permiso
 
-```typescript
-async cargarPostulantes(): Promise<void> {
+```tsx
+async function cargarPostulantes() {
   try {
-    const response = await this.postulantesService
-      .obtenerPostulantesPorVacante(this.vacanteId)
-      .toPromise();
-    
-    this.postulantes = response?.datos || [];
+    const response = await obtenerPostulantesPorVacante({ vacanteId })
+    setPostulantes(response.datos)
   } catch (error) {
-    if (this.errorHandler.esErrorPermisos(error)) {
-      // Mostrar mensaje amigable
-      this.toastr.info(
-        'No tienes permiso para ver los postulantes de esta vacante.',
-        'Acceso restringido'
-      );
-      // O redirigir
-      this.router.navigate(['/empleo']);
+    if (error instanceof ApiError && error.status === 403) {
+      toast('No tienes permiso para ver los postulantes de esta vacante.')
+      navigate('/empleo')
     } else {
-      this.errorHandler.manejarError(error);
+      manejarError(error)
     }
   }
 }
 ```
 
-### 5. Cache de Tokens
+### 5. Evitar Múltiples Renovaciones Simultáneas
 
-```typescript
-// Evitar múltiples refresh tokens simultáneos
-private isRefreshing = false;
-private refreshTokenSubject = new BehaviorSubject<string | null>(null);
+Con el flujo de cookies, la renovación es silenciosa (`POST /renovar-token` con
+la cookie). Si implementás reintento ante 401, usá un flag para evitar ráfagas:
 
-intercept(request: HttpRequest<any>, next: HttpHandler) {
-  // ... lógica de token
+```tsx
+// Ejemplo: un solo refresco a la vez
+const renovando = useRef(false)
+
+async function reintentarConRenovacion(fn: () => Promise<unknown>) {
+  if (renovando.current) return
+  renovando.current = true
+  try {
+    await renovarToken()
+    return await fn()
+  } finally {
+    renovando.current = false
+  }
 }
 ```
 
-### 6. Lazy Loading de Módulos
+### 6. Lazy Loading de Módulos (React.lazy)
 
-```typescript
-// app-routing.module.ts
-const routes: Routes = [
-  {
-    path: 'empleo',
-    loadChildren: () => import('./empleo/empleo.module')
-      .then(m => m.EmpleoModule),
-    canActivate: [AuthGuard, FeatureGuard],
-    data: { feature: 'postulaciones' }
-  },
-  {
-    path: 'admin',
-    loadChildren: () => import('./admin/admin.module')
-      .then(m => m.AdminModule),
-    canActivate: [AuthGuard, RoleGuard],
-    data: { roles: ['admin'] }
-  }
-];
+```tsx
+// src/App.tsx
+import { lazy, Suspense } from 'react'
+
+const Empleo = lazy(() => import('./pages/Empleo'))
+const Admin = lazy(() => import('./pages/Admin'))
+
+<Routes>
+  <Route
+    path="/empleo/*"
+    element={
+      <Suspense fallback={<Cargando />}>
+        <RequireFeature feature="postulaciones">
+          <Empleo />
+        </RequireFeature>
+      </Suspense>
+    }
+  />
+  <Route
+    path="/admin/*"
+    element={
+      <Suspense fallback={<Cargando />}>
+        <RequireRole roles={['admin']}>
+          <Admin />
+        </RequireRole>
+      </Suspense>
+    }
+  />
+</Routes>
 ```
 
 ---
@@ -1543,12 +1132,17 @@ const routes: Routes = [
 - **Swagger UI:** https://raices-backend-jftu6lrbda-uc.a.run.app/docs
 - **Health Check:** https://raices-backend-jftu6lrbda-uc.a.run.app/api/health
 - **Documentación de Endpoints:** [API-ENDPOINTS.md](./API-ENDPOINTS.md)
+- **Flujo de Autenticación (diagramas):** [AUTH-FLOW.md](./AUTH-FLOW.md)
 
 ---
 
 ## 🔄 Cambios Recientes
 
 ### Agosto 2026
+- ✅ Sesión con cookies httpOnly (`token_acceso`, `token_refresco`) en login/refresh; el guard acepta Bearer o cookie
+- ✅ Endpoint `POST /autenticacion/cerrar-sesion` para limpiar cookies httpOnly (JS no puede borrarlas)
+- ✅ Defensa CSRF: validación de `Origin` en peticiones de escritura autenticadas por cookie (403)
+- ✅ Guía migrada de Angular a **React** (React 18 + Vite + React Router v6)
 - ✅ Nuevo endpoint `GET /empleo/postulantes-vacante` para consultar postulantes por vacante
 - ✅ Alias `GET /empleo/postulaciones` para compatibilidad
 - ✅ Sistema de feature flags para control granular
