@@ -8,15 +8,16 @@
 ## 📋 Índice
 
 1. [Resumen del Sistema](#-resumen-del-sistema)
-2. [Flujo de Registro](#-flujo-de-registro)
-3. [Flujo de Login](#-flujo-de-login)
-4. [Flujo de Refresh Token](#-flujo-de-refresh-token)
-5. [Flujo de Verificación de Token](#-flujo-de-verificación-de-token)
-6. [Flujo de Control de Acceso](#-flujo-de-control-de-acceso)
-7. [Flujo Completo End-to-End](#-flujo-completo-end-to-end)
-8. [Diagrama de Estados del Token](#-diagrama-de-estados-del-token)
-9. [Flujo de Excepciones](#-flujo-de-excepciones)
-10. [Referencia de Código](#-referencia-de-código)
+2. [Flujo de Sesión Segura (Cookies httpOnly)](#-flujo-de-sesión-segura-cookies-httponly)
+3. [Flujo de Registro](#-flujo-de-registro)
+4. [Flujo de Login](#-flujo-de-login)
+5. [Flujo de Refresh Token](#-flujo-de-refresh-token)
+6. [Flujo de Verificación de Token](#-flujo-de-verificación-de-token)
+7. [Flujo de Control de Acceso](#-flujo-de-control-de-acceso)
+8. [Flujo Completo End-to-End](#-flujo-completo-end-to-end)
+9. [Diagrama de Estados del Token](#-diagrama-de-estados-del-token)
+10. [Flujo de Excepciones](#-flujo-de-excepciones)
+11. [Referencia de Código](#-referencia-de-código)
 
 ---
 
@@ -29,7 +30,8 @@ graph TB
     subgraph Frontend["🖥️ Frontend (Cliente)"]
         UI[Interfaz de Usuario]
         AuthSvc[AuthService]
-        TokenStore[(localStorage)]
+        TokenStore[(localStorage - legado)]
+        Cookies[(Cookies httpOnly<br/>token_acceso / token_refresco)]
         Interceptor[HTTP Interceptor]
     end
 
@@ -51,8 +53,9 @@ graph TB
 
     UI --> AuthSvc
     AuthSvc --> TokenStore
+    AuthSvc --> Cookies
     AuthSvc --> Interceptor
-    Interceptor -->|"Authorization: Bearer <token>"| AuthCtrl
+    Interceptor -->|"Bearer <token> o cookie httpOnly"| AuthCtrl
     AuthCtrl --> AuthSvc2
     AuthSvc2 -->|"signInWithPassword"| AuthAPI
     AuthSvc2 -->|"createUser, verifyIdToken"| AdminSDK
@@ -70,11 +73,62 @@ graph TB
 | Componente | Archivo | Responsabilidad |
 |------------|---------|-----------------|
 | **AuthService** | `src/modules/auth/auth.service.ts` | Lógica de negocio: registro, login, refresh |
-| **FirebaseAuthGuard** | `src/common/guards/firebase-auth.guard.ts` | Verificar token y poblar `request.user` |
+| **AuthController** | `src/modules/auth/auth.controller.ts` | Emite cookies httpOnly (login/refresh) y `cerrar-sesion` |
+| **FirebaseAuthGuard** | `src/common/guards/firebase-auth.guard.ts` | Verificar token (Bearer o cookie) y poblar `request.user` |
 | **RolesGuard** | `src/common/guards/roles.guard.ts` | Verificar rol del usuario |
 | **FeatureGuard** | `src/common/guards/feature.guard.ts` | Verificar features habilitadas |
 | **Firebase Auth REST API** | Externo | Autenticar credenciales, generar tokens |
 | **Firebase Admin SDK** | Externo | Verificar tokens, gestionar usuarios |
+
+---
+
+## 🔒 Flujo de Sesión Segura (Cookies httpOnly)
+
+> **Actualización (11 de agosto, 2026):** el backend ahora entrega los tokens
+> de sesión **además** como cookies `httpOnly`, invisibles para JavaScript.
+> Esto elimina el vector de robo de tokens por XSS que implica guardarlos en
+> `localStorage`. El header `Authorization: Bearer` **sigue funcionando**
+> (migración transparente): el guard acepta ambos mecanismos.
+
+### Mecanismo Dual
+
+| Mecanismo | Cómo llega al backend | Estado |
+|-----------|----------------------|--------|
+| **Cookie httpOnly** (recomendado) | El navegador la envía sola en cada request (no requiere JS) | 🆕 Nuevo |
+| **Header `Authorization: Bearer <token>`** | El frontend lo agrega manualmente | Mantenido (compatibilidad) |
+
+### Cookies de Sesión
+
+| Cookie | Contenido | Duración | Flags |
+|--------|-----------|----------|-------|
+| `token_acceso` | ID token de Firebase (JWT) | 1 hora (`Max-Age=3600`) | `HttpOnly`, `Secure`, `SameSite`, `Path=/` |
+| `token_refresco` | Refresh token de Firebase | 30 días (`Max-Age=2592000`) | `HttpOnly`, `Secure`, `SameSite`, `Path=/` |
+
+- **`HttpOnly`**: `document.cookie` no puede leerla → un XSS no puede robar el token.
+- **`Secure`**: solo viaja por HTTPS. Se activa por defecto cuando `NODE_ENV=production` (el deploy de Cloud Run lo fija); se puede forzar con `COOKIE_SECURE=true|false`.
+- **`SameSite`**: configurable con `COOKIE_SAMESITE` (`lax` por defecto → mitiga CSRF). Si frontend y API están en orígenes distintos (cross-site), usar `none` + `Secure`.
+
+### Endpoints de Sesión
+
+- `POST /autenticacion/inicio-sesion` → `200` + `Set-Cookie` (`token_acceso`, `token_refresco`) + tokens en el body (compatibilidad).
+- `POST /autenticacion/renovar-token` → acepta `tokenRefresco` en el body **o** en la cookie `token_refresco`; renueva ambas cookies.
+- `POST /autenticacion/cerrar-sesion` → `204`, elimina ambas cookies. **Obligatorio** para desloguear: JavaScript no puede borrar cookies `httpOnly`.
+- `GET /autenticacion/yo` → perfil del usuario autenticado (rehidratación tras un refresh de página).
+
+### Protección CSRF
+
+- Con `SameSite=Lax` (default) el navegador no envía la cookie en POST cross-site → CSRF mitigada por el navegador.
+- Defensa en profundidad en el backend: si la autenticación vino de la cookie y el método puede modificar estado (POST/PUT/DELETE), el `FirebaseAuthGuard` valida el header `Origin` contra la lista de orígenes permitidos (`CORS_ORIGINS` + orígenes base). Respuesta `403` si el origen no está permitido.
+- `POST /autenticacion/cerrar-sesion` aplica la misma validación de `Origin` (anti logout-CSRF).
+
+### ¿Qué pasa con localStorage?
+
+Los tokens siguen llegando en el body de la respuesta para no romper clientes existentes, pero **ya no son la vía recomendada**: si el frontend guarda `tokenAcceso`/`tokenRefresco` en `localStorage`, cualquier XSS los roba. El flujo seguro es:
+
+1. Login → el navegador recibe las cookies `httpOnly` automáticamente.
+2. En cada request, el navegador envía la cookie sola (con `credentials: 'include'` / `withCredentials: true`).
+3. Tras recargar la página, rehidratar con `GET /autenticacion/yo` (el JS no puede leer la cookie).
+4. Logout → `POST /autenticacion/cerrar-sesion`.
 
 ---
 
@@ -218,12 +272,14 @@ sequenceDiagram
         S-->>A: 401 "Cuenta desactivada"
     else Todo OK
         S-->>A: 7. Respuesta con tokens y usuario
+        A-->>F: 7b. Set-Cookie: token_acceso y token_refresco (httpOnly)
     end
 
     A-->>F: 200 OK
-    F->>F: 8. Guardar tokens en localStorage
+    F->>F: 8. (Legado) Guardar tokens en localStorage
+    F->>F: 8b. Con withCredentials, el navegador conserva las cookies httpOnly solas
     
-    Note over F: localStorage:<br/>tokenAcceso = idToken<br/>tokenRefresco = refreshToken<br/>usuario = { id, email, rol, ... }
+    Note over F: Cookies httpOnly:<br/>token_acceso = idToken (1h)<br/>token_refresco = refreshToken (30d)<br/>El perfil se rehidrata con GET /autenticacion/yo
     
     F-->>U: ✅ Login exitoso → Redirigir al dashboard
 ```
@@ -255,6 +311,18 @@ sequenceDiagram
 }
 ```
 
+### Cookies httpOnly de la Respuesta
+
+Además del body, `login()` y `renovar-token()` envían los headers `Set-Cookie`:
+
+```
+Set-Cookie: token_acceso=<idToken>; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=3600
+Set-Cookie: token_refresco=<refreshToken>; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000
+```
+
+> Los flags `Secure` y `SameSite` dependen de `COOKIE_SECURE` y `COOKIE_SAMESITE`
+> (ver [Flujo de Sesión Segura](#-flujo-de-sesión-segura-cookies-httponly)).
+
 ### Flujo de Almacenamiento en Frontend
 
 ```mermaid
@@ -263,18 +331,20 @@ graph LR
         A[Respuesta API] --> B[tokenAcceso]
         A --> C[tokenRefresco]
         A --> D[usuario]
+        A -->|Set-Cookie| J[(Cookies httpOnly<br/>token_acceso / token_refresco)]
         
-        B --> E[(localStorage<br/>tokenAcceso)]
-        C --> F[(localStorage<br/>tokenRefresco)]
-        D --> G[(localStorage<br/>usuario)]
+        B --> E[(localStorage<br/>tokenAcceso - legado)]
+        C --> F[(localStorage<br/>tokenRefresco - legado)]
+        D --> G[(localStorage<br/>usuario - legado)]
         
-        E --> H[HTTP Interceptor]
+        J --> H[HTTP Client withCredentials]
+        E --> H
         F --> H
         G --> H
     end
     
     subgraph "En cada petición"
-        H -->|"Authorization: Bearer tokenAcceso"| I[Backend API]
+        H -->|"Bearer <token> o cookie automática"| I[Backend API]
     end
 ```
 
@@ -327,9 +397,14 @@ sequenceDiagram
     end
 
     A-->>F: 200 OK
-    F->>F: 10. Actualizar localStorage con nuevos tokens
+    A-->>F: 10b. Set-Cookie refrescadas (token_acceso, token_refresco)
+    F->>F: 10. (Legado) Actualizar localStorage con nuevos tokens
     F->>F: 11. Programar próxima renovación
 ```
+
+> **Nota (flujo cookies):** `renovar-token` acepta `tokenRefresco` en el body
+> **o** en la cookie httpOnly `token_refresco`. Con cookies, el interceptor
+> renueva sin leer ningún token desde JavaScript.
 
 ### Estrategia de Renovación en Frontend
 
@@ -367,13 +442,17 @@ intercept(request, next) {
 
 ```mermaid
 flowchart TD
-    Start["📥 Request entrante<br/>GET /api/empleo"] --> Header{"Header<br/>Authorization?"}
+    Start["📥 Request entrante<br/>GET /api/empleo"] --> Source{"¿Bearer header<br/>o cookie token_acceso?"}
     
-    Header -->|"❌ No existe"| Err1["❌ 401<br/>Token de autenticación requerido"]
-    Header -->|"⚠️ No empieza con 'Bearer'"| Err1
-    Header -->|"✅ Bearer <token>"| Extract["Extraer token"]
+    Source -->|"❌ Ninguno"| Err1["❌ 401<br/>Token de autenticación requerido"]
+    Source -->|"⚠️ Header no-Bearer<br/>y sin cookie"| Err1
+    Source -->|"✅ Bearer <token> o cookie httpOnly"| Extract["Extraer token"]
     
-    Extract --> Verify["🔧 verifyIdToken(token)<br/>Firebase Admin SDK"]
+    Extract --> Csrf{"¿Método de escritura<br/>autenticado por cookie?"}
+    Csrf -->|"Sí"| OriginCheck{"¿Origin permitido?<br/>(CORS_ORIGINS + base)"}
+    OriginCheck -->|"❌ No"| ErrCsrf["❌ 403<br/>Origen no permitido (posible CSRF)"]
+    OriginCheck -->|"✅ Sí"| Verify["🔧 verifyIdToken(token)<br/>Firebase Admin SDK"]
+    Csrf -->|"No (GET o Bearer)"| Verify
     
     Verify -->|"❌ Token inválido"| Err2["❌ 401<br/>Token inválido o expirado"]
     Verify -->|"❌ Token expirado"| Err2
@@ -404,6 +483,7 @@ flowchart TD
 
     style Err1 fill:#ffcccc,stroke:#cc0000
     style Err2 fill:#ffcccc,stroke:#cc0000
+    style ErrCsrf fill:#ffcccc,stroke:#cc0000
     style Err3 fill:#ffcccc,stroke:#cc0000
     style Err4 fill:#ffcccc,stroke:#cc0000
     style Err5 fill:#ffcccc,stroke:#cc0000
@@ -633,16 +713,19 @@ stateDiagram-v2
 │  tokenAcceso (ID Token):                                        │
 │  ├── Expira en: 1 hora (3600 segundos)                          │
 │  ├── Renovar: 5 minutos antes de expirar                        │
-│  └── Uso: Authorization: Bearer <token>                         │
+│  ├── Uso: Authorization: Bearer <token>                         │
+│  └── Cookie httpOnly token_acceso (Max-Age=3600s)               │
 │                                                                 │
 │  tokenRefresco:                                                 │
 │  ├── Expira en: ~30 días (varía según Firebase)                 │
 │  ├── Se renueva automáticamente al usarlo                       │
-│  └── Uso: POST /autenticacion/renovar-token                     │
+│  ├── Uso: POST /autenticacion/renovar-token                     │
+│  └── Cookie httpOnly token_refresco (Max-Age=30 días)           │
 │                                                                 │
 │  Frontend Strategy:                                             │
 │  ├── Primary: Renovación programada (setTimeout)                │
-│  └── Fallback: Renovación reactiva (intercept 401)              │
+│  ├── Fallback: Renovación reactiva (intercept 401)              │
+│  └── Logout: POST /autenticacion/cerrar-sesion                  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -708,6 +791,8 @@ flowchart TD
 | `401` | Cuenta desactivada | Admin desactivó la cuenta | Contactar soporte |
 | `403` | Rol insuficiente | Usuario no tiene el rol requerido | Verificar roles del usuario |
 | `403` | Feature desactivada | Feature no habilitada para el usuario | Contactar tutor/admin |
+| `400` | Token de refresco requerido | Falta `tokenRefresco` en body y en la cookie `token_refresco` | Enviar body o cookie |
+| `403` | Origen no permitido (posible CSRF) | Origin no permitido en request autenticado por cookie | Verificar `CORS_ORIGINS` / orígenes base |
 
 ---
 
@@ -716,48 +801,26 @@ flowchart TD
 ### FirebaseAuthGuard — Verificación de Token
 
 ```typescript
-// src/common/guards/firebase-auth.guard.ts
-async canActivate(context: ExecutionContext): Promise<boolean> {
-  const request = context.switchToHttp().getRequest()
-  const authHeader = request.headers['authorization']
+// src/common/guards/firebase-auth.guard.ts (resumen)
+// 1. Fuente del token: header Bearer (compatibilidad) o cookie httpOnly token_acceso.
+let token: string | undefined
+if (authHeader?.startsWith('Bearer ')) {
+  token = authHeader.split(' ')[1]
+} else {
+  token = parseCookies(request.headers?.cookie)[NOMBRE_COOKIE_ACCESO]
+}
+if (!token) throw new UnauthorizedException('Token de autenticación requerido')
 
-  // 1. Verificar que existe el header
-  if (!authHeader?.startsWith('Bearer ')) {
-    throw new UnauthorizedException('Token de autenticación requerido')
-  }
-
-  // 2. Extraer token
-  const token = authHeader.split(' ')[1]
-
-  try {
-    // 3. Verificar con Firebase Admin SDK
-    const decodedToken = await getAuth().verifyIdToken(token)
-
-    // 4. Buscar perfil en Firestore
-    const doc = await this.db.collection('perfiles').doc(decodedToken.uid).get()
-    if (!doc.exists) throw new UnauthorizedException('Usuario no encontrado')
-
-    const perfil = doc.data()
-    if (perfil.activo === false) throw new UnauthorizedException('Cuenta desactivada')
-
-    // 5. Normalizar rol legacy
-    const rol = perfil.rol === 'institution' ? 'institucion' : perfil.rol
-
-    // 6. Poblar request.user
-    request.user = {
-      id: decodedToken.uid,
-      email: perfil.email,
-      rol,
-      nombreCompleto: perfil.nombreCompleto,
-      features: perfil.features,
-    }
-
-    return true
-  } catch (e) {
-    if (e instanceof UnauthorizedException) throw e
-    throw new UnauthorizedException('Token inválido o expirado')
+// 2. Defensa CSRF: método de escritura autenticado por cookie exige Origin permitido.
+if (!esBearer && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
+  const origin = request.headers['origin']
+  if (!esOrigenPermitido(origin, obtenerOrigenesPermitidos(config))) {
+    throw new ForbiddenException('Origen no permitido (posible CSRF)')
   }
 }
+
+// 3. Verificar con Firebase Admin SDK y poblar request.user (igual que antes)
+const decodedToken = await getAuth().verifyIdToken(token)
 ```
 
 ### RolesGuard — Verificación de Rol
@@ -829,11 +892,12 @@ graph LR
     end
 
     subgraph "Paso 2: Guardar"
-        B -->|localStorage| C[(Tokens<br/>Guardados)]
+        B -->|Set-Cookie httpOnly| C[(Cookies<br/>token_acceso / token_refresco)]
+        B -->|localStorage (legado)| J[(localStorage)]
     end
 
     subgraph "Paso 3: Request"
-        C -->|Authorization header| D[API Request]
+        C -->|Cookie automática<br/>o Bearer header| D[API Request]
     end
 
     subgraph "Paso 4: Verificar"
@@ -850,6 +914,10 @@ graph LR
     subgraph "Paso 6: Renovar"
         C -->|5 min antes expiración| I[Refresh Token]
         I -->|Nuevos tokens| B
+    end
+
+    subgraph "Paso 7: Cerrar sesión"
+        B -->|POST /cerrar-sesion| K[Elimina cookies httpOnly]
     end
 
     style A fill:#e1f5fe
