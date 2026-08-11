@@ -232,13 +232,17 @@ async remove(id: string, usuarioId: string, rol: string) {
 
 | Acción | Endpoint | Seguridad | Riesgo | Estado |
 |--------|----------|-----------|--------|--------|
-| Listar vacantes | GET /jobs | JWT | ✅ Bajo | ✅ |
-| Ver vacante | GET /jobs/:id | JWT | ✅ Bajo | ✅ |
-| Crear vacante | POST /jobs | JWT, roles | ✅ Bajo | ✅ |
-| Actualizar | PUT /jobs/:id | JWT, owner | ✅ Bajo | ✅ |
-| Eliminar | DELETE /jobs/:id | JWT, owner | ✅ Bajo | ✅ |
-| Postularse | POST /jobs/:id/apply | JWT | ✅ Bajo | ✅ |
-| Mis postulaciones | GET /jobs/my-applications | JWT | ✅ Bajo | ✅ |
+| Listar vacantes | GET /empleo | Público | ✅ Bajo | ✅ |
+| Ver vacante | GET /empleo/:id | Público | ✅ Bajo | ✅ |
+| Crear vacante | POST /empleo | JWT, roles | ✅ Bajo | ✅ |
+| Actualizar | PUT /empleo/:id | JWT, owner | ✅ Bajo | ✅ |
+| Eliminar | DELETE /empleo/:id | JWT, owner | ✅ Bajo | ✅ |
+| Postularse | POST /empleo/:id/postularse | JWT | ✅ Bajo | ✅ |
+| Mis postulaciones | GET /empleo/mis-postulaciones | JWT | ✅ Bajo | ✅ |
+| Postulantes por vacante | GET /empleo/postulantes-vacante | JWT, roles | ✅ Bajo | ✅ |
+| Alias postulantes | GET /empleo/postulaciones | JWT, roles | ✅ Bajo | ✅ |
+| Postulantes de mi institución | GET /empleo/postulantes-institucion | JWT, roles | ✅ Bajo | ✅ |
+| Cambiar estado postulación | PATCH /empleo/postulaciones/:id/estado | JWT, roles | ✅ Bajo | ✅ |
 
 **Análisis Detallado:**
 

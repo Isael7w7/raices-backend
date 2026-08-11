@@ -214,6 +214,27 @@ Whitelist de orígenes + permitir `*.run.app` para Cloud Run.
 
 ---
 
+## 📝 Cambios Recientes (Agosto 2026)
+
+### Nuevos Endpoints de Empleo
+- ✅ `GET /api/empleo/postulantes-vacante` — Consultar postulantes por vacante
+- ✅ `GET /api/empleo/postulaciones` — Alias para compatibilidad con frontend
+- ✅ `PATCH /api/empleo/postulaciones/:id/estado` — Cambiar estado de postulación
+
+### Mejoras de Seguridad
+- ✅ Sistema de auditoría para trazabilidad de acciones admin
+- ✅ Validación por magic bytes en uploads
+- ✅ Sanitización XSS en campos de texto libre
+- ✅ ETag con cache en memoria para reducir consumo de Firestore
+- ✅ Rate limits configurables por endpoint
+
+### Documentación
+- ✅ API-ENDPOINTS.md — Documentación completa de todos los endpoints
+- ✅ FRONTEND-INTEGRATION-GUIDE.md — Guía de integración para frontend
+- ✅ FLUJO-APROBACION-VACANTES.md — Actualizado con gestión de postulantes
+
+---
+
 ## ⚡ Acciones Inmediatas Recomendadas
 
 1. **Activar `strict: true`** en `tsconfig.json` gradualmente
@@ -224,5 +245,5 @@ Whitelist de orígenes + permitir `*.run.app` para Cloud Run.
 6. **Añadir JSDoc** a todos los servicios públicos
 7. **Sanitizar entradas** con `class-sanitizer` o librería equivalente
 8. **Configurar ESLint** con reglas estrictas (si no existe)
-9. **Añadir Health Check endpoint**
+9. ~~**Añadir Health Check endpoint**~~ ✅ Completado
 10. **Implementar logging estructurado** con `nestjs-pino`

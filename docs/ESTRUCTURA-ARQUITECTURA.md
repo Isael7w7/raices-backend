@@ -113,9 +113,11 @@ raices-backend/
 │       │   ├── jobs.service.ts (+spec)
 │       │   ├── jobs.module.ts
 │       │   └── dto/
+│       │       ├── actualizar-estado-postulacion.dto.ts
 │       │       ├── actualizar-vacante.dto.ts
 │       │       ├── create-job.dto.ts
-│       │       └── postulacion.dto.ts
+│       │       ├── postulacion.dto.ts
+│       │       └── respuestas-empleo.dto.ts
 │       ├── messages/
 │       │   ├── messages.controller.ts
 │       │   ├── messages.service.ts (+spec)

@@ -160,6 +160,10 @@ sequenceDiagram
 | `POST` | `/api/empleo` | `institucion`, `admin` | Crear vacante (requiere institución aprobada) |
 | `GET` | `/api/empleo` | Público | Listado de vacantes (solo instituciones aprobadas) |
 | `PUT`/`DELETE` | `/api/empleo/:id` | `institucion`, `admin` | Editar / desactivar vacante |
+| `GET` | `/api/empleo/postulantes-vacante?vacanteId=xxx` | `institucion`, `admin` | Ver postulantes de una vacante específica |
+| `GET` | `/api/empleo/postulaciones?vacanteId=xxx` | `institucion`, `admin` | Alias del anterior (compatibilidad frontend) |
+| `GET` | `/api/empleo/postulantes-institucion` | `institucion`, `admin` | Ver todos los postulantes de MI institución |
+| `PATCH` | `/api/empleo/postulaciones/:id/estado` | `institucion`, `admin` | Cambiar estado de postulación (aceptar/rechazar) |
 
 ### Administración (todos con `@Roles('admin')`)
 
@@ -237,10 +241,74 @@ En `admin.service.ts` (`approveInstitution` / `rejectInstitution`) y su exposici
 
 ---
 
+## 10. Gestión de Postulantes
+
+Una vez que la institución tiene vacantes publicadas, puede **ver y gestionar los postulantes**.
+
+### Endpoints para Ver Postulantes
+
+| Endpoint | Descripción | Requisitos |
+|----------|-------------|------------|
+| `GET /api/empleo/postulantes-vacante?vacanteId=xxx` | Postulantes de una vacante específica | Rol institución o admin, feature `postulaciones` |
+| `GET /api/empleo/postulaciones?vacanteId=xxx` | Alias (compatibilidad frontend) | Misma que anterior |
+| `GET /api/empleo/postulantes-institucion` | Todos los postulantes de MI institución | Rol institución o admin, feature `postulaciones` |
+| `PATCH /api/empleo/postulaciones/:id/estado` | Cambiar estado de postulación | Rol institución o admin |
+
+### Ejemplo: Obtener Postulantes de una Vacante
+
+```bash
+# Con curl
+curl -X GET 'https://raices-backend-jftu6lrbda-uc.a.run.app/api/empleo/postulantes-vacante?vacanteId=abc123' \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIs...'
+```
+
+**Response:**
+```json
+{
+  "datos": [
+    {
+      "postulacionId": "post-abc123",
+      "usuarioId": "usr-abc123",
+      "nombreCompleto": "Juan Pérez",
+      "email": "juan@ejemplo.com",
+      "avatarUrl": "https://...",
+      "estado": "pendiente",
+      "fechaPostulacion": "2026-08-11T10:00:00.000Z",
+      "cartaPresentacion": "Estimado equipo..."
+    }
+  ],
+  "vacante": {
+    "id": "vac-abc123",
+    "titulo": "Desarrollador Web Inclusivo"
+  },
+  "paginaActual": 1,
+  "totalPaginas": 1,
+  "totalResultados": 5
+}
+```
+
+### Cambiar Estado de una Postulación
+
+```bash
+curl -X PATCH 'https://raices-backend-jftu6lrbda-uc.a.run.app/api/empleo/postulaciones/post-abc123/estado' \
+  -H 'Authorization: Bearer eyJhbGciOiJSUzI1NiIs...' \
+  -H 'Content-Type: application/json' \
+  -d '{"estado": "aceptada", "comentarios": "¡Felicitaciones!"}'
+```
+
+**Estados posibles:**
+- `pendiente` — Recién postulado
+- `en_revision` — En proceso de revisión
+- `aceptada` — Aceptado para la posición
+- `rechazada` — No seleccionado
+
+---
+
 ## 🔗 Archivos de referencia
 
 - `src/modules/auth/auth.service.ts` — registro atómico de instituciones
 - `src/modules/auth/dto/register.dto.ts` — campos del registro
 - `src/modules/institutions/institutions.service.ts` — directorio y `findMine`
-- `src/modules/jobs/jobs.service.ts` — publicación y filtro de vacantes
+- `src/modules/jobs/jobs.service.ts` — publicación, filtro de vacantes y consulta de postulantes
+- `src/modules/jobs/jobs.controller.ts` — endpoints de empleo incluyendo postulantes
 - `src/modules/admin/admin.service.ts` — aprobación / rechazo de instituciones
