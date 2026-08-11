@@ -256,10 +256,17 @@ deploy_to_cloud_run() {
     deploy_cmd+=" --service-account=${FIREBASE_SA}"
 
     # Variables NO sensibles como env vars directas (base mínima).
-    # FIREBASE_PROJECT_ID y CORS_ORIGINS se agregan aquí (o desde el .env);
-    # el loop de abajo los omite para evitar flags duplicados.
+    # FIREBASE_PROJECT_ID, CORS_ORIGINS y las cookies de sesión se agregan aquí
+    # (o desde el .env); el loop de abajo los omite para evitar flags duplicados.
+    #
+    # Cookies de sesión (httpOnly): el frontend (raices.techmaleon.com.mx) y la
+    # API (Cloud Run *.run.app) están en orígenes distintos → SameSite=None + Secure.
+    # Con SameSite=Lax (default) el navegador NO enviaría la cookie cross-site.
+    # Se pueden sobreescribir exportando las variables antes de ejecutar el deploy.
     local env_vars="NODE_ENV=production"
     env_vars+=",FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-${PROJECT_ID}}"
+    env_vars+=",COOKIE_SAMESITE=${COOKIE_SAMESITE:-none}"
+    env_vars+=",COOKIE_SECURE=${COOKIE_SECURE:-true}"
     if [ -n "${CORS_ORIGINS:-}" ]; then
         env_vars+=",CORS_ORIGINS=${CORS_ORIGINS}"
     fi
@@ -271,8 +278,9 @@ deploy_to_cloud_run() {
                 local skip=0
                 # Skip PORT (reservado por Cloud Run), NODE_ENV (ya fijada a production),
                 # GOOGLE_APPLICATION_CREDENTIALS (ruta local inexistente en Cloud Run),
+                # cookies de sesión (ya fijadas a none/true para cross-site),
                 # secretos y vars ya base
-                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^NODE_ENV= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || [[ "$line" =~ ^CORS_ORIGINS= ]] || [[ "$line" =~ ^GOOGLE_APPLICATION_CREDENTIALS= ]]; then
+                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^NODE_ENV= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || [[ "$line" =~ ^CORS_ORIGINS= ]] || [[ "$line" =~ ^COOKIE_SAMESITE= ]] || [[ "$line" =~ ^COOKIE_SECURE= ]] || [[ "$line" =~ ^GOOGLE_APPLICATION_CREDENTIALS= ]]; then
                     skip=1
                 fi
                 for name in "${SENSITIVE_ENV_NAMES[@]}"; do
