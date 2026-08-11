@@ -6,38 +6,27 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { join } from "path";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { obtenerOrigenesPermitidos } from "./common/utils/cors-origins";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  const allowedOrigins = [
-    // Swagger UI (mismo servidor)
-    "http://localhost:7000",
-    "https://localhost:7000",
-    // Frontend dev server (Vite)
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "https://raices.techmaleon.com.mx",
-    "http://raices.techmaleon.com.mx",
-
-    // Producción (si está definida)
-    ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(",") : []),
-  ];
+  const allowedOrigins = obtenerOrigenesPermitidos({
+    get: (key) => process.env[key],
+  });
 
   app.enableCors({
     origin: (origin, callback) => {
       // Permitir peticiones sin origen (curl, Postman, server-to-server)
       if (!origin) return callback(null, true);
-      // Permitir orígenes en la lista
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Permitir cualquier dominio Cloud Run (*.run.app) para Swagger UI en producción
-      // .run.app es un dominio exclusivo de GCP Cloud Run, seguro de permitir
-      if (origin && /^https?:\/\/.+\.run\.app$/.test(origin)) {
-        return callback(null, true);
-      }
       callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
+    // credentials: true permite que el navegador envíe las cookies httpOnly de
+    // sesión (token_acceso, token_refresco) en requests cross-origin.
     credentials: true,
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Cookie", "ETag"],
     exposedHeaders: ["Content-Type", "ETag"],
   });
 

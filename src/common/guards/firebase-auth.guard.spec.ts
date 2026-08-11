@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { UnauthorizedException } from '@nestjs/common'
+import { UnauthorizedException, ForbiddenException } from '@nestjs/common'
 import { ExecutionContext } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { FirebaseAuthGuard } from './firebase-auth.guard'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -24,10 +25,13 @@ function mockDoc(data: Record<string, any> | null, exists = true) {
   }
 }
 
-function mockExecutionContext(authHeader?: string) {
+function mockExecutionContext(authHeader?: string, cookieHeader?: string) {
   const request: Record<string, any> = { headers: {} }
   if (authHeader !== undefined) {
     request.headers['authorization'] = authHeader
+  }
+  if (cookieHeader !== undefined) {
+    request.headers['cookie'] = cookieHeader
   }
   return {
     switchToHttp: () => ({
@@ -54,6 +58,7 @@ describe('FirebaseAuthGuard', () => {
       providers: [
         FirebaseAuthGuard,
         { provide: FIRESTORE, useValue: firestoreMock },
+        { provide: ConfigService, useValue: { get: jest.fn(() => undefined) } },
       ],
     }).compile()
 
@@ -104,6 +109,101 @@ describe('FirebaseAuthGuard', () => {
           multimedia: true,
         },
       })
+    })
+
+    it('should authenticate via httpOnly cookie when Authorization header is absent', async () => {
+      const perfil = {
+        email: 'test@test.com',
+        rol: 'tutor',
+        nombreCompleto: 'Test Tutor',
+        activo: true,
+        verificado: true,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc(perfil, true)),
+          }),
+        })
+
+      const context = mockExecutionContext(undefined, 'token_acceso=valid-token-123; otra=valor')
+      const result = await guard.canActivate(context)
+
+      expect(result).toBe(true)
+      expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token-123')
+
+      const request = context.switchToHttp().getRequest()
+      expect(request.user).toMatchObject({ id: 'test-uid-123', rol: 'tutor' })
+    })
+
+    it('should reject cookie-authenticated unsafe method from a disallowed Origin (CSRF)', async () => {
+      const perfil = { activo: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc(perfil, true)),
+          }),
+        })
+
+      const context = mockExecutionContext(undefined, 'token_acceso=valid-token-123')
+      ;(context as any).switchToHttp().getRequest().method = 'POST'
+      ;(context as any).switchToHttp().getRequest().headers['origin'] = 'https://sitio-malicioso.com'
+
+      await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should allow cookie-authenticated unsafe method from an allowed Origin', async () => {
+      const perfil = { activo: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc(perfil, true)),
+          }),
+        })
+
+      const context = mockExecutionContext(undefined, 'token_acceso=valid-token-123')
+      ;(context as any).switchToHttp().getRequest().method = 'POST'
+      ;(context as any).switchToHttp().getRequest().headers['origin'] = 'https://raices.techmaleon.com.mx'
+
+      const result = await guard.canActivate(context)
+      expect(result).toBe(true)
+    })
+
+    it('should allow cookie-authenticated unsafe method without Origin header (curl, server-to-server)', async () => {
+      const perfil = { activo: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc(perfil, true)),
+          }),
+        })
+
+      const context = mockExecutionContext(undefined, 'token_acceso=valid-token-123')
+      ;(context as any).switchToHttp().getRequest().method = 'DELETE'
+
+      const result = await guard.canActivate(context)
+      expect(result).toBe(true)
+    })
+
+    it('should prefer the Authorization header over the cookie when both are present', async () => {
+      const perfil = { activo: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc(perfil, true)),
+          }),
+        })
+
+      const context = mockExecutionContext('Bearer header-token', 'token_acceso=cookie-token')
+      const result = await guard.canActivate(context)
+
+      expect(result).toBe(true)
+      expect(mockVerifyIdToken).toHaveBeenCalledWith('header-token')
     })
 
     it('should fallback to decodedToken email/name when profile fields are missing', async () => {

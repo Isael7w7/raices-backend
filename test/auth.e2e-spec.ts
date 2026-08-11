@@ -103,6 +103,23 @@ describe('Autenticación (E2E)', () => {
       expect(res.body.usuario.email).toBe('demo@test.com')
     })
 
+    it('200: establece cookies httpOnly de sesión (token_acceso, token_refresco)', async () => {
+      await sembrarPerfil({ id: 'uid-demo@test.com', email: 'demo@test.com', rol: 'pcd', activo: true })
+
+      const res = await request(http)
+        .post('/api/autenticacion/inicio-sesion')
+        .send({ email: 'demo@test.com', password: 'secreta123' })
+
+      expect(res.status).toBe(200)
+      const setCookie: string[] = res.headers['set-cookie'] ?? []
+      const acceso = setCookie.find(c => c.startsWith('token_acceso='))
+      const refresco = setCookie.find(c => c.startsWith('token_refresco='))
+      expect(acceso).toBeDefined()
+      expect(refresco).toBeDefined()
+      expect(acceso).toContain('HttpOnly')
+      expect(acceso).toContain('Path=/')
+    })
+
     it('401: credenciales incorrectas', async () => {
       const res = await request(http)
         .post('/api/autenticacion/inicio-sesion')
@@ -128,6 +145,26 @@ describe('Autenticación (E2E)', () => {
       expect(res.status).toBe(200)
       expect(res.body.tokenAcceso).toBe('nuevo-id-token')
       expect(res.body.tokenRefresco).toBe('nuevo-refresh')
+
+      const setCookie: string[] = res.headers['set-cookie'] ?? []
+      expect(setCookie.some(c => c.startsWith('token_acceso=nuevo-id-token'))).toBe(true)
+      expect(setCookie.some(c => c.startsWith('token_refresco=nuevo-refresh'))).toBe(true)
+    })
+
+    it('200: usa el refresh token de la cookie httpOnly cuando no viene en el body', async () => {
+      await sembrarPerfil({ id: 'uid-demo@test.com', email: 'demo@test.com', rol: 'pcd', activo: true })
+
+      const res = await request(http)
+        .post('/api/autenticacion/renovar-token')
+        .set('Cookie', 'token_refresco=refresh-cualquiera')
+
+      expect(res.status).toBe(200)
+      expect(res.body.tokenAcceso).toBe('nuevo-id-token')
+    })
+
+    it('400: sin token de refresco en body ni en cookie', async () => {
+      const res = await request(http).post('/api/autenticacion/renovar-token').send({})
+      expect(res.status).toBe(400)
     })
   })
 
@@ -157,6 +194,58 @@ describe('Autenticación (E2E)', () => {
 
       const res = await request(http).get('/api/autenticacion/yo').set('Authorization', token('uid-desactivado'))
       expect(res.status).toBe(401)
+    })
+
+    it('200: autentica mediante la cookie httpOnly sin header Authorization', async () => {
+      await sembrarPerfil({ id: 'uid-ana', email: 'ana@test.com', rol: 'pcd', activo: true, nombreCompleto: 'Ana PCD' })
+
+      const res = await request(http)
+        .get('/api/autenticacion/yo')
+        .set('Cookie', 'token_acceso=uid-ana; token_refresco=irrelevante')
+
+      expect(res.status).toBe(200)
+      expect(res.body.id).toBe('uid-ana')
+    })
+
+    it('401: cookie sin valor (por ejemplo, expirada o borrada)', async () => {
+      const res = await request(http)
+        .get('/api/autenticacion/yo')
+        .set('Cookie', 'token_acceso=; otra=1')
+
+      expect(res.status).toBe(401)
+    })
+  })
+
+  describe('POST /api/autenticacion/cerrar-sesion', () => {
+    it('204: elimina las cookies de sesión', async () => {
+      const res = await request(http).post('/api/autenticacion/cerrar-sesion')
+
+      expect(res.status).toBe(204)
+      const setCookie: string[] = res.headers['set-cookie'] ?? []
+      const acceso = setCookie.find(c => c.startsWith('token_acceso='))
+      const refresco = setCookie.find(c => c.startsWith('token_refresco='))
+      expect(acceso).toBeDefined()
+      expect(refresco).toBeDefined()
+      // Debe expirar inmediatamente (valor vacío + fecha en el pasado)
+      expect(acceso).toMatch(/Expires=Thu, 01 Jan 1970/i)
+    })
+
+    it('204: permite cerrar sesión desde un origen permitido', async () => {
+      const res = await request(http)
+        .post('/api/autenticacion/cerrar-sesion')
+        .set('Origin', 'https://raices.techmaleon.com.mx')
+
+      expect(res.status).toBe(204)
+    })
+
+    it('403: rechaza cierre de sesión desde un origen no permitido (CSRF de logout)', async () => {
+      const res = await request(http)
+        .post('/api/autenticacion/cerrar-sesion')
+        .set('Origin', 'https://sitio-malicioso.com')
+
+      expect(res.status).toBe(403)
+      const setCookie: string[] = res.headers['set-cookie'] ?? []
+      expect(setCookie).toEqual([])
     })
   })
 })
