@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, UseInterceptors } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
@@ -17,6 +17,10 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
+import { Audit } from '../../common/decorators/audit.decorator'
+import { AuditInterceptor } from '../../common/interceptors/audit.interceptor'
+import { AUDIT_ACCIONES } from '../../common/interfaces/audit-log.interface'
+import { AuditService } from '../../common/audit/audit.service'
 
 @ApiTags('Administración')
 @ApiBearerAuth('jwt-auth')
@@ -24,7 +28,10 @@ import { UseETag } from '../../common/decorators/use-etag.decorator'
 @Roles('admin')
 @Controller('administracion')
 export class AdminController {
-  constructor(private readonly svc: AdminService) {}
+  constructor(
+    private readonly svc: AdminService,
+    private readonly auditService: AuditService,
+  ) {}
 
   /* ── Stats y analítica ── */
   @Get('estadisticas')
@@ -52,6 +59,35 @@ export class AdminController {
   @ApiOkResponse({ type: VisitantesActivosDto, description: 'Métricas de visitantes activos' })
   activeVisitors() { return this.svc.getActiveVisitors() }
 
+  /* ── Auditoría ── */
+  @Get('auditoria')
+  @UseETag()
+  @ApiOperation({ summary: 'Logs de auditoría', description: 'Consulta registros de acciones críticas con paginación y filtros opcionales (usuarioId, accion, recurso, fechaDesde, fechaHasta)' })
+  @ApiQuery({ name: 'pagina', required: false, example: 1 })
+  @ApiQuery({ name: 'limite', required: false, example: 20 })
+  @ApiQuery({ name: 'usuarioId', required: false, description: 'Filtrar por ID de usuario' })
+  @ApiQuery({ name: 'accion', required: false, description: 'Filtrar por acción (ej: aprobar_institucion)' })
+  @ApiQuery({ name: 'recurso', required: false, description: 'Filtrar por recurso (ej: institucion, usuario)' })
+  @ApiQuery({ name: 'fechaDesde', required: false, description: 'Filtrar desde fecha ISO 8601' })
+  @ApiQuery({ name: 'fechaHasta', required: false, description: 'Filtrar hasta fecha ISO 8601' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  async auditLogs(
+    @Query() paginacion: PaginacionDto,
+    @Query('usuarioId') usuarioId?: string,
+    @Query('accion') accion?: string,
+    @Query('recurso') recurso?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+  ) {
+    return this.auditService.consultar(paginacion, { usuarioId, accion, recurso, fechaDesde, fechaHasta })
+  }
+
+  @Get('auditoria/estadisticas')
+  @UseETag()
+  @ApiOperation({ summary: 'Estadísticas de auditoría', description: 'Resumen de actividad de auditoría: totales, acciones frecuentes, usuarios activos, errores recientes' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  auditStats() { return this.auditService.estadisticas() }
+
   /* ── Instituciones ── */
   @Get('instituciones')
   @UseETag()
@@ -68,8 +104,14 @@ export class AdminController {
   pending() { return this.svc.getPendingInstitutions() }
 
   @Post('instituciones/:id/aprobar')
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 acciones admin por minuto
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(204)
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.APROBAR_INSTITUCION,
+    recurso: 'institucion',
+    obtenerRecursoId: (id: string) => id,
+  })
   @ApiOperation({ summary: 'Aprobar institución', description: 'Activa la institución y envía correo de notificación' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiNoContentResponse({ description: 'Institución aprobada' })
@@ -78,6 +120,13 @@ export class AdminController {
 
   @Patch('instituciones/:id/verificar')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.TOGGLE_VERIFICACION,
+    recurso: 'institucion',
+    obtenerRecursoId: (id: string) => id,
+    extraerMetadatos: (resultado) => ({ verificada: resultado?.verificada }),
+  })
   @ApiOperation({ summary: 'Alternar verificación de institución' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiOkResponse({ type: RespuestaToggleVerificacionDto, description: 'Estado de verificación actualizado' })
@@ -86,6 +135,12 @@ export class AdminController {
   @Delete('instituciones/:id')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(204)
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.RECHAZAR_INSTITUCION,
+    recurso: 'institucion',
+    obtenerRecursoId: (id: string) => id,
+  })
   @ApiOperation({ summary: 'Rechazar/eliminar institución', description: 'Elimina permanentemente la institución' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiNoContentResponse({ description: 'Institución eliminada' })
@@ -103,6 +158,13 @@ export class AdminController {
 
   @Patch('usuarios/:id/activo')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.TOGGLE_USUARIO_ACTIVO,
+    recurso: 'usuario',
+    obtenerRecursoId: (id: string) => id,
+    extraerMetadatos: (resultado) => ({ activo: resultado?.activo }),
+  })
   @ApiOperation({ summary: 'Activar/desactivar usuario' })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
   @ApiOkResponse({ type: RespuestaToggleUsuarioDto, description: 'Estado de activación actualizado' })
@@ -113,6 +175,13 @@ export class AdminController {
 
   @Patch('usuarios/:id/rol')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.CAMBIAR_ROL_USUARIO,
+    recurso: 'usuario',
+    obtenerRecursoId: (id: string) => id,
+    extraerMetadatos: (resultado) => ({ rol: resultado?.rol }),
+  })
   @ApiOperation({ summary: 'Cambiar rol de usuario', description: 'Roles válidos: pcd, tutor, institución, administrador' })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
   @ApiBody({ schema: { properties: { role: { type: 'string', enum: ['pcd', 'tutor', 'institucion', 'admin'] } } } })
@@ -125,6 +194,12 @@ export class AdminController {
   @Delete('usuarios/:id')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(204)
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.ELIMINAR_USUARIO,
+    recurso: 'usuario',
+    obtenerRecursoId: (id: string) => id,
+  })
   @ApiOperation({ summary: 'Eliminar cuenta de usuario', description: 'Elimina permanentemente el usuario, su avatar en Storage, perfil extendido y dependientes. No se puede eliminar la propia cuenta.' })
   @ApiParam({ name: 'id', description: 'ID del usuario a eliminar' })
   @ApiNoContentResponse({ description: 'Cuenta eliminada permanentemente' })
@@ -147,6 +222,12 @@ export class AdminController {
   @Delete('resenas/:id')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(204)
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.ELIMINAR_RESENA,
+    recurso: 'resena',
+    obtenerRecursoId: (id: string) => id,
+  })
   @ApiOperation({ summary: 'Eliminar reseña', description: 'Elimina la reseña y recalcula la calificación de la institución' })
   @ApiParam({ name: 'id', description: 'ID de la reseña' })
   @ApiNoContentResponse({ description: 'Reseña eliminada y calificación recalculada' })
@@ -169,6 +250,12 @@ export class AdminController {
 
   @Put('configuracion')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.ACTUALIZAR_CONFIGURACION,
+    recurso: 'configuracion',
+    extraerMetadatos: (resultado) => ({ configuracion: resultado }),
+  })
   @ApiOperation({ summary: 'Actualizar configuración', description: 'Actualiza configuración de la plataforma. Solo se modifican campos válidos.' })
   @ApiBody({ type: ActualizarConfiguracionDto })
   @ApiOkResponse({ type: ConfiguracionDto, description: 'Configuración actualizada' })

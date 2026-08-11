@@ -17,6 +17,7 @@ export const COLECCIONES = {
   vacantes: 'vacantes',
   configuraciones: 'configuraciones',
   analiticas: '_analiticas',
+  auditoria: '_auditoria',
 } as const
 
 // ─── Límites de negocio ─────────────────────────────────────────────

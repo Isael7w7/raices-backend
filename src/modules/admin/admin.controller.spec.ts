@@ -5,6 +5,7 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { NotificationsService } from '../notifications/notifications.service'
 import { EmailService } from '../email/email.service'
 import { StorageService } from '../storage/storage.service'
+import { AuditService } from '../../common/audit/audit.service'
 
 describe('AdminController', () => {
   let controller: AdminController
@@ -33,11 +34,18 @@ describe('AdminController', () => {
 
   const mockFirestore = { collection: jest.fn() }
 
+  const mockAuditService = {
+    registrar: jest.fn(),
+    consultar: jest.fn(),
+    estadisticas: jest.fn(),
+  }
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AdminController],
       providers: [
         { provide: AdminService, useValue: mockService },
+        { provide: AuditService, useValue: mockAuditService },
         { provide: FIRESTORE, useValue: mockFirestore },
         { provide: NotificationsService, useValue: {} },
         { provide: EmailService, useValue: {} },
