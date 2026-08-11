@@ -120,6 +120,36 @@ nano .env
 | `VERTEX_AI_LOCATION` | Región de Vertex AI (default: `us-central1`) | Consola GCP → Vertex AI |
 | `VERTEX_AI_MODEL` | Modelo Gemini (default: `gemini-2.0-flash`) | https://cloud.google.com/vertex-ai |
 | `CORS_ORIGINS` | Dominios permitidos | Tu dominio de frontend |
+| `COOKIE_SAMESITE` | Política SameSite de las cookies de sesión (`lax`/`none`/`strict`) | Default en `deploy.sh`: `none` (ver sección siguiente) |
+| `COOKIE_SECURE` | Enviar las cookies solo por HTTPS (`true`/`false`) | Default en `deploy.sh`: `true` |
+
+### 🍪 Cookies de sesión (deploy cross-site)
+
+El backend entrega los tokens de sesión como **cookies httpOnly**
+(`token_acceso`, `token_refresco`) además del body. Como el frontend
+(`raices.techmaleon.com.mx`) y la API (Cloud Run `*.run.app`) están en
+**orígenes distintos**, la cookie necesita:
+
+- **`COOKIE_SAMESITE=none`** — con `lax` (default del código) el navegador **no**
+  enviaría la cookie en requests cross-site y el flujo de cookies no funcionaría.
+- **`COOKIE_SECURE=true`** — obligatorio junto con `none` (los navegadores
+  rechazan `SameSite=None` sin `Secure`); Cloud Run siempre sirve por HTTPS.
+
+`deploy.sh` ya los fija por defecto en `--set-env-vars`:
+
+```
+COOKIE_SAMESITE=none
+COOKIE_SECURE=true
+```
+
+Se pueden sobreescribir antes del deploy (ej: `COOKIE_SAMESITE=lax ./deploy.sh deploy`).
+Los valores del `.env` local se omiten del deploy para no duplicar flags.
+
+> **CSRF:** `SameSite=None` reabre superficie CSRF, pero el `FirebaseAuthGuard`
+> valida el header `Origin` en peticiones de escritura autenticadas por cookie
+> (responde `403` si el origen no está permitido), así que el riesgo queda
+> mitigado. El desarrollo local no se ve afectado: `localhost:5173` →
+> `localhost:7000` son same-site, por lo que `lax` local sigue funcionando.
 
 ### ⚠️ REGLAS DE SEGURIDAD:
 - **NUNCA** subas `.env` a Git
