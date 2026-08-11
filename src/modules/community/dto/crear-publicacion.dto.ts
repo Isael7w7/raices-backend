@@ -1,8 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsString, IsOptional } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CrearPublicacionDto {
   @ApiProperty({ description: 'Contenido de la publicación', example: '¡Hola comunidad!' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString() contenido!: string
 
   @ApiProperty({ description: 'ID del grupo (opcional)', required: false })

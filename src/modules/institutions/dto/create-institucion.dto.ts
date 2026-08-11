@@ -10,14 +10,18 @@ import {
   Min,
   Max,
 } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CreateInstitucionDto {
   @ApiProperty({ description: 'Nombre de la institución', example: 'Centro de Rehabilitación DIF Mérida' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
   @IsNotEmpty()
   nombre!: string
 
   @ApiPropertyOptional({ description: 'Descripción de la institución', example: 'Terapias físicas, ocupacionales y de lenguaje.' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsOptional()
   @IsString()
   descripcion?: string

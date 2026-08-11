@@ -1,14 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CreateJobDto {
   @ApiProperty({ description: 'Título de la vacante', example: 'Terapeuta Ocupacional' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString() @IsNotEmpty() titulo!: string
 
   @ApiProperty({ description: 'Descripción detallada de la vacante', required: false, example: 'Buscamos terapeuta ocupacional para atención a niños con TEA...' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsOptional() @IsString() descripcion?: string
 
   @ApiProperty({ description: 'Requisitos del puesto', required: false, example: 'Título en terapia ocupacional, experiencia mínima de 2 años' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsOptional() @IsString() requisitos?: string
 
   @ApiProperty({ description: 'Modalidad de trabajo', required: false, example: 'presencial', enum: ['presencial', 'remoto', 'híbrido'] })
