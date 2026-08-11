@@ -1,5 +1,7 @@
-import { Controller, Get, Put, Patch, Post, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, FileTypeValidator, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
+import { Controller, Get, Put, Patch, Post, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
+import { MultimediaMagicBytesValidator } from '../../common/validators/multimedia-magic-bytes.validator'
+import { imageFileFilter } from '../../common/utils/image-filter'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
 import { StorageService } from '../storage/storage.service'
@@ -46,19 +48,22 @@ export class UsersController {
   }
 
   @Post('avatar')
-  @UseInterceptors(FileInterceptor('avatar', { limits: { fileSize: 5 * 1024 * 1024 } }))
-  @ApiOperation({ summary: 'Subir/actualizar foto de perfil', description: 'Sube una imagen (JPEG, PNG, WebP o GIF) de hasta 5MB para usarla como avatar del usuario autenticado.' })
+  @UseInterceptors(FileInterceptor('avatar', {
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    fileFilter: imageFileFilter,
+  }))
+  @ApiOperation({ summary: 'Subir/actualizar foto de perfil', description: 'Sube una imagen (JPEG, PNG, WebP o GIF) de hasta 5MB para usarla como avatar del usuario autenticado. Se valida el tipo MIME y las magic bytes reales del archivo.' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { avatar: { type: 'string', format: 'binary' } } } })
   @ApiCreatedResponse({ type: RespuestaAvatarDto, description: 'Avatar actualizado correctamente' })
-  @ApiResponse({ status: 400, description: 'Archivo inválido o demasiado grande' })
+  @ApiResponse({ status: 400, description: 'Archivo inválido: tipo no permitido, demasiado grande, o magic bytes no coinciden con el MIME declarado' })
   @ApiResponse({ status: 503, description: 'No se pudo guardar el avatar en la base de datos (Firestore inaccesible)' })
   async uploadAvatar(
     @CurrentUser() user: CurrentUserPayload,
     @UploadedFile(
       new ParseFilePipe({
         validators: [
-          new FileTypeValidator({ fileType: /^image\/(jpeg|png|webp|gif)$/ }),
+          new MultimediaMagicBytesValidator(),
           new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }),
         ],
       }),

@@ -1,5 +1,6 @@
 import { Controller, Post, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, MaxFileSizeValidator } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
+import { multimediaFileFilter } from '../../common/utils/image-filter'
 import { ApiTags, ApiOperation, ApiCreatedResponse, ApiBearerAuth, ApiConsumes, ApiBody, ApiResponse } from '@nestjs/swagger'
 import { StorageService } from './storage.service'
 import { Throttle } from '@nestjs/throttler'
@@ -20,7 +21,10 @@ export class StorageController {
   @UseGuards(JwtAuthGuard, FeatureGuard)
   @Feature('multimedia')
   @ApiBearerAuth('jwt-auth')
-  @UseInterceptors(FileInterceptor('archivo', { limits: { fileSize: MAX_MULTIMEDIA_SIZE } }))
+  @UseInterceptors(FileInterceptor('archivo', {
+    limits: { fileSize: MAX_MULTIMEDIA_SIZE },
+    fileFilter: multimediaFileFilter,
+  }))
   @ApiOperation({ summary: 'Subir multimedia', description: 'Sube una imagen o video (hasta 10MB) para adjuntarlo a mensajes o publicaciones. Requiere el permiso multimedia activo.' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { archivo: { type: 'string', format: 'binary' } } } })
