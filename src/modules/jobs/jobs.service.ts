@@ -293,6 +293,83 @@ export class JobsService {
     return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
+  async getPostulantesByVacanteId(
+    vacanteId: string,
+    user: CurrentUserPayload,
+    filtros: {
+      estado?: string
+      pagina?: number
+      limite?: number
+      ordenarPor?: string
+      direccion?: 'asc' | 'desc'
+      buscar?: string
+    } = {},
+  ): Promise<RespuestaPaginada<any>> {
+    const pagina = filtros.pagina ?? 1
+    const limite = filtros.limite ?? 20
+
+    // Verificar que la vacante exista
+    const vacanteDoc = await this.db.collection(COLECCIONES.vacantes).doc(vacanteId).get()
+    if (!vacanteDoc.exists) throw new NotFoundException('Vacante no encontrada')
+    const vacante = vacanteDoc.data() as any
+
+    // Verificar que el usuario tenga permiso (dueño de institución o admin)
+    if (user.rol !== 'admin') {
+      const instSnap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (instSnap.empty || instSnap.docs[0].id !== vacante.institucionId) {
+        throw new ForbiddenException('No tienes permiso para ver los postulantes de esta vacante')
+      }
+    }
+
+    // Obtener postulaciones de la vacante
+    const snap = await this.db.collection(COLECCIONES.postulaciones)
+      .where('vacanteId', '==', vacanteId).get()
+    const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+
+    // Enriquecer con datos del postulante
+    const usuarioIds = [...new Set(postulaciones.map(p => p.usuarioId).filter(Boolean))] as string[]
+    const mapaUsuarios = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+
+    let todos = postulaciones.map(p => {
+      const perfil = mapaUsuarios.get(p.usuarioId) ?? {}
+      return {
+        id: p.id,
+        vacanteId: p.vacanteId,
+        tituloVacante: vacante.titulo ?? null,
+        modalidad: vacante.modalidad ?? null,
+        usuarioId: p.usuarioId,
+        nombrePostulante: perfil.nombreCompleto ?? null,
+        emailPostulante: perfil.email ?? null,
+        urlAvatar: perfil.urlAvatar ?? null,
+        cartaPresentacion: p.cartaPresentacion ?? p.mensaje ?? null,
+        estado: p.estado ?? 'pendiente',
+        fechaCreacion: p.fechaCreacion ?? null,
+      }
+    })
+
+    // Filtros
+    if (filtros.estado) {
+      const termino = filtros.estado.toLowerCase()
+      todos = todos.filter(p => (p.estado ?? '').toLowerCase() === termino)
+    }
+
+    if (filtros.buscar) {
+      const termino = filtros.buscar.toLowerCase()
+      todos = todos.filter(p =>
+        (p.nombrePostulante ?? '').toLowerCase().includes(termino) ||
+        (p.emailPostulante ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    todos = ordenar(todos, filtros.ordenarPor, filtros.direccion ?? 'desc')
+
+    const total = todos.length
+    const inicio = (pagina - 1) * limite
+    return paginar(todos.slice(inicio, inicio + limite), total, pagina, limite)
+  }
+
   async getAppliedJobIds(usuarioId: string): Promise<string[]> {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('usuarioId', '==', usuarioId).get()

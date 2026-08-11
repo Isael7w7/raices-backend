@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, BadRequestException } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger'
 import { JobsService } from './jobs.service'
 import { CreateJobDto } from './dto/create-job.dto'
@@ -121,6 +121,75 @@ export class JobsController {
   ) {
     return this.svc.postulantesDeMiInstitucion(user, {
       institucionId,
+      estado,
+      pagina: paginacion.pagina,
+      limite: paginacion.limite,
+      ordenarPor: paginacion.ordenarPor,
+      direccion: paginacion.direccion,
+      buscar: paginacion.buscar,
+    })
+  }
+
+  @Get('postulantes-vacante')
+  @UseETag()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Postulantes de una vacante específica', description: 'Retorna los postulantes de una vacante específica. Solo la institución dueña de la vacante o un administrador pueden consultarla.' })
+  @ApiQuery({ name: 'vacanteId', required: true, description: 'ID de la vacante a consultar' })
+  @ApiQuery({ name: 'estado', required: false, description: 'Filtrar por estado de la postulación (pendiente, aceptada, rechazada, etc.)' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Búsqueda por nombre o email del postulante' })
+  @ApiOkResponse({ type: PaginaPostulantesInstitucionDto, description: 'Lista paginada de postulantes con datos del postulante y de la vacante' })
+  @ApiResponse({ status: 400, description: 'Falta vacanteId' })
+  @ApiResponse({ status: 403, description: 'No tienes permiso para ver esta vacante' })
+  @ApiResponse({ status: 404, description: 'Vacante no encontrada' })
+  vacancyApplicants(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() paginacion: PaginacionDto,
+    @Query('vacanteId') vacanteId?: string,
+    @Query('estado') estado?: string,
+  ) {
+    if (!vacanteId) {
+      throw new BadRequestException('El parámetro vacanteId es obligatorio')
+    }
+    return this.svc.getPostulantesByVacanteId(vacanteId, user, {
+      estado,
+      pagina: paginacion.pagina,
+      limite: paginacion.limite,
+      ordenarPor: paginacion.ordenarPor,
+      direccion: paginacion.direccion,
+      buscar: paginacion.buscar,
+    })
+  }
+
+  // Alias para compatibilidad con el frontend que llama a /empleo/postulaciones
+  @Get('postulaciones')
+  @UseETag()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Postulaciones por vacante (alias)', description: 'Alias de postulantes-vacante para compatibilidad con el frontend existente. Retorna los postulantes de una vacante específica.' })
+  @ApiQuery({ name: 'vacanteId', required: true, description: 'ID de la vacante a consultar' })
+  @ApiQuery({ name: 'estado', required: false, description: 'Filtrar por estado de la postulación' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Búsqueda por nombre o email del postulante' })
+  @ApiOkResponse({ type: PaginaPostulantesInstitucionDto, description: 'Lista paginada de postulantes' })
+  @ApiResponse({ status: 400, description: 'Falta vacanteId' })
+  @ApiResponse({ status: 403, description: 'No tienes permiso' })
+  @ApiResponse({ status: 404, description: 'Vacante no encontrada' })
+  postulacionesPorVacante(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query() paginacion: PaginacionDto,
+    @Query('vacanteId') vacanteId?: string,
+    @Query('estado') estado?: string,
+  ) {
+    if (!vacanteId) {
+      throw new BadRequestException('El parámetro vacanteId es obligatorio')
+    }
+    return this.svc.getPostulantesByVacanteId(vacanteId, user, {
       estado,
       pagina: paginacion.pagina,
       limite: paginacion.limite,
