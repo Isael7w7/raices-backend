@@ -4,9 +4,12 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { VacanteDoc, PostulacionDoc } from '../../common/interfaces/firestore-documents.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
+import { CreateJobDto } from './dto/create-job.dto'
+import { ActualizarVacanteDto } from './dto/actualizar-vacante.dto'
 
 @Injectable()
 export class JobsService {
@@ -296,13 +299,13 @@ export class JobsService {
     return snap.docs.map(d => d.data().vacanteId)
   }
 
-  async createForUser(user: any, dto: any) {
+  async createForUser(user: CurrentUserPayload, dto: CreateJobDto) {
     // Validar rol
     if (user.rol !== 'institucion' && user.rol !== 'admin') {
       throw new ForbiddenException('Solo instituciones y administradores pueden crear vacantes')
     }
 
-    let institucionId = dto.institucionId
+    let institucionId: string | undefined = dto.institucionId
 
     if (user.rol === 'institucion') {
       // Buscar la institución del usuario por creadoPor
@@ -316,10 +319,10 @@ export class JobsService {
       throw new BadRequestException('Como administrador, debes proporcionar el ID de la institución (institucionId).')
     }
 
-    return this.createJob(institucionId, dto)
+    return this.createJob(institucionId!, dto)
   }
 
-  async createJob(institucionId: string, dto: any) {
+  async createJob(institucionId: string, dto: CreateJobDto) {
     // La institución debe existir, estar activa y haber sido aprobada por un
     // administrador (verificada) antes de publicar vacantes en el directorio.
     const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(institucionId).get()
@@ -347,7 +350,7 @@ export class JobsService {
     return this.findOne(ref.id)
   }
 
-  async update(id: string, user: CurrentUserPayload, dto: any) {
+  async update(id: string, user: CurrentUserPayload, dto: ActualizarVacanteDto) {
     const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
     const vacante = doc.data() as any
@@ -361,14 +364,15 @@ export class JobsService {
       }
     }
 
-    const camposActualizables: Record<string, any> = {}
+    const camposActualizables: Record<string, unknown> = {}
     const camposPermitidos = [
       'titulo', 'descripcion', 'requisitos', 'modalidad', 'horario',
       'rangoSalario', 'ciudad', 'estado', 'inclusivaDiscapacidad',
       'tiposDiscapacidad', 'activa',
-    ]
+    ] as const
+    const dtoRecord = dto as Record<string, unknown>
     for (const campo of camposPermitidos) {
-      if (dto[campo] !== undefined) camposActualizables[campo] = dto[campo]
+      if (dtoRecord[campo] !== undefined) camposActualizables[campo] = dtoRecord[campo]
     }
     if (Object.keys(camposActualizables).length === 0) return this.findOne(id)
 

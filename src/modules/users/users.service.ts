@@ -3,10 +3,14 @@ import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firest
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
+import { DependienteDoc, DependienteFormateado, PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
 import { StorageService } from '../storage/storage.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
+import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
+import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
+import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 
 @Injectable()
 export class UsersService {
@@ -130,13 +134,14 @@ export class UsersService {
     return { urlAvatar }
   }
 
-  async updateProfile(usuarioId: string, datos: any) {
-    const datosSeguros = datos ?? {}
-    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio']
-    const carga: Record<string, any> = {}
+  async updateProfile(usuarioId: string, datos: ActualizarPerfilDto) {
+    const datosSeguros = datos ?? ({} as ActualizarPerfilDto)
+    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio'] as const
+    const carga: Record<string, unknown> = {}
     for (const campo of camposActualizables) {
-      if (datosSeguros[campo] !== undefined) {
-        carga[campo] = datosSeguros[campo]
+      const valor = datosSeguros[campo]
+      if (valor !== undefined) {
+        carga[campo] = valor
       }
     }
     if (Object.keys(carga).length === 0) {
@@ -147,7 +152,7 @@ export class UsersService {
     // Si el usuario institución cambia su nombre, propagar el cambio al
     // documento de 'instituciones' para mantener el directorio sincronizado.
     if (carga.nombreCompleto) {
-      await this.sincronizarNombreInstitucion(usuarioId, carga.nombreCompleto)
+      await this.sincronizarNombreInstitucion(usuarioId, carga.nombreCompleto as string)
     }
 
     return this.getProfile(usuarioId)
@@ -175,7 +180,7 @@ export class UsersService {
     }
   }
 
-  async saveProfilingData(usuarioId: string, datos: any) {
+  async saveProfilingData(usuarioId: string, datos: GuardarPerfilNecesidadesDto) {
     const existe = await this.col(COLECCIONES.perfilesExtendidos)
       .where('usuarioId', '==', usuarioId).limit(1).get()
     const carga: Record<string, any> = {
@@ -224,7 +229,7 @@ export class UsersService {
     const snap = await this.col(COLECCIONES.dependientes)
       .where('tutorId', '==', usuarioId).get()
 
-    const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
+    const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() } as DependienteDoc)).filter((d): d is DependienteFormateado => d !== null)
 
     // Las cuentas PCD vinculadas guardan sus features y perfil de necesidades
     // en sus propios documentos; enriquecer la lista con esa información real.
@@ -240,7 +245,7 @@ export class UsersService {
    * con los datos reales de sus documentos (perfiles y perfilesExtendidos) y adjunta
    * la foto real del perfil (fotoUrl).
    */
-  private async enriquecerDependientes(dependientes: any[]): Promise<void> {
+  private async enriquecerDependientes(dependientes: DependienteFormateado[]): Promise<void> {
     const pcdIds = dependientes.filter(d => d.esCuentaVinculada).map(d => d.pcdUserId ?? d.id)
     if (pcdIds.length === 0) return
 
@@ -276,14 +281,14 @@ export class UsersService {
     ordenarPor?: string,
     direccion: 'asc' | 'desc' = 'desc',
     buscar?: string,
-  ): Promise<RespuestaPaginada<any>> {
+  ): Promise<RespuestaPaginada<Record<string, unknown>>> {
     const snap = await this.col(COLECCIONES.dependientes)
       .where('tutorId', '==', usuarioId).get()
 
-    const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() }))
+    const dependientes = snap.docs.map(d => this.formatearDependiente({ id: d.id, ...d.data() } as DependienteDoc)).filter((d): d is DependienteFormateado => d !== null)
     await this.enriquecerDependientes(dependientes)
 
-    const personas = dependientes.map(d => ({
+    const personas: Record<string, unknown>[] = dependientes.map(d => ({
       id: d.id,
       nombre: d.nombreCompleto,
       esCuentaVinculada: d.esCuentaVinculada,
@@ -294,7 +299,7 @@ export class UsersService {
     }))
 
     const filtradas = buscar
-      ? personas.filter(p => (p.nombre ?? '').toLowerCase().includes(buscar.toLowerCase()))
+      ? personas.filter(p => ((p.nombre as string) ?? '').toLowerCase().includes(buscar.toLowerCase()))
       : personas
     const ordenadas = ordenar(filtradas, ordenarPor ?? 'fechaCreacion', direccion)
     const total = ordenadas.length
@@ -313,7 +318,7 @@ export class UsersService {
     }
   }
 
-  async addDependent(usuarioId: string, datos: any) {
+  async addDependent(usuarioId: string, datos: CrearDependienteDto) {
     const ref = this.col(COLECCIONES.dependientes).doc()
     await ref.set({
       id: ref.id, tutorId: usuarioId,
@@ -331,10 +336,10 @@ export class UsersService {
       fechaCreacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(ref.id).get()
-    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
+    return this.formatearDependiente({ id: fila.id, ...fila.data()! } as DependienteDoc) as DependienteFormateado
   }
 
-  async updateDependent(usuarioId: string, id: string, datos: any) {
+  async updateDependent(usuarioId: string, id: string, datos: CrearDependienteDto) {
     const existente = await this.col(COLECCIONES.dependientes).doc(id).get()
     if (!existente.exists || existente.data()?.tutorId !== usuarioId) throw new NotFoundException('Dependiente no encontrado')
     const perfilPrevio = this.parsearObjeto(existente.data()?.datosPerfil)
@@ -350,7 +355,7 @@ export class UsersService {
       fechaActualizacion: new Date().toISOString(),
     })
     const fila = await this.col(COLECCIONES.dependientes).doc(id).get()
-    return this.formatearDependiente({ id: fila.id, ...fila.data()! })
+    return this.formatearDependiente({ id: fila.id, ...fila.data()! } as DependienteDoc) as DependienteFormateado
   }
 
   async getDependent(usuarioId: string, id: string) {
@@ -358,7 +363,7 @@ export class UsersService {
     if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
       throw new NotFoundException('Dependiente no encontrado')
     }
-    const dependiente = this.formatearDependiente({ id: doc.id, ...doc.data()! })
+    const dependiente = this.formatearDependiente({ id: doc.id, ...doc.data()! } as DependienteDoc) as DependienteFormateado
 
     // Para cuentas PCD vinculadas, features y discapacidad reales viven en su perfil
     if (dependiente.esCuentaVinculada) {
@@ -378,7 +383,7 @@ export class UsersService {
         dependiente.etapaVida = ext.etapaVida ?? dependiente.etapaVida ?? null
       }
     }
-    return dependiente
+    return dependiente as DependienteFormateado
   }
 
   async deleteDependent(usuarioId: string, id: string) {
@@ -396,7 +401,7 @@ export class UsersService {
     await this.col(COLECCIONES.dependientes).doc(id).delete()
   }
 
-  private formatearDependiente(d: any) {
+  private formatearDependiente(d: DependienteDoc | null): DependienteFormateado | null {
     if (!d) return d
     const p = this.parsearObjeto(d.datosPerfil)
     return {
@@ -415,7 +420,7 @@ export class UsersService {
     }
   }
 
-  private parsearCampoJson(valor: any) {
+  private parsearCampoJson(valor: unknown): unknown {
     if (typeof valor === 'string') {
       try { return JSON.parse(valor) }
       catch { return valor }
@@ -423,7 +428,7 @@ export class UsersService {
     return valor
   }
 
-  private parsearObjeto(valor: any) {
+  private parsearObjeto(valor: string | undefined): Record<string, any> {
     if (!valor) return {}
     try { const p = JSON.parse(valor); return p && typeof p === 'object' ? p : {} } catch { return {} }
   }

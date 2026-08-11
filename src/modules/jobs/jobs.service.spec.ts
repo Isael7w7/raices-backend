@@ -3,6 +3,8 @@ import { NotFoundException, ConflictException, ForbiddenException, BadRequestExc
 import { JobsService } from './jobs.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { NotificationsService } from '../notifications/notifications.service'
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { FEATURES_POR_DEFECTO } from '../../common/interfaces/feature-flags.interface'
 
 // ─── Mock helpers ────────────────────────────────────────────────────────
 
@@ -34,6 +36,20 @@ function mockCollection(opts: {
     limit: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     get: jest.fn().mockResolvedValue({ empty, docs, size: docs.length }),
+  }
+}
+
+// ─── Mock CurrentUserPayload helper ────────────────────────────────────
+
+function mockUser(overrides: Partial<CurrentUserPayload> = {}): CurrentUserPayload {
+  return {
+    id: 'user1',
+    email: 'test@test.com',
+    rol: 'institucion',
+    nombreCompleto: 'Test User',
+    verificado: true,
+    features: { ...FEATURES_POR_DEFECTO },
+    ...overrides,
   }
 }
 
@@ -235,7 +251,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce(chainable(postulacionesSnap))
         .mockReturnValueOnce(chainable(perfilesSnap))
 
-      const result = await service.postulantesDeMiInstitucion({ id: 'owner1', rol: 'institucion' } as any)
+      const result = await service.postulantesDeMiInstitucion(mockUser({ id: 'owner1', rol: 'institucion' }))
 
       expect(result.total).toBe(1)
       expect(result.datos[0]).toMatchObject({
@@ -254,17 +270,17 @@ describe('JobsService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }) })
 
-      await expect(service.postulantesDeMiInstitucion({ id: 'user1', rol: 'institucion' } as any))
+      await expect(service.postulantesDeMiInstitucion(mockUser({ id: 'user1', rol: 'institucion' })))
         .rejects.toThrow(NotFoundException)
     })
 
     it('should throw ForbiddenException for non-institution users', async () => {
-      await expect(service.postulantesDeMiInstitucion({ id: 'user1', rol: 'pcd' } as any))
+      await expect(service.postulantesDeMiInstitucion(mockUser({ id: 'user1', rol: 'pcd' })))
         .rejects.toThrow(ForbiddenException)
     })
 
     it('should throw BadRequestException when admin omits institucionId', async () => {
-      await expect(service.postulantesDeMiInstitucion({ id: 'admin1', rol: 'admin' } as any))
+      await expect(service.postulantesDeMiInstitucion(mockUser({ id: 'admin1', rol: 'admin' })))
         .rejects.toThrow(BadRequestException)
     })
 
@@ -275,7 +291,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce(chainable({ empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }))
         .mockReturnValueOnce(chainable({ docs: [] as never[], size: 0 }))
 
-      const result = await service.postulantesDeMiInstitucion({ id: 'admin1', rol: 'admin' } as any, { institucionId: 'inst1' })
+      const result = await service.postulantesDeMiInstitucion(mockUser({ id: 'admin1', rol: 'admin' }), { institucionId: 'inst1' })
       expect(result.datos).toHaveLength(0)
       expect(result.total).toBe(0)
     })
@@ -309,7 +325,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce(chainable(postulacionesSnap))
         .mockReturnValueOnce(chainable(perfilesSnap))
 
-      const result = await service.postulantesDeMiInstitucion({ id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' })
+      const result = await service.postulantesDeMiInstitucion(mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'aceptada' })
       expect(result.datos).toHaveLength(1)
       expect(result.datos[0].id).toBe('p2')
     })
@@ -330,7 +346,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
         .mockReturnValueOnce(chainable(instSnap()))
 
-      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any)
+      const result = await service.actualizarEstadoPostulacion('p1', mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'aceptada' } as any)
 
       expect(result).toMatchObject({ id: 'p1', estado: 'aceptada' })
       expect(pDoc.ref.update).toHaveBeenCalledWith({ estado: 'aceptada', fechaActualizacion: expect.any(String) })
@@ -344,7 +360,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
         .mockReturnValueOnce(chainable(instSnap()))
 
-      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'rechazada' } as any)
+      const result = await service.actualizarEstadoPostulacion('p1', mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'rechazada' } as any)
 
       expect(result.estado).toBe('rechazada')
       expect(mockNotif.crear).toHaveBeenCalledWith('user1', 'postulacion_rechazada', 'Actualización de tu postulación', expect.any(String), 'p1')
@@ -356,7 +372,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(pDoc) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
 
-      const result = await service.actualizarEstadoPostulacion('p1', { id: 'admin1', rol: 'admin' } as any, { estado: 'aceptada' } as any)
+      const result = await service.actualizarEstadoPostulacion('p1', mockUser({ id: 'admin1', rol: 'admin' }), { estado: 'aceptada' } as any)
       expect(result.estado).toBe('aceptada')
       expect(mockNotif.crear).toHaveBeenCalled()
     })
@@ -365,7 +381,7 @@ describe('JobsService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
-      await expect(service.actualizarEstadoPostulacion('ghost', { id: 'admin1', rol: 'admin' } as any, { estado: 'aceptada' } as any))
+      await expect(service.actualizarEstadoPostulacion('ghost', mockUser({ id: 'admin1', rol: 'admin' }), { estado: 'aceptada' } as any))
         .rejects.toThrow(NotFoundException)
     })
 
@@ -374,7 +390,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(postDoc()) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
-      await expect(service.actualizarEstadoPostulacion('p1', { id: 'admin1', rol: 'admin' } as any, { estado: 'aceptada' } as any))
+      await expect(service.actualizarEstadoPostulacion('p1', mockUser({ id: 'admin1', rol: 'admin' }), { estado: 'aceptada' } as any))
         .rejects.toThrow(NotFoundException)
     })
 
@@ -384,7 +400,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
         .mockReturnValueOnce(chainable(instSnap('inst2')))
 
-      await expect(service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any))
+      await expect(service.actualizarEstadoPostulacion('p1', mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'aceptada' } as any))
         .rejects.toThrow(ForbiddenException)
     })
 
@@ -394,7 +410,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
         .mockReturnValueOnce(chainable({ empty: true, docs: [] as never[] }))
 
-      await expect(service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any))
+      await expect(service.actualizarEstadoPostulacion('p1', mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'aceptada' } as any))
         .rejects.toThrow(ForbiddenException)
     })
 
@@ -405,7 +421,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
         .mockReturnValueOnce(chainable(instSnap()))
 
-      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'pendiente' } as any)
+      const result = await service.actualizarEstadoPostulacion('p1', mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'pendiente' } as any)
 
       expect(result.estado).toBe('pendiente')
       expect(pDoc.ref.update).toHaveBeenCalledWith({ estado: 'pendiente', fechaActualizacion: expect.any(String) })
@@ -419,7 +435,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc()) }) })
         .mockReturnValueOnce(chainable(instSnap()))
 
-      const result = await service.actualizarEstadoPostulacion('p1', { id: 'owner1', rol: 'institucion' } as any, { estado: 'aceptada' } as any)
+      const result = await service.actualizarEstadoPostulacion('p1', mockUser({ id: 'owner1', rol: 'institucion' }), { estado: 'aceptada' } as any)
 
       expect(result.estado).toBe('aceptada')
       expect(pDoc.ref.update).not.toHaveBeenCalled()
@@ -468,19 +484,19 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: vacanteGet }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: instGet }) })
 
-      const result = await service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' })
+      const result = await service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any)
       expect(result.titulo).toBe('Test')
     })
 
     it('should throw ForbiddenException for non-institution users', async () => {
-      await expect(service.createForUser({ id: 'user1', rol: 'pcd' }, { titulo: 'Test' })).rejects.toThrow(ForbiddenException)
+      await expect(service.createForUser(mockUser({ id: 'user1', rol: 'pcd' }), { titulo: 'Test' } as any)).rejects.toThrow(ForbiddenException)
     })
 
     it('should throw NotFoundException when institution user has no institution', async () => {
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }) })
 
-      await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' })).rejects.toThrow(NotFoundException)
+      await expect(service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any)).rejects.toThrow(NotFoundException)
     })
 
     it('should throw ForbiddenException when the institution is not approved (verificada false)', async () => {
@@ -490,7 +506,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ activa: true, verificada: false }, true, 'inst1')) }) })
 
-      await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' }))
+      await expect(service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any))
         .rejects.toThrow('La institución debe estar aprobada por un administrador para publicar vacantes')
     })
 
@@ -501,7 +517,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ activa: false, verificada: true }, true, 'inst1')) }) })
 
-      await expect(service.createForUser({ id: 'user1', rol: 'institucion' }, { titulo: 'Test' }))
+      await expect(service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any))
         .rejects.toThrow('La institución se encuentra inactiva')
     })
 
@@ -509,7 +525,7 @@ describe('JobsService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false, 'ghost')) }) })
 
-      await expect(service.createForUser({ id: 'admin1', rol: 'admin' }, { titulo: 'Test', institucionId: 'ghost' }))
+      await expect(service.createForUser(mockUser({ id: 'admin1', rol: 'admin' }), { titulo: 'Test', institucionId: 'ghost' } as any))
         .rejects.toThrow(NotFoundException)
     })
   })
@@ -528,7 +544,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(instDoc) }) })
 
-      const result = await service.update('v1', { id: 'user1', rol: 'institucion' } as any, { titulo: 'New Title' })
+      const result = await service.update('v1', mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'New Title' } as any)
       expect(result).toBeDefined()
     })
 
@@ -541,7 +557,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(instDoc) }) })
 
-      const result = await service.update('v1', { id: 'admin1', rol: 'admin' } as any, { titulo: 'Admin Update' })
+      const result = await service.update('v1', mockUser({ id: 'admin1', rol: 'admin' }), { titulo: 'Admin Update' } as any)
       expect(result).toBeDefined()
     })
 
@@ -549,7 +565,7 @@ describe('JobsService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
-      await expect(service.update('nonexistent', { id: 'user1', rol: 'institucion' } as any, { titulo: 'X' })).rejects.toThrow(NotFoundException)
+      await expect(service.update('nonexistent', mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'X' } as any)).rejects.toThrow(NotFoundException)
     })
 
     it('should throw ForbiddenException when user does not own vacancy', async () => {
@@ -560,7 +576,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
 
-      await expect(service.update('v1', { id: 'user1', rol: 'institucion' } as any, { titulo: 'X' })).rejects.toThrow(ForbiddenException)
+      await expect(service.update('v1', mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'X' } as any)).rejects.toThrow(ForbiddenException)
     })
   })
 
@@ -575,7 +591,7 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(vacanteDoc), update: jest.fn().mockResolvedValue(undefined) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
 
-      const result = await service.remove('v1', { id: 'user1', rol: 'institucion' } as any)
+      const result = await service.remove('v1', mockUser({ id: 'user1', rol: 'institucion' }))
       expect(result.eliminado).toBe(true)
     })
 
@@ -583,7 +599,7 @@ describe('JobsService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
-      await expect(service.remove('nonexistent', { id: 'user1', rol: 'institucion' } as any)).rejects.toThrow(NotFoundException)
+      await expect(service.remove('nonexistent', mockUser({ id: 'user1', rol: 'institucion' }))).rejects.toThrow(NotFoundException)
     })
   })
 })

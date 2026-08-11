@@ -6,6 +6,7 @@ import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
+import { CrearGrupoDto } from './dto/crear-grupo.dto'
 
 /** Objeto de autor por defecto cuando el autor no existe o está deshabilitado */
 const AUTOR_NO_DISPONIBLE = Object.freeze({
@@ -47,7 +48,7 @@ export class CommunityService {
       if (ordenarPor) {
         grupos = ordenar(grupos, ordenarPor, direccion ?? 'desc')
       } else {
-        grupos.sort((a: any, b: any) => (b.cantidadMiembros ?? 0) - (a.cantidadMiembros ?? 0))
+        grupos.sort((a, b) => ((b.cantidadMiembros as number) ?? 0) - ((a.cantidadMiembros as number) ?? 0))
       }
 
       const total = grupos.length
@@ -101,7 +102,7 @@ export class CommunityService {
         }
       })
 
-      let conMeGusta: any[]
+      let conMeGusta: Record<string, unknown>[]
       try {
         if (usuarioId) {
           const likedSnap = await this.db.collection(COLECCIONES.meGustas)
@@ -250,7 +251,7 @@ export class CommunityService {
     return { eliminado: true }
   }
 
-  async createGroup(creadorId: string, dto: any) {
+  async createGroup(creadorId: string, dto: CrearGrupoDto) {
     const ref = this.db.collection(COLECCIONES.grupos).doc()
     // Miembro del creador con ID determinista: evita duplicados y permite
     // atomizar la creación del grupo + su primer miembro en un solo batch.
