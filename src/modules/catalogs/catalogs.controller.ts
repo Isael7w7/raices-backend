@@ -92,4 +92,20 @@ export class CatalogsController {
   viabilidadEconomica() {
     return this.svc.getViabilidadEconomica()
   }
+
+  @Get('subcategorias-comunidad')
+  @UseETag()
+  @ApiOperation({ summary: 'Subcategorías de comunidad', description: 'Subcategorías de grupos de comunidad: por tema, etapa de vida, condición, familias, intereses' })
+  @ApiOkResponse({ description: 'Arreglo de subcategorías de comunidad' })
+  subcategoriasComunidad() {
+    return this.svc.getSubcategoriasComunidad()
+  }
+
+  @Get('tono-contextual')
+  @UseETag()
+  @ApiOperation({ summary: 'Tono contextual', description: 'Opciones de tono contextual de la plataforma' })
+  @ApiOkResponse({ type: [FeatureCatalogoDto], description: 'Arreglo de tonos contextuales' })
+  tonoContextual() {
+    return this.svc.getTonoContextual()
+  }
 }

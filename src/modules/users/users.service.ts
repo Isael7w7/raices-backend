@@ -57,6 +57,8 @@ export class UsersService {
         preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
         areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
         viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
+        historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
+        tonoContextual: perfilExtendido.tonoContextual ?? null,
       } : null,
     }
 
@@ -210,6 +212,9 @@ export class UsersService {
       etapaVida: datos.etapaVida ?? null,
       preocupacionesActuales: datos.preocupacionesActuales ?? null,
       nivelApoyo: datos.nivelApoyo ?? null,
+      // ── Campos Spec MVP Raíces ──
+      historialInstituciones: JSON.stringify(datos.historialInstituciones ?? []),
+      tonoContextual: datos.tonoContextual ?? null,
     }
     if (!existe.empty) {
       await this.col(COLECCIONES.perfilesExtendidos).doc(existe.docs[0].id).update(carga)

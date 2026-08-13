@@ -29,6 +29,12 @@ export class AreaInteresDto {
   @ApiPropertyOptional({ type: [AreaInteresSubDto] }) subcategorias?: AreaInteresSubDto[]
 }
 
+export class SubcategoriaComunidadDto {
+  @ApiProperty({ example: 'por_tema' }) id!: string
+  @ApiProperty({ example: 'Por tema' }) label!: string
+  @ApiProperty({ type: [FeatureCatalogoDto] }) subcategorias!: FeatureCatalogoDto[]
+}
+
 export class CatalogoCompletoDto {
   @ApiProperty({ example: ['Hijo/a', 'Hermano/a'], type: [String] }) parentescos!: string[]
   @ApiProperty({ example: ['Motriz', 'Visual'], type: [String] }) discapacidades!: string[]
@@ -37,6 +43,8 @@ export class CatalogoCompletoDto {
   @ApiProperty({ type: [FeatureCatalogoDto] }) preferenciaFormato!: FeatureCatalogoDto[]
   @ApiProperty({ type: [AreaInteresDto] }) areasInteres!: AreaInteresDto[]
   @ApiProperty({ type: [FeatureCatalogoDto] }) viabilidadEconomica!: FeatureCatalogoDto[]
+  @ApiProperty({ type: [SubcategoriaComunidadDto] }) subcategoriasComunidad!: SubcategoriaComunidadDto[]
+  @ApiProperty({ type: [FeatureCatalogoDto] }) tonoContextual!: FeatureCatalogoDto[]
   @ApiProperty({ type: [FeatureCatalogoDto] }) features!: FeatureCatalogoDto[]
   @ApiProperty({ type: [CategoriaCatalogoDto] }) categorias!: CategoriaCatalogoDto[]
 }

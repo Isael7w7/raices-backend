@@ -65,6 +65,12 @@ export class PerfilNecesidadesDto {
 
   @ApiPropertyOptional({ example: 'bajo_costo', nullable: true, description: 'Viabilidad económica' })
   viabilidadEconomica?: string | null
+
+  @ApiPropertyOptional({ example: [{ nombre: 'Centro TEA', tipo: 'terapia', calificacionPersonal: 4 }], nullable: true, description: 'Historial de instituciones previas' })
+  historialInstituciones?: { nombre: string; tipo: string; calificacionPersonal?: number; notas?: string }[] | null
+
+  @ApiPropertyOptional({ example: 'empatico', nullable: true, description: 'Tono contextual de la plataforma', enum: ['formal', 'cercano', 'empatico', 'directo', 'infantil'] })
+  tonoContextual?: string | null
 }
 
 export class InstitucionPerfilDto {

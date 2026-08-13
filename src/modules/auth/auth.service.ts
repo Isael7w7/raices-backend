@@ -101,6 +101,7 @@ export class AuthService {
       ...(dto.curp && { curp: dto.curp.toUpperCase() }),
       ...(dto.telefonoContacto && { telefonoContacto: dto.telefonoContacto }),
       ...(dto.preferenciasAcompanamiento && { preferenciasAcompanamiento: dto.preferenciasAcompanamiento }),
+      ...(dto.tonoContextual && { tonoContextual: dto.tonoContextual }),
     }
 
     // Si el rol es 'institucion', crear también el documento en la colección
@@ -295,6 +296,7 @@ export class AuthService {
       curp: d.curp ?? null,
       telefonoContacto: d.telefonoContacto ?? null,
       preferenciasAcompanamiento: d.preferenciasAcompanamiento ?? null,
+      tonoContextual: d.tonoContextual ?? null,
     }
 
     // Para usuarios institución, adjuntar los datos básicos de su institución.

@@ -149,6 +149,8 @@ export interface PerfilExtendidoDoc {
   preferenciaFormato?: string
   areasInteres?: string
   viabilidadEconomica?: string
+  historialInstituciones?: string
+  tonoContextual?: string
 }
 
 /**

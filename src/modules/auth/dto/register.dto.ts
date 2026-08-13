@@ -69,4 +69,13 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'])
   preferenciasAcompanamiento?: string
+
+  @ApiPropertyOptional({
+    description: 'Tono contextual de la plataforma (cómo quiere recibir la información)',
+    enum: ['formal', 'cercano', 'empatico', 'directo', 'infantil'],
+    example: 'empatico',
+  })
+  @IsOptional()
+  @IsIn(['formal', 'cercano', 'empatico', 'directo', 'infantil'])
+  tonoContextual?: string
 }

@@ -33,6 +33,9 @@ export class UsuarioSesionDto {
 
   @ApiPropertyOptional({ description: 'Preferencia de acompañamiento', enum: ['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'], nullable: true })
   preferenciasAcompanamiento?: string | null
+
+  @ApiPropertyOptional({ description: 'Tono contextual de la plataforma', enum: ['formal', 'cercano', 'empatico', 'directo', 'infantil'], nullable: true })
+  tonoContextual?: string | null
 }
 
 export class RespuestaSesionDto {
