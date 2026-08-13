@@ -2,7 +2,7 @@
 
 > **Última actualización:** 13 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.1
+> **Última versión:** v1.2
 
 ---
 
@@ -12,6 +12,7 @@
 |---------|-------|-------------|-------------------|
 | v1.0 | 13/08/2026 | Campos de identidad, escalas de vida, catálogos, resúmenes IA | 17 archivos |
 | v1.1 | 13/08/2026 | Upload documentos identidad, validación diferida admin | 8 archivos |
+| v1.2 | 13/08/2026 | Módulo de Rutas y Caminos de Desarrollo | 5 archivos |
 
 ---
 
@@ -298,6 +299,11 @@ export interface ResumenIA {
 - [ ] **Identidad:** Mostrar motivo de rechazo si aplica
 - [ ] **Admin:** Crear vista de documentos pendientes de revisión
 - [ ] **Admin:** Botones de aprobar/rechazar con modal de motivo
+- [ ] **Rutas:** Crear vista de "Mis Rutas de Desarrollo" con listado y resumen
+- [ ] **Rutas:** Formulario para crear/editar rutas con áreas de interés
+- [ ] **Rutas:** Componente de pasos/hitos con checklist interactivo
+- [ ] **Rutas:** Barra de progreso animada por ruta
+- [ ] **Rutas:** Filtros por estado y área de interés
 
 ---
 
@@ -383,7 +389,119 @@ export interface ResumenIA {
 
 ---
 
-## 7. Flujo de UX Recomendado
+## 8. Rutas y Caminos de Desarrollo
+
+### Endpoint: `GET /api/rutas-desarrollo`
+
+**Query params:**
+- `estado`: Filtrar por estado (activa, completada, pausada, cancelada)
+- `areaInteres`: Filtrar por área de interés
+
+**Respuesta:**
+```typescript
+[{
+  id: string
+  usuarioId: string
+  areaInteres: string
+  nombre: string
+  descripcion: string
+  metaFinal: string
+  estado: 'activa' | 'completada' | 'pausada' | 'cancelada'
+  prioridad: 'baja' | 'media' | 'alta'
+  totalPasos: number
+  pasosCompletados: number
+  porcentajeProgreso: number
+  fechaLimite: string | null
+  fechaCreacion: string
+}]
+```
+
+### Endpoint: `GET /api/rutas-desarrollo/resumen`
+
+**Respuesta:**
+```typescript
+{
+  totalRutas: number
+  rutasActivas: number
+  rutasCompletadas: number
+  rutasPausadas: number
+  progresoPromedio: number
+}
+```
+
+### Endpoint: `GET /api/rutas-desarrollo/:id`
+
+**Respuesta:**
+```typescript
+{
+  // ... campos de ruta ...
+  pasos: [{
+    id: string
+    rutaId: string
+    titulo: string
+    descripcion: string
+    orden: number
+    completado: boolean
+    fechaCompletado: string | null
+    fechaCreacion: string
+  }]
+}
+```
+
+### Endpoint: `POST /api/rutas-desarrollo`
+
+**Body:**
+```typescript
+{
+  areaInteres: string      // requerido
+  nombre: string           // requerido
+  descripcion?: string
+  metaFinal?: string
+  prioridad?: 'baja' | 'media' | 'alta'
+  fechaLimite?: string     // ISO 8601
+}
+```
+
+### Endpoint: `PUT /api/rutas-desarrollo/:id`
+
+**Body:**
+```typescript
+{
+  nombre?: string
+  descripcion?: string
+  metaFinal?: string
+  estado?: 'activa' | 'completada' | 'pausada' | 'cancelada'
+  prioridad?: 'baja' | 'media' | 'alta'
+  fechaLimite?: string
+}
+```
+
+### Endpoint: `DELETE /api/rutas-desarrollo/:id`
+
+**Respuesta:** 204 No Content
+
+### Endpoint: `POST /api/rutas-desarrollo/:id/pasos`
+
+**Body:**
+```typescript
+{
+  titulo: string      // requerido
+  descripcion?: string
+  orden?: number      // auto-incremental si no se especifica
+}
+```
+
+### Endpoint: `PATCH /api/rutas-desarrollo/:rutaId/pasos/:pasoId/completar`
+
+**Respuesta:** Paso marcado como completado + progreso actualizado
+
+### Endpoint: `PATCH /api/rutas-desarrollo/:rutaId/pasos/:pasoId/descompletar`
+
+**Respuesta:** Paso desmarcado + progreso actualizado
+
+---
+
+## 9. Flujo de UX Recomendado
 
 ### Registro:
 ```
@@ -404,6 +522,7 @@ export interface ResumenIA {
 7. Indicar viabilidad económica
 8. Subir documentos de identidad (CURP + identificación oficial)
 9. Esperar validación admin
+10. Crear rutas de desarrollo personalizadas
 ```
 
 ### Dashboard (si tiene perfil completo):

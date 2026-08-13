@@ -17,6 +17,8 @@ export const COLECCIONES = {
   vacantes: 'vacantes',
   configuraciones: 'configuraciones',
   documentosIdentidad: 'documentosIdentidad',
+  rutasDesarrollo: 'rutasDesarrollo',
+  pasosRuta: 'pasosRuta',
   analiticas: '_analiticas',
   auditoria: '_auditoria',
 } as const
