@@ -75,7 +75,8 @@ async function bootstrap() {
         "## Roles\n" +
         "- **pcd**: Persona con discapacidad\n" +
         "- **tutor**: Tutor o cuidador\n" +
-        "- **institucion**: Institución proveedora\n" +
+        "- **institucion**: Institución proveedora (escuelas, centros terapéuticos)\n" +
+        "- **institucional**: Usuario Institucional (gobiernos, ONGs, fundaciones, donantes)\n" +
         "- **admin**: Administrador de la plataforma",
     )
     .setVersion("1.0.0")
@@ -101,6 +102,8 @@ async function bootstrap() {
     .addTag("Empleo", "Bolsa de trabajo inclusiva")
     .addTag("Catálogos", "Catálogos de referencia (parentescos, discapacidades, etc.)")
     .addTag("Mensajes", "Mensajería directa entre usuarios")
+    .addTag("Rutas de Desarrollo", "Rutas y caminos de desarrollo personalizados")
+    .addTag("Documentos de Identidad", "Upload y validación de documentos de identidad (CURP, identificación oficial)")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

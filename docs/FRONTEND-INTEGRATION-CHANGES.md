@@ -2,7 +2,7 @@
 
 > **Última actualización:** 13 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.5 (COBERTURA 100%)
+> **Última versión:** v1.6 (COBERTURA 100% + Swagger)
 
 ---
 
@@ -16,6 +16,7 @@
 | v1.3 | 13/08/2026 | Historial instituciones, tono contextual, visibilidad diferenciada, subcategorías comunidad | 10 archivos |
 | v1.4 | 13/08/2026 | Validación CURP regex, escalas de vida en IA | 5 archivos |
 | v1.5 | 13/08/2026 | Fecha nacimiento, domicilio, rol institucional — COBERTURA 100% | 6 archivos |
+| v1.6 | 13/08/2026 | Documentación Swagger/OpenAPI actualizada (105 endpoints) | 3 archivos |
 
 ---
 
@@ -577,3 +578,51 @@ Los siguientes módulos ya fueron implementados:
 | **v1.5** | **100%** |
 
 **Todos los requisitos del Spec Funcional MVP Raíces están implementados.**
+
+---
+
+## 10. Documentación Swagger/OpenAPI
+
+### Archivos generados:
+
+| Archivo | Descripción |
+|---------|-------------|
+| `docs/swagger.json` | Especificación OpenAPI 3.0 (105 endpoints, 15 tags) |
+| `docs/swagger.html` | UI interactiva de Swagger (abrir en navegador) |
+
+### Cómo acceder:
+
+**Opción 1: Servidor en ejecución**
+```
+http://localhost:7000/docs
+```
+
+**Opción 2: Archivo estático**
+```
+Abrir docs/swagger.html en el navegador
+```
+
+**Opción 3: Re-generar JSON**
+```bash
+npx ts-node scripts/generate-swagger.ts
+```
+
+### Tags de la API:
+
+| Tag | Descripción | Endpoints |
+|-----|-------------|-----------|
+| Autenticación | Registro, login, refresh, perfil | 5 |
+| Usuarios | Perfil, dependientes, escalas, docs identidad | ~20 |
+| Instituciones | CRUD, verificación, mi institución | ~10 |
+| Descubrimiento | Búsqueda inteligente | 1 |
+| Favoritos | Guardar/eliminar favoritos | 3 |
+| Reseñas | Crear/listar/moderar reseñas | ~5 |
+| Comunidad | Posts, comentarios, grupos | ~15 |
+| Notificaciones | CRUD notificaciones | ~5 |
+| Administración | Stats, analytics, auditoría, usuarios, config | ~20 |
+| Inteligencia Artificial | Chat, recomendaciones, resúmenes | 3 |
+| Empleo | Vacantes, postulaciones, postulantes | ~10 |
+| Catálogos | Parentescos, discapacidades, áreas interés | ~12 |
+| Mensajes | Mensajería directa | ~5 |
+| Rutas de Desarrollo | CRUD rutas, pasos, progreso | ~8 |
+| Documentos de Identidad | Upload, estado validación | 3 |
