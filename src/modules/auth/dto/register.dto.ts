@@ -1,5 +1,6 @@
-import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray, Length } from 'class-validator'
+import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
 
 export class RegisterDto {
   @ApiProperty({ description: 'Correo electrónico del usuario', example: 'usuario@correo.mx' })
@@ -45,12 +46,12 @@ export class RegisterDto {
   destinatarioRegistro?: string
 
   @ApiPropertyOptional({
-    description: 'CURP del usuario (18 caracteres alfanuméricos, formato oficial mexicano)',
+    description: 'CURP del usuario (18 caracteres, formato oficial mexicano)',
     example: 'GAPL800101MCYRL093',
   })
   @IsOptional()
   @IsString()
-  @Length(18, 18, { message: 'La CURP debe tener exactamente 18 caracteres' })
+  @IsCurpValida({ message: 'La CURP no tiene un formato válido. Debe ser una CURP oficial mexicana de 18 caracteres' })
   curp?: string
 
   @ApiPropertyOptional({

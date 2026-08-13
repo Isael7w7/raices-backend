@@ -2,7 +2,7 @@
 
 > **Última actualización:** 13 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.3
+> **Última versión:** v1.4
 
 ---
 
@@ -14,6 +14,7 @@
 | v1.1 | 13/08/2026 | Upload documentos identidad, validación diferida admin | 8 archivos |
 | v1.2 | 13/08/2026 | Módulo de Rutas y Caminos de Desarrollo | 5 archivos |
 | v1.3 | 13/08/2026 | Historial instituciones, tono contextual, visibilidad diferenciada, subcategorías comunidad | 10 archivos |
+| v1.4 | 13/08/2026 | Validación CURP regex, escalas de vida en IA | 5 archivos |
 
 ---
 

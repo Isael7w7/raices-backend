@@ -194,6 +194,10 @@ PERFIL DEL USUARIO:
 - Metas actuales: ${perfil.metasActuales ? (parsearCampoJson(perfil.metasActuales) as string[]).join(', ') : 'no especificadas'}
 - Áreas de soporte: ${perfil.areasApoyo ? (parsearCampoJson(perfil.areasApoyo) as string[]).join(', ') : 'no especificadas'}
 - Preocupaciones actuales: ${perfil.preocupacionesActuales ?? 'ninguna'}
+- Escalas de vida: ${perfil.escalasVida ? `Autonomía=${perfil.escalasVida.autonomia}, Independencia=${perfil.escalasVida.independencia}, Comunicación=${perfil.escalasVida.comunicacion}, Comprensión=${perfil.escalasVida.comprension}, Energía=${perfil.escalasVida.energia}, Movilidad=${perfil.escalasVida.movilidad}, Social=${perfil.escalasVida.social}, Emocional=${perfil.escalasVida.emocional}` : 'no completadas'}
+- Áreas de interés: ${perfil.areasInteres ? (parsearCampoJson(perfil.areasInteres) as string[]).join(', ') : 'no especificadas'}
+- Formato preferido: ${perfil.preferenciaFormato ?? 'no especificado'}
+- Viabilidad económica: ${perfil.viabilidadEconomica ?? 'no especificada'}
 
 HISTORIAL DE ACTIVIDAD:
 - ${resumenFavoritos}

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsIn, IsOptional, IsString } from 'class-validator'
+import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
 
 /**
  * Tipo de documento de identidad que se puede subir.
@@ -29,11 +30,12 @@ export class SubirDocumentoIdentidadDto {
   tipo!: TipoDocumentoIdentidad
 
   @ApiPropertyOptional({
-    description: 'Número de CURP (si el tipo es curp). Se valida automáticamente.',
+    description: 'Número de CURP (si el tipo es curp). Se valida con formato oficial mexicano.',
     example: 'GAPL800101MCYRL093',
   })
   @IsOptional()
   @IsString()
+  @IsCurpValida({ message: 'La CURP no tiene un formato válido' })
   numeroCurp?: string
 }
 

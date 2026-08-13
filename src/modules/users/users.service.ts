@@ -311,12 +311,12 @@ export class UsersService {
 
     // Validar CURP si se proporciona
     if (tipo === 'curp' && numeroCurp) {
-      const curpUpper = numeroCurp.toUpperCase()
-      if (curpUpper.length !== 18) {
-        throw new BadRequestException('La CURP debe tener exactamente 18 caracteres')
+      const { esCurpValida } = await import('../../common/validators/curp.validator')
+      if (!esCurpValida(numeroCurp)) {
+        throw new BadRequestException('La CURP no tiene un formato válido. Debe ser una CURP oficial mexicana de 18 caracteres')
       }
       // Guardar CURP normalizada en el perfil
-      await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ curp: curpUpper })
+      await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ curp: numeroCurp.toUpperCase() })
     }
 
     // Subir archivo a Storage

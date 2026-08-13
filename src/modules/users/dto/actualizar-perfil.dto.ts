@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString, IsIn, Length } from 'class-validator'
+import { IsOptional, IsString, IsIn } from 'class-validator'
+import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
 
 export class ActualizarPerfilDto {
   @ApiPropertyOptional({
@@ -55,12 +56,12 @@ export class ActualizarPerfilDto {
   // ═══════════════════════════════════════════════════════════════════
 
   @ApiPropertyOptional({
-    description: 'CURP del usuario (18 caracteres alfanuméricos)',
+    description: 'CURP del usuario (18 caracteres, formato oficial mexicano)',
     example: 'GAPL800101MCYRL093',
   })
   @IsOptional()
   @IsString()
-  @Length(18, 18, { message: 'La CURP debe tener exactamente 18 caracteres' })
+  @IsCurpValida({ message: 'La CURP no tiene un formato válido. Debe ser una CURP oficial mexicana de 18 caracteres' })
   curp?: string
 
   @ApiPropertyOptional({
