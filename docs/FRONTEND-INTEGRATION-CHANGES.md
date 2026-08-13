@@ -2,7 +2,7 @@
 
 > **Última actualización:** 13 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.2
+> **Última versión:** v1.3
 
 ---
 
@@ -13,6 +13,7 @@
 | v1.0 | 13/08/2026 | Campos de identidad, escalas de vida, catálogos, resúmenes IA | 17 archivos |
 | v1.1 | 13/08/2026 | Upload documentos identidad, validación diferida admin | 8 archivos |
 | v1.2 | 13/08/2026 | Módulo de Rutas y Caminos de Desarrollo | 5 archivos |
+| v1.3 | 13/08/2026 | Historial instituciones, tono contextual, visibilidad diferenciada, subcategorías comunidad | 10 archivos |
 
 ---
 
@@ -537,9 +538,12 @@ export interface ResumenIA {
 
 ## 8. Notas para el Backend (próximos cambios)
 
-Los siguientes módulos están pendientes de implementación:
-- Upload de documentos de identidad (CURP + identificación oficial)
-- Flujo de validación diferida de identidad (admin aprueba → correo de aceptación)
-- Módulo de "Rutas y Caminos de Desarrollo" completo
+Los siguientes módulos ya fueron implementados:
+- ✅ Upload de documentos de identidad (CURP + identificación oficial)
+- ✅ Flujo de validación diferida de identidad (admin aprueba → correo de aceptación)
+- ✅ Módulo de "Rutas y Caminos de Desarrollo" completo
+- ✅ Visibilidad diferenciada Cuidador/Padre ↔ PCD
+- ✅ Tono contextual e historial de instituciones previas
+- ✅ Subcategorías de comunidad
 
 > Este documento se actualizará con cada cambio realizado en el backend.

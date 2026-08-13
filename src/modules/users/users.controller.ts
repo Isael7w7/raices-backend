@@ -41,6 +41,27 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'No autenticado' })
   profile(@CurrentUser() user: CurrentUserPayload) { return this.svc.getProfile(user.id) }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // Visibilidad diferenciada Cuidador/Padre ↔ PCD
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('perfil-pcd/:pcdUserId')
+  @UseETag()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Ver perfil completo de PCD vinculada',
+    description: 'Permite a un tutor ver el perfil completo de una PCD vinculada, incluyendo datos extendidos (discapacidad, necesidades, escalas, etc.). Solo el tutor dueño puede acceder.',
+  })
+  @ApiParam({ name: 'pcdUserId', description: 'ID de la cuenta PCD vinculada' })
+  @ApiOkResponse({ description: 'Perfil completo de la PCD' })
+  @ApiResponse({ status: 403, description: 'La PCD no está vinculada a tu cuenta' })
+  @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
+  getPerfilPcdComoTutor(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string) {
+    return this.svc.getPerfilPcdComoTutor(user.id, pcdUserId)
+  }
+
   @Put('perfil')
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones de perfil por minuto
   @ApiOperation({ summary: 'Actualizar perfil básico', description: 'Actualiza nombre, ciudad, estado o urlAvatar del usuario autenticado.' })

@@ -436,6 +436,88 @@ export class UsersService {
     })
   }
 
+  // ═══════════════════════════════════════════════════════════════════
+  // Visibilidad diferenciada Cuidador/Padre ↔ PCD
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Permite a un tutor ver el perfil completo de una PCD vinculada.
+   * Incluye datos extendidos (discapacidad, necesidades, escalas, etc.).
+   * Solo el tutor dueño puede acceder.
+   */
+  async getPerfilPcdComoTutor(tutorId: string, pcdUserId: string) {
+    // Verificar que la PCD esté vinculada a este tutor
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(pcdUserId).get()
+    if (!perfilDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+
+    const perfil = perfilDoc.data()!
+    if (perfil.tutorId !== tutorId) {
+      throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como tutor')
+    }
+    if (perfil.rol !== 'pcd') {
+      throw new BadRequestException('El usuario indicado no tiene rol PCD')
+    }
+
+    // Obtener perfil extendido de la PCD
+    const extSnap = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', pcdUserId).limit(1).get()
+
+    const perfilExtendido = extSnap.empty ? null : extSnap.docs[0].data()
+
+    // Construir respuesta con datos del perfil de la PCD
+    const resultado: Record<string, any> = {
+      id: perfilDoc.id,
+      nombreCompleto: perfil.nombreCompleto,
+      email: perfil.email,
+      rol: perfil.rol,
+      ciudad: perfil.ciudad ?? null,
+      estado: perfil.estado ?? null,
+      urlAvatar: perfil.urlAvatar ?? null,
+      verificado: perfil.verificado,
+      fechaCreacion: perfil.fechaCreacion,
+      // Datos de tutoría
+      esMiPcd: true,
+      tutorId,
+      // Datos extendidos de la PCD
+      perfilNecesidades: perfilExtendido ? {
+        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
+        severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
+        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
+        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
+        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
+        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
+        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
+        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
+        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
+        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
+        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
+        etapaVida: perfilExtendido.etapaVida ?? null,
+        preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
+        nivelApoyo: perfilExtendido.nivelApoyo ?? null,
+        // Campos Spec MVP Raíces
+        escalasVida: perfilExtendido.escalasVida ?? null,
+        tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
+        requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
+        temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
+        preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
+        areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
+        viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
+        historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
+        tonoContextual: perfilExtendido.tonoContextual ?? null,
+      } : null,
+    }
+
+    return resultado
+  }
+
+  /**
+   * Permite a una PCD ver su propio perfil con todos los datos.
+   * Método dedicado para la vista "Mi perfil" de la PCD.
+   */
+  async getMiPerfilPcd(usuarioId: string) {
+    return this.getProfile(usuarioId)
+  }
+
   async getDependents(usuarioId: string) {
     const snap = await this.col(COLECCIONES.dependientes)
       .where('tutorId', '==', usuarioId).get()
