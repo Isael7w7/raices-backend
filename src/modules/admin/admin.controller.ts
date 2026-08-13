@@ -260,4 +260,58 @@ export class AdminController {
   @ApiBody({ type: ActualizarConfiguracionDto })
   @ApiOkResponse({ type: ConfiguracionDto, description: 'Configuración actualizada' })
   updateSettings(@Body() dto: ActualizarConfiguracionDto) { return this.svc.updateSettings(dto as Record<string, string>) }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Validación de documentos de identidad (Spec MVP Raíces)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('documentos-identidad/pendientes')
+  @UseETag()
+  @ApiOperation({ summary: 'Documentos de identidad pendientes', description: 'Lista de documentos de identidad pendientes de revisión por un administrador.' })
+  @ApiQuery({ name: 'pagina', required: false, example: 1 })
+  @ApiQuery({ name: 'limite', required: false, example: 20 })
+  @ApiOkResponse({ description: 'Lista paginada de documentos pendientes' })
+  documentosIdentidadPendientes(@Query() paginacion: PaginacionDto) {
+    return this.svc.getDocumentosIdentidadPendientes(paginacion.pagina, paginacion.limite)
+  }
+
+  @Post('documentos-identidad/:id/aprobar')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(204)
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: 'aprobar_documento_identidad',
+    recurso: 'documento_identidad',
+    obtenerRecursoId: (id: string) => id,
+  })
+  @ApiOperation({ summary: 'Aprobar documento de identidad', description: 'Aprueba un documento de identidad y envía correo de aceptación al usuario.' })
+  @ApiParam({ name: 'id', description: 'ID del documento de identidad' })
+  @ApiNoContentResponse({ description: 'Documento aprobado' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  aprobarDocumentoIdentidad(@Param('id') id: string) {
+    return this.svc.aprobarDocumentoIdentidad(id)
+  }
+
+  @Post('documentos-identidad/:id/rechazar')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @HttpCode(204)
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: 'rechazar_documento_identidad',
+    recurso: 'documento_identidad',
+    obtenerRecursoId: (id: string) => id,
+  })
+  @ApiOperation({ summary: 'Rechazar documento de identidad', description: 'Rechaza un documento de identidad con motivo. Envía correo de notificación al usuario.' })
+  @ApiParam({ name: 'id', description: 'ID del documento de identidad' })
+  @ApiBody({ schema: { properties: { motivo: { type: 'string', description: 'Motivo del rechazo' } }, required: ['motivo'] } })
+  @ApiNoContentResponse({ description: 'Documento rechazado' })
+  @ApiResponse({ status: 400, description: 'Motivo de rechazo requerido' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  rechazarDocumentoIdentidad(@Param('id') id: string, @Body('motivo') motivo: string) {
+    if (!motivo || motivo.trim().length === 0) {
+      const { BadRequestException } = require('@nestjs/common')
+      throw new BadRequestException('El motivo de rechazo es obligatorio')
+    }
+    return this.svc.rechazarDocumentoIdentidad(id, motivo)
+  }
 }

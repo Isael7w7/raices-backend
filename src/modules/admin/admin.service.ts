@@ -721,4 +721,165 @@ export class AdminService {
     const orden: Record<string, number> = { critica: 0, media: 1, info: 2 }
     return alertas.sort((a, b) => (orden[a.severidad] ?? 9) - (orden[b.severidad] ?? 9))
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Validación de documentos de identidad (Spec MVP Raíces)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Lista documentos de identidad pendientes de revisión.
+   */
+  async getDocumentosIdentidadPendientes(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+    const snap = await this.col(COLECCIONES.documentosIdentidad)
+      .where('estado', '==', 'pendiente')
+      .orderBy('fechaSubida', 'desc')
+      .get()
+
+    let documentos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    // Enriquecer con datos del usuario
+    const usuarioIds = [...new Set(documentos.map(d => (d as any).usuarioId).filter(Boolean))] as string[]
+    const mapaUsuarios = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+
+    documentos = documentos.map(d => {
+      const data = d as any
+      const usuario = mapaUsuarios.get(data.usuarioId) ?? {}
+      return {
+        id: d.id,
+        tipo: data.tipo,
+        urlDocumento: data.urlDocumento,
+        numeroCurp: data.numeroCurp ?? null,
+        estado: data.estado,
+        fechaSubida: data.fechaSubida,
+        usuarioId: data.usuarioId,
+        nombreUsuario: usuario.nombreCompleto ?? null,
+        emailUsuario: usuario.email ?? null,
+        rolUsuario: usuario.rol ?? null,
+      }
+    })
+
+    const total = documentos.length
+    const inicio = (pagina - 1) * limite
+    const paginados = documentos.slice(inicio, inicio + limite)
+
+    return {
+      datos: paginados,
+      total,
+      pagina,
+      limite,
+      totalPaginas: Math.ceil(total / limite),
+    }
+  }
+
+  /**
+   * Aprueba un documento de identidad y envía correo de aceptación.
+   */
+  async aprobarDocumentoIdentidad(documentoId: string) {
+    const docRef = this.col(COLECCIONES.documentosIdentidad).doc(documentoId)
+    const doc = await docRef.get()
+    if (!doc.exists) throw new NotFoundException('Documento de identidad no encontrado')
+
+    const data = doc.data()!
+    if (data.estado === 'aprobado') return // Ya aprobado
+
+    // Actualizar estado del documento
+    await docRef.update({
+      estado: 'aprobado',
+      fechaRevision: new Date().toISOString(),
+    })
+
+    // Verificar si todos los documentos del usuario están aprobados
+    await this.verificarEstadoValidacionUsuario(data.usuarioId)
+
+    // Enviar correo de aceptación
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(data.usuarioId).get()
+    if (perfilDoc.exists) {
+      const perfil = perfilDoc.data()!
+      await this.email.sendIdentityApproved(
+        perfil.email,
+        perfil.nombreCompleto,
+      ).catch(err => this.logger.warn(`Error al enviar correo de aceptación: ${err.message}`))
+    }
+  }
+
+  /**
+   * Rechaza un documento de identidad con motivo.
+   */
+  async rechazarDocumentoIdentidad(documentoId: string, motivo: string) {
+    const docRef = this.col(COLECCIONES.documentosIdentidad).doc(documentoId)
+    const doc = await docRef.get()
+    if (!doc.exists) throw new NotFoundException('Documento de identidad no encontrado')
+
+    const data = doc.data()!
+    if (data.estado === 'rechazado') return // Ya rechazado
+
+    // Actualizar estado del documento
+    await docRef.update({
+      estado: 'rechazado',
+      motivoRechazo: motivo,
+      fechaRevision: new Date().toISOString(),
+    })
+
+    // Verificar estado de validación del usuario
+    await this.verificarEstadoValidacionUsuario(data.usuarioId)
+
+    // Enviar correo de rechazo
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(data.usuarioId).get()
+    if (perfilDoc.exists) {
+      const perfil = perfilDoc.data()!
+      await this.email.sendIdentityRejected(
+        perfil.email,
+        perfil.nombreCompleto,
+        motivo,
+      ).catch(err => this.logger.warn(`Error al enviar correo de rechazo: ${err.message}`))
+    }
+  }
+
+  /**
+   * Verifica y actualiza el estado general de validación de identidad de un usuario.
+   */
+  private async verificarEstadoValidacionUsuario(usuarioId: string) {
+    const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+      .where('usuarioId', '==', usuarioId).get()
+
+    if (docsSnap.empty) {
+      await this.col(COLECCIONES.perfiles).doc(usuarioId).update({
+        estadoValidacionIdentidad: 'sin_documentos',
+      })
+      return
+    }
+
+    const documentos = docsSnap.docs.map(d => d.data())
+    const tieneCurp = documentos.some(d => d.tipo === 'curp')
+    const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+
+    // Determinar estado general
+    let estado: string = 'sin_documentos'
+    if (tieneCurp || tieneIdentificacion) {
+      const estados = documentos.map(d => d.estado)
+      if (estados.includes('rechazado')) {
+        estado = 'rechazado'
+      } else if (estados.includes('pendiente')) {
+        estado = 'pendiente'
+      } else if (estados.every(e => e === 'aprobado')) {
+        estado = 'aprobado'
+      }
+    }
+
+    await this.col(COLECCIONES.perfiles).doc(usuarioId).update({
+      estadoValidacionIdentidad: estado,
+    })
+
+    // Si se aprobó todo, enviar correo de validación completa
+    if (estado === 'aprobado') {
+      const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+      if (perfilDoc.exists) {
+        const perfil = perfilDoc.data()!
+        await this.email.sendIdentityFullyApproved(
+          perfil.email,
+          perfil.nombreCompleto,
+        ).catch(err => this.logger.warn(`Error al enviar correo de validación completa: ${err.message}`))
+      }
+    }
+  }
 }

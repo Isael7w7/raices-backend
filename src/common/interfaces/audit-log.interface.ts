@@ -66,6 +66,10 @@ export const AUDIT_ACCIONES = {
   // Configuración
   ACTUALIZAR_CONFIGURACION: 'actualizar_configuracion',
 
+  // Documentos de identidad
+  APROBAR_DOCUMENTO_IDENTIDAD: 'aprobar_documento_identidad',
+  RECHAZAR_DOCUMENTO_IDENTIDAD: 'rechazar_documento_identidad',
+
   // Genérico
   ACCION_ADMIN: 'accion_admin',
 } as const

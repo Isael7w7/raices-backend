@@ -16,6 +16,7 @@ export const COLECCIONES = {
   instituciones: 'instituciones',
   vacantes: 'vacantes',
   configuraciones: 'configuraciones',
+  documentosIdentidad: 'documentosIdentidad',
   analiticas: '_analiticas',
   auditoria: '_auditoria',
 } as const

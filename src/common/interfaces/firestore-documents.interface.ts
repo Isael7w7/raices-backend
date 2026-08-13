@@ -55,6 +55,12 @@ export interface PerfilDoc {
   estado?: string
   profesion?: string
   bio?: string
+  // ── Campos Spec MVP Raíces ──
+  destinatarioRegistro?: string
+  curp?: string
+  telefonoContacto?: string
+  preferenciasAcompanamiento?: string
+  estadoValidacionIdentidad?: string
 }
 
 /**
@@ -208,6 +214,21 @@ export interface NotificacionDoc {
   entidadId?: string | null
   leida?: boolean
   fechaCreacion?: string
+}
+
+/**
+ * Documento de identidad (colección `documentosIdentidad`).
+ */
+export interface DocumentoIdentidadDoc {
+  id?: string
+  usuarioId?: string
+  tipo?: 'curp' | 'identificacion_oficial'
+  urlDocumento?: string
+  numeroCurp?: string | null
+  estado?: 'pendiente' | 'aprobado' | 'rechazado'
+  motivoRechazo?: string | null
+  fechaSubida?: string
+  fechaRevision?: string | null
 }
 
 /** Default features constant for convenience */

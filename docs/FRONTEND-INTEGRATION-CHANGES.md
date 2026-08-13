@@ -2,6 +2,7 @@
 
 > **Última actualización:** 13 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
+> **Última versión:** v1.1
 
 ---
 
@@ -10,6 +11,7 @@
 | Versión | Fecha | Descripción | Archivos afectados |
 |---------|-------|-------------|-------------------|
 | v1.0 | 13/08/2026 | Campos de identidad, escalas de vida, catálogos, resúmenes IA | 17 archivos |
+| v1.1 | 13/08/2026 | Upload documentos identidad, validación diferida admin | 8 archivos |
 
 ---
 
@@ -291,6 +293,93 @@ export interface ResumenIA {
 - [ ] **IA:** Crear componente/modal para mostrar resumen de 1 párrafo
 - [ ] **IA:** Crear componente para mostrar resumen de 3 párrafos
 - [ ] **Flag de evaluación:** Si `requiereEvaluacion = true`, mostrar banner/CTA para conectar con especialistas
+- [ ] **Identidad:** Crear formulario de upload de documentos (CURP + identificación oficial)
+- [ ] **Identidad:** Mostrar estado de validación (pendiente/aprobado/rechazado)
+- [ ] **Identidad:** Mostrar motivo de rechazo si aplica
+- [ ] **Admin:** Crear vista de documentos pendientes de revisión
+- [ ] **Admin:** Botones de aprobar/rechazar con modal de motivo
+
+---
+
+## 6B. Documentos de Identidad (Upload)
+
+### Endpoint: `POST /api/usuarios/documento-identidad`
+
+**Body:** `multipart/form-data`
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| tipo | string | Sí | `curp` o `identificacion_oficial` |
+| numeroCurp | string | No | Número de CURP (solo si tipo=curp) |
+| documento | file | Sí | Archivo JPEG, PNG, WebP o PDF (max 10MB) |
+
+**Respuesta:**
+```typescript
+{
+  tipo: 'curp' | 'identificacion_oficial'
+  urlDocumento: string
+  estado: 'pendiente'
+  fechaSubida: string
+  numeroCurp: string | null
+}
+```
+
+### Endpoint: `GET /api/usuarios/estado-validacion-identidad`
+
+**Respuesta:**
+```typescript
+{
+  estado: 'sin_documentos' | 'pendiente' | 'aprobado' | 'rechazado'
+  tieneCurp: boolean
+  tieneIdentificacion: boolean
+  numeroCurp: string | null
+  motivoRechazo: string | null
+  fechaSubida: string | null
+  fechaRevision: string | null
+}
+```
+
+---
+
+## 6C. Admin: Validación de Identidad (Solo admin)
+
+### Endpoint: `GET /api/administracion/documentos-identidad/pendientes`
+
+**Respuesta:**
+```typescript
+{
+  datos: [{
+    id: string
+    tipo: 'curp' | 'identificacion_oficial'
+    urlDocumento: string
+    numeroCurp: string | null
+    estado: 'pendiente'
+    fechaSubida: string
+    usuarioId: string
+    nombreUsuario: string
+    emailUsuario: string
+  }]
+  total: number
+  pagina: number
+  limite: number
+  totalPaginas: number
+}
+```
+
+### Endpoint: `POST /api/administracion/documentos-identidad/:id/aprobar`
+
+**Respuesta:** 204 No Content
+
+### Endpoint: `POST /api/administracion/documentos-identidad/:id/rechazar`
+
+**Body:**
+```typescript
+{
+  motivo: string  // Motivo del rechazo (obligatorio)
+}
+```
+
+**Respuesta:** 204 No Content
 
 ---
 
@@ -313,6 +402,8 @@ export interface ResumenIA {
 5. Seleccionar formato preferido
 6. Seleccionar áreas de interés
 7. Indicar viabilidad económica
+8. Subir documentos de identidad (CURP + identificación oficial)
+9. Esperar validación admin
 ```
 
 ### Dashboard (si tiene perfil completo):

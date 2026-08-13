@@ -287,6 +287,150 @@ export class UsersService {
     }
   }
 
+  // ─── Documentos de identidad (Validación diferida) ─────────────
+
+  /**
+   * Sube un documento de identidad (CURP o identificación oficial).
+   * El documento se guarda en Storage y se registra en Firestore.
+   * El estado se actualiza a 'pendiente' para revisión admin.
+   */
+  async subirDocumentoIdentidad(
+    usuarioId: string,
+    tipo: 'curp' | 'identificacion_oficial',
+    file: Express.Multer.File,
+    numeroCurp?: string,
+  ) {
+    // Validar que el usuario exista
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    if (!perfilDoc.exists) throw new NotFoundException('Usuario no encontrado')
+
+    // Validar CURP si se proporciona
+    if (tipo === 'curp' && numeroCurp) {
+      const curpUpper = numeroCurp.toUpperCase()
+      if (curpUpper.length !== 18) {
+        throw new BadRequestException('La CURP debe tener exactamente 18 caracteres')
+      }
+      // Guardar CURP normalizada en el perfil
+      await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ curp: curpUpper })
+    }
+
+    // Subir archivo a Storage
+    const urlDocumento = await this.storage.upload(
+      file.buffer,
+      file.originalname,
+      `identidad/${usuarioId}`,
+    )
+
+    // Registrar documento en la subcolección de documentos de identidad
+    const docRef = this.col(COLECCIONES.documentosIdentidad).doc()
+    await docRef.set({
+      id: docRef.id,
+      usuarioId,
+      tipo,
+      urlDocumento,
+      numeroCurp: numeroCurp?.toUpperCase() ?? null,
+      estado: 'pendiente',
+      fechaSubida: new Date().toISOString(),
+    })
+
+    // Actualizar estado de validación del perfil
+    await this.actualizarEstadoValidacion(usuarioId)
+
+    return {
+      tipo,
+      urlDocumento,
+      estado: 'pendiente',
+      fechaSubida: new Date().toISOString(),
+      numeroCurp: numeroCurp?.toUpperCase() ?? null,
+    }
+  }
+
+  /**
+   * Obtiene el estado de validación de documentos de identidad del usuario.
+   */
+  async getEstadoValidacionIdentidad(usuarioId: string) {
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    if (!perfilDoc.exists) throw new NotFoundException('Usuario no encontrado')
+
+    const perfil = perfilDoc.data()!
+
+    // Buscar documentos de identidad del usuario
+    const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+      .where('usuarioId', '==', usuarioId).get()
+
+    const documentos = docsSnap.docs.map(d => d.data())
+    const tieneCurp = documentos.some(d => d.tipo === 'curp')
+    const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+
+    // Determinar estado general
+    let estado: string = 'sin_documentos'
+    if (tieneCurp || tieneIdentificacion) {
+      // Si algún documento está pendiente → pendiente
+      // Si todos están aprobados → aprobado
+      // Si alguno está rechazado → rechazado
+      const estados = documentos.map(d => d.estado)
+      if (estados.includes('rechazado')) {
+        estado = 'rechazado'
+      } else if (estados.includes('pendiente')) {
+        estado = 'pendiente'
+      } else if (estados.every(e => e === 'aprobado')) {
+        estado = 'aprobado'
+      }
+    }
+
+    // Buscar último documento para fechas y motivo de rechazo
+    const ultimoDoc = documentos.length > 0
+      ? documentos.sort((a, b) => (b.fechaSubida ?? '').localeCompare(a.fechaSubida ?? ''))[0]
+      : null
+
+    return {
+      estado,
+      tieneCurp,
+      tieneIdentificacion,
+      numeroCurp: perfil.curp ?? null,
+      motivoRechazo: ultimoDoc?.motivoRechazo ?? null,
+      fechaSubida: ultimoDoc?.fechaSubida ?? null,
+      fechaRevision: ultimoDoc?.fechaRevision ?? null,
+    }
+  }
+
+  /**
+   * Actualiza el estado de validación de identidad del perfil.
+   * Llamado después de subir documentos o cuando admin aprueba/rechaza.
+   */
+  private async actualizarEstadoValidacion(usuarioId: string) {
+    const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+      .where('usuarioId', '==', usuarioId).get()
+
+    if (docsSnap.empty) {
+      await this.col(COLECCIONES.perfiles).doc(usuarioId).update({
+        estadoValidacionIdentidad: 'sin_documentos',
+      })
+      return
+    }
+
+    const documentos = docsSnap.docs.map(d => d.data())
+    const tieneCurp = documentos.some(d => d.tipo === 'curp')
+    const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+
+    // Determinar estado general
+    let estado: string = 'sin_documentos'
+    if (tieneCurp || tieneIdentificacion) {
+      const estados = documentos.map(d => d.estado)
+      if (estados.includes('rechazado')) {
+        estado = 'rechazado'
+      } else if (estados.includes('pendiente')) {
+        estado = 'pendiente'
+      } else if (estados.every(e => e === 'aprobado')) {
+        estado = 'aprobado'
+      }
+    }
+
+    await this.col(COLECCIONES.perfiles).doc(usuarioId).update({
+      estadoValidacionIdentidad: estado,
+    })
+  }
+
   async getDependents(usuarioId: string) {
     const snap = await this.col(COLECCIONES.dependientes)
       .where('tutorId', '==', usuarioId).get()

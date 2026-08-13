@@ -11,6 +11,7 @@ import { EscalasVidaGuardadasDto } from './dto/respuestas-escalas.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
+import { SubirDocumentoIdentidadDto, DocumentoIdentidadSubidoDto, EstadoValidacionIdentidadDto } from './dto/documento-identidad.dto'
 import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, MisPersonaDto, PaginaMisPersonasDto } from './dto/respuestas-usuario.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { Throttle } from '@nestjs/throttler'
@@ -115,6 +116,67 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   saveEscalasVida(@CurrentUser() user: CurrentUserPayload, @Body() dto: GuardarEscalasVidaDto) {
     return this.svc.saveEscalasVida(user.id, dto)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Documentos de identidad (Validación diferida)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Post('documento-identidad')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseInterceptors(FileInterceptor('documento', {
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true)
+      } else {
+        cb(new BadRequestException('Solo se permiten archivos JPEG, PNG, WebP o PDF'), false)
+      }
+    },
+  }))
+  @ApiOperation({
+    summary: 'Subir documento de identidad',
+    description: 'Sube un documento de identidad (CURP o identificación oficial) para validación. Formato: multipart/form-data con campo "documento" y campo "tipo". Si es CURP, incluir "numeroCurp".',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        tipo: { type: 'string', enum: ['curp', 'identificacion_oficial'], description: 'Tipo de documento' },
+        numeroCurp: { type: 'string', description: 'Número de CURP (solo si tipo=curp)' },
+        documento: { type: 'string', format: 'binary', description: 'Archivo del documento (JPEG, PNG, WebP o PDF, max 10MB)' },
+      },
+      required: ['tipo', 'documento'],
+    },
+  })
+  @ApiCreatedResponse({ type: DocumentoIdentidadSubidoDto, description: 'Documento subido exitosamente, pendiente de revisión' })
+  @ApiResponse({ status: 400, description: 'Archivo inválido o tipo no permitido' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  subirDocumentoIdentidad(
+    @CurrentUser() user: CurrentUserPayload,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('tipo') tipo: 'curp' | 'identificacion_oficial',
+    @Body('numeroCurp') numeroCurp?: string,
+  ) {
+    if (!file) throw new BadRequestException('No se proporcionó ningún archivo')
+    if (!tipo || !['curp', 'identificacion_oficial'].includes(tipo)) {
+      throw new BadRequestException('Tipo de documento inválido. Debe ser "curp" o "identificacion_oficial"')
+    }
+    return this.svc.subirDocumentoIdentidad(user.id, tipo, file, numeroCurp)
+  }
+
+  @Get('estado-validacion-identidad')
+  @UseETag()
+  @ApiOperation({
+    summary: 'Estado de validación de identidad',
+    description: 'Retorna el estado de validación de los documentos de identidad del usuario (sin_documentos, pendiente, aprobado, rechazado).',
+  })
+  @ApiOkResponse({ type: EstadoValidacionIdentidadDto, description: 'Estado de validación' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  getEstadoValidacionIdentidad(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.getEstadoValidacionIdentidad(user.id)
   }
 
   @Get('dependientes/count')
