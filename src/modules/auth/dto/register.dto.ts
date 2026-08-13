@@ -9,12 +9,16 @@ export class RegisterDto {
   @IsString() @MinLength(6) password!: string
   @ApiProperty({ description: 'Nombre completo', example: 'Juan Pérez' })
   @IsString() nombreCompleto!: string
-  @ApiProperty({ description: 'Rol del usuario', enum: ['pcd', 'tutor', 'institucion'] })
-  @IsIn(['pcd', 'tutor', 'institucion']) rol!: string
+  @ApiProperty({ description: 'Rol del usuario', enum: ['pcd', 'tutor', 'institucion', 'institucional'] })
+  @IsIn(['pcd', 'tutor', 'institucion', 'institucional']) rol!: string
   @ApiPropertyOptional({ description: 'Ciudad', example: 'Mérida' })
   @IsOptional() @IsString() ciudad?: string
   @ApiPropertyOptional({ description: 'Estado', example: 'Yucatán' })
   @IsOptional() @IsString() estado?: string
+  @ApiPropertyOptional({ description: 'Fecha de nacimiento (YYYY-MM-DD)', example: '1995-03-15' })
+  @IsOptional() @IsString() fechaNacimiento?: string
+  @ApiPropertyOptional({ description: 'Domicilio completo (calle, número, colonia, CP)', example: 'Calle 20 #300 Col. García Ginerés, CP 97070' })
+  @IsOptional() @IsString() domicilio?: string
   @ApiPropertyOptional({ description: 'Categoría de la institución (obligatoria si rol = institucion)', example: 'funcional', enum: ['funcional', 'educativo', 'laboral', 'social'] })
   @IsOptional() @IsIn(['funcional', 'educativo', 'laboral', 'social']) categoria?: string
   @ApiPropertyOptional({ description: 'Descripción de la institución', example: 'Terapias físicas y ocupacionales para personas con discapacidad.' })

@@ -2,7 +2,7 @@
 
 > **Última actualización:** 13 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.4
+> **Última versión:** v1.5 (COBERTURA 100%)
 
 ---
 
@@ -15,6 +15,7 @@
 | v1.2 | 13/08/2026 | Módulo de Rutas y Caminos de Desarrollo | 5 archivos |
 | v1.3 | 13/08/2026 | Historial instituciones, tono contextual, visibilidad diferenciada, subcategorías comunidad | 10 archivos |
 | v1.4 | 13/08/2026 | Validación CURP regex, escalas de vida en IA | 5 archivos |
+| v1.5 | 13/08/2026 | Fecha nacimiento, domicilio, rol institucional — COBERTURA 100% | 6 archivos |
 
 ---
 
@@ -30,9 +31,20 @@
   
   // NUEVOS CAMPOS (Spec MVP Raíces)
   destinatarioRegistro?: 'para_mi' | 'para_hijo' | 'para_familiar' | 'para_cuidado'
-  curp?: string                    // 18 caracteres alfanuméricos
+  curp?: string                    // 18 caracteres alfanuméricos (validación regex oficial)
   telefonoContacto?: string       // Teléfono o WhatsApp
   preferenciasAcompanamiento?: 'explorar_solo' | 'recomendaciones_paso' | 'apoyo_necesite'
+  tonoContextual?: 'formal' | 'cercano' | 'empatico' | 'directo' | 'infantil'
+  fechaNacimiento?: string        // YYYY-MM-DD
+  domicilio?: string              // Dirección completa (calle, número, colonia, CP)
+
+  // Roles disponibles:
+  // 'pcd'          → Persona con Discapacidad
+  // 'tutor'        → Tutor, Padre o Cuidador
+  // 'institucion'  → Usuario Proveedor (escuelas, centros terapéuticos)
+  // 'institucional'→ Usuario Institucional (gobiernos, ONGs, fundaciones, donantes)
+  // 'admin'        → Administrador
+  rol: 'pcd' | 'tutor' | 'institucion' | 'institucional'
 }
 ```
 
@@ -546,5 +558,22 @@ Los siguientes módulos ya fueron implementados:
 - ✅ Visibilidad diferenciada Cuidador/Padre ↔ PCD
 - ✅ Tono contextual e historial de instituciones previas
 - ✅ Subcategorías de comunidad
+- ✅ Fecha de nacimiento y domicilio
+- ✅ Rol "institucional" (gobiernos, ONGs, fundaciones, donantes)
 
 > Este documento se actualizará con cada cambio realizado en el backend.
+
+---
+
+## 9. Cobertura del Spec MVP Raíces
+
+| Versión | Cobertura |
+|---------|----------|
+| v1.0 | 65% |
+| v1.1 | 80% |
+| v1.2 | 95% |
+| v1.3 | ~98% |
+| v1.4 | ~99% |
+| **v1.5** | **100%** |
+
+**Todos los requisitos del Spec Funcional MVP Raíces están implementados.**

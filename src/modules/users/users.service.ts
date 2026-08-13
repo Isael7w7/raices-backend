@@ -146,7 +146,7 @@ export class UsersService {
 
   async updateProfile(usuarioId: string, datos: ActualizarPerfilDto) {
     const datosSeguros = datos ?? ({} as ActualizarPerfilDto)
-    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio', 'curp', 'telefonoContacto', 'destinatarioRegistro', 'preferenciasAcompanamiento'] as const
+    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio', 'curp', 'telefonoContacto', 'destinatarioRegistro', 'preferenciasAcompanamiento', 'fechaNacimiento', 'domicilio'] as const
     const carga: Record<string, unknown> = {}
     for (const campo of camposActualizables) {
       const valor = datosSeguros[campo]

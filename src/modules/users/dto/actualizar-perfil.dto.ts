@@ -28,6 +28,22 @@ export class ActualizarPerfilDto {
   estado?: string
 
   @ApiPropertyOptional({
+    description: 'Fecha de nacimiento (YYYY-MM-DD)',
+    example: '1995-03-15',
+  })
+  @IsOptional()
+  @IsString()
+  fechaNacimiento?: string
+
+  @ApiPropertyOptional({
+    description: 'Domicilio completo (calle, número, colonia, CP)',
+    example: 'Calle 20 #300 Col. García Ginerés, CP 97070',
+  })
+  @IsOptional()
+  @IsString()
+  domicilio?: string
+
+  @ApiPropertyOptional({
     description: 'URL del avatar (se actualiza con POST /avatar)',
     example: 'https://storage.googleapis.com/.../avatar.jpg',
   })

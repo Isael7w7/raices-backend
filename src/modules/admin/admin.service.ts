@@ -348,7 +348,7 @@ export class AdminService {
     if (id === adminId) throw new BadRequestException('No puedes cambiar tu propio rol')
     // Normalizar rol legacy 'institution' (inglés) → 'institucion' (canónico)
     const rolNormalizado = rol === 'institution' ? 'institucion' : rol
-    const permitidos = ['pcd', 'tutor', 'institucion', 'admin']
+    const permitidos = ['pcd', 'tutor', 'institucion', 'institucional', 'admin']
     if (!permitidos.includes(rolNormalizado)) throw new BadRequestException('Rol inválido')
     const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')

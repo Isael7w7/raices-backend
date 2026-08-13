@@ -102,6 +102,8 @@ export class AuthService {
       ...(dto.telefonoContacto && { telefonoContacto: dto.telefonoContacto }),
       ...(dto.preferenciasAcompanamiento && { preferenciasAcompanamiento: dto.preferenciasAcompanamiento }),
       ...(dto.tonoContextual && { tonoContextual: dto.tonoContextual }),
+      ...(dto.fechaNacimiento && { fechaNacimiento: dto.fechaNacimiento }),
+      ...(dto.domicilio && { domicilio: dto.domicilio }),
     }
 
     // Si el rol es 'institucion', crear también el documento en la colección
@@ -297,6 +299,8 @@ export class AuthService {
       telefonoContacto: d.telefonoContacto ?? null,
       preferenciasAcompanamiento: d.preferenciasAcompanamiento ?? null,
       tonoContextual: d.tonoContextual ?? null,
+      fechaNacimiento: d.fechaNacimiento ?? null,
+      domicilio: d.domicilio ?? null,
     }
 
     // Para usuarios institución, adjuntar los datos básicos de su institución.

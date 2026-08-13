@@ -152,4 +152,10 @@ export class RespuestaPerfilDto {
 
   @ApiPropertyOptional({ description: 'Preferencia de acompañamiento', enum: ['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'], nullable: true })
   preferenciasAcompanamiento?: string | null
+
+  @ApiPropertyOptional({ description: 'Fecha de nacimiento (YYYY-MM-DD)', example: '1995-03-15', nullable: true })
+  fechaNacimiento?: string | null
+
+  @ApiPropertyOptional({ description: 'Domicilio completo', example: 'Calle 20 #300 Col. García Ginerés', nullable: true })
+  domicilio?: string | null
 }

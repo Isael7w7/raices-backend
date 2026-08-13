@@ -61,6 +61,9 @@ export interface PerfilDoc {
   telefonoContacto?: string
   preferenciasAcompanamiento?: string
   estadoValidacionIdentidad?: string
+  fechaNacimiento?: string
+  domicilio?: string
+  tonoContextual?: string
 }
 
 /**
