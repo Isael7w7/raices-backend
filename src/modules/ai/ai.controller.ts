@@ -5,6 +5,7 @@ import { Throttle } from '@nestjs/throttler'
 import { AiService } from './ai.service'
 import { ChatIaDto } from './dto/chat-ia.dto'
 import { RecomendacionIaDto } from './dto/recomendacion-ia.dto'
+import { RespuestaResumenDto } from './dto/resumen-ia.dto'
 import { RespuestaChatDto, RespuestaRecomendacionDto } from './dto/respuestas-ia.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { DependientePropietarioGuard } from '../../common/guards/dependiente-propietario.guard'
@@ -42,5 +43,22 @@ export class AiController {
       return this.svc.recommendForDependent(user.id, dto.dependienteId, (req as any).dependiente)
     }
     return this.svc.recommend(user.id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Resúmenes narrativos (Spec MVP Raíces)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Post('resumen')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 3600000 } }) // 5 resúmenes por hora
+  @ApiOperation({
+    summary: 'Resumen narrativo del perfil',
+    description: 'Genera un resumen de 1 párrafo (historia interpretativa) y 3 párrafos (quién eres, contexto, intereses/aspiraciones) basado estrictamente en los datos del usuario. NO inventa información no proporcionada.',
+  })
+  @ApiOkResponse({ type: RespuestaResumenDto, description: 'Resumen narrativo personalizado' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  generarResumen(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.generarResumen(user.id)
   }
 }

@@ -28,6 +28,10 @@ export class CatalogsService {
       parentescos: this.getParentescos(),
       discapacidades: this.getDiscapacidades(),
       etapasVida: this.getEtapasVida(),
+      temporalidadOrigen: this.getTemporalidadOrigen(),
+      preferenciaFormato: this.getPreferenciaFormato(),
+      areasInteres: this.getAreasInteres(),
+      viabilidadEconomica: this.getViabilidadEconomica(),
       features: this.getFeatures(),
       categorias: this.getCategorias(),
     }
@@ -47,16 +51,23 @@ export class CatalogsService {
 
   getDiscapacidades(): string[] {
     return [
+      'Intelectual/Cognitiva',
       'Motriz',
       'Visual',
       'Auditiva',
-      'Intelectual',
-      'Psicosocial',
+      'Habla/Comunicación',
+      // Neurodivergencia (con subtipos)
       'TEA / Autismo',
-      'Síndrome de Down',
-      'Lenguaje',
+      'TDAH',
+      'Dislexia',
+      'Dispraxia',
+      'Tourette',
+      'Altas capacidades',
+      'Otra neurodivergencia',
+      // Otros
+      'Psicosocial',
       'Múltiple',
-      'Otra',
+      'Prefiero no responder',
     ]
   }
 
@@ -88,6 +99,76 @@ export class CatalogsService {
       { id: 'educativo', label: 'Educativo', color: '#8B6BAE' },
       { id: 'laboral', label: 'Laboral', color: '#D4944C' },
       { id: 'social', label: 'Social', color: '#4BA3A3' },
+    ]
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Catálogos requeridos por Spec MVP Raíces
+  // ═══════════════════════════════════════════════════════════════════
+
+  /** Temporalidad/Origen de la condición */
+  getTemporalidadOrigen(): CatalogoEtapaVida[] {
+    return [
+      { id: 'nacimiento', label: 'Desde nacimiento' },
+      { id: 'infancia', label: 'En infancia' },
+      { id: 'adolescencia', label: 'En adolescencia' },
+      { id: 'vida_adulta', label: 'En vida adulta' },
+      { id: 'progresiva', label: 'Adquisición progresiva' },
+      { id: 'en_evaluacion', label: 'En evaluación' },
+    ]
+  }
+
+  /** Preferencias de formato de contenido */
+  getPreferenciaFormato(): CatalogoFeature[] {
+    return [
+      { id: 'texto', label: 'Texto', description: 'Contenido en texto escrito' },
+      { id: 'imagenes', label: 'Imágenes', description: 'Contenido visual con imágenes' },
+      { id: 'audio', label: 'Audio', description: 'Contenido en formato de audio' },
+      { id: 'video', label: 'Video', description: 'Contenido en formato de video' },
+      { id: 'presencial', label: 'Apoyo presencial', description: 'Acompañamiento en persona' },
+    ]
+  }
+
+  /** Áreas de interés del usuario (Spec: Rutas y Caminos de Desarrollo) */
+  getAreasInteres(): { id: string; label: string; subcategorias?: CatalogoFeature[] }[] {
+    return [
+      {
+        id: 'educacion', label: 'Educación',
+        subcategorias: [
+          { id: 'basica', label: 'Básica', description: 'Educación primaria/secundaria' },
+          { id: 'media_superior', label: 'Media/Superior', description: 'Bachillerato y universidad' },
+          { id: 'especializada', label: 'Especializada', description: 'Educación especial' },
+          { id: 'habilidades_vida', label: 'Habilidades de vida', description: 'Autocuidado, vida diaria' },
+          { id: 'cursos', label: 'Cursos', description: 'Cursos extracurriculares' },
+        ],
+      },
+      {
+        id: 'comunidad', label: 'Comunidad',
+        subcategorias: [
+          { id: 'por_tema', label: 'Por tema', description: 'Grupos por tema específico' },
+          { id: 'etapa_vida', label: 'Etapa de vida', description: 'Grupos por edad' },
+          { id: 'condicion', label: 'Por condición', description: 'Grupos por tipo de discapacidad' },
+          { id: 'familias', label: 'Familias', description: 'Grupos para familias' },
+          { id: 'intereses', label: 'Intereses', description: 'Grupos por interés común' },
+        ],
+      },
+      { id: 'deporte_arte_bienestar', label: 'Deporte / Arte / Bienestar', subcategorias: [] },
+      { id: 'especialistas', label: 'Especialistas', subcategorias: [] },
+      { id: 'empleo', label: 'Empleo', subcategorias: [] },
+      { id: 'autoempleo', label: 'Autoempleo', subcategorias: [] },
+      { id: 'independencia', label: 'Independencia', subcategorias: [] },
+      { id: 'vida_social', label: 'Vida Social', subcategorias: [] },
+      { id: 'explorar', label: 'Explorar', subcategorias: [] },
+    ]
+  }
+
+  /** Viabilidad económica */
+  getViabilidadEconomica(): CatalogoFeature[] {
+    return [
+      { id: 'gratuita_becas', label: 'Gratuita/Becas', description: 'Servicios gratuitos o con beca' },
+      { id: 'bajo_costo', label: 'Bajo costo', description: 'Costo accesible' },
+      { id: 'moderada', label: 'Inversión moderada', description: 'Costo intermedio' },
+      { id: 'sin_restricciones', label: 'Sin restricciones', description: 'Sin limitación económica' },
     ]
   }
 }

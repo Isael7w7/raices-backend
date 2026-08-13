@@ -56,4 +56,40 @@ export class CatalogsController {
   categorias() {
     return this.svc.getCategorias()
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Catálogos requeridos por Spec MVP Raíces
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('temporalidad-origen')
+  @UseETag()
+  @ApiOperation({ summary: 'Catálogo de temporalidad/origen de la condición', description: 'Lista de opciones de origen/temporalidad de la discapacidad' })
+  @ApiOkResponse({ type: [EtapaVidaCatalogoDto], description: 'Arreglo de temporalidades' })
+  temporalidadOrigen() {
+    return this.svc.getTemporalidadOrigen()
+  }
+
+  @Get('preferencia-formato')
+  @UseETag()
+  @ApiOperation({ summary: 'Catálogo de preferencia de formato', description: 'Lista de formatos de contenido preferidos' })
+  @ApiOkResponse({ type: [FeatureCatalogoDto], description: 'Arreglo de formatos' })
+  preferenciaFormato() {
+    return this.svc.getPreferenciaFormato()
+  }
+
+  @Get('areas-interes')
+  @UseETag()
+  @ApiOperation({ summary: 'Catálogo de áreas de interés', description: 'Lista de áreas de interés del usuario con subcategorías (Educación, Comunidad, Empleo, etc.)' })
+  @ApiOkResponse({ description: 'Arreglo de áreas de interés con subcategorías' })
+  areasInteres() {
+    return this.svc.getAreasInteres()
+  }
+
+  @Get('viabilidad-economica')
+  @UseETag()
+  @ApiOperation({ summary: 'Catálogo de viabilidad económica', description: 'Lista de opciones de viabilidad económica' })
+  @ApiOkResponse({ type: [FeatureCatalogoDto], description: 'Arreglo de viabilidades económicas' })
+  viabilidadEconomica() {
+    return this.svc.getViabilidadEconomica()
+  }
 }

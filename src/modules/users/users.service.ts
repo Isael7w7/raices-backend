@@ -49,6 +49,14 @@ export class UsersService {
         etapaVida: perfilExtendido.etapaVida ?? null,
         preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
         nivelApoyo: perfilExtendido.nivelApoyo ?? null,
+        // ── Campos Spec MVP Raíces ──
+        escalasVida: perfilExtendido.escalasVida ?? null,
+        tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
+        requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
+        temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
+        preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
+        areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
+        viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
       } : null,
     }
 
@@ -136,13 +144,17 @@ export class UsersService {
 
   async updateProfile(usuarioId: string, datos: ActualizarPerfilDto) {
     const datosSeguros = datos ?? ({} as ActualizarPerfilDto)
-    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio'] as const
+    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio', 'curp', 'telefonoContacto', 'destinatarioRegistro', 'preferenciasAcompanamiento'] as const
     const carga: Record<string, unknown> = {}
     for (const campo of camposActualizables) {
       const valor = datosSeguros[campo]
       if (valor !== undefined) {
         carga[campo] = valor
       }
+    }
+    // Normalizar CURP a mayúsculas (formato oficial mexicano)
+    if (typeof carga.curp === 'string') {
+      carga.curp = (carga.curp as string).toUpperCase()
     }
     if (Object.keys(carga).length === 0) {
       return this.getProfile(usuarioId)
@@ -223,6 +235,56 @@ export class UsersService {
       nivelApoyo: carga.nivelApoyo,
     }
     return perfilGuardado
+  }
+
+  // ─── Escalas "Cómo vives hoy" ─────────────────────────────────────
+
+  /**
+   * Guarda la evaluación "Cómo vives hoy" con las 8 escalas, diagnóstico,
+   * temporalidad, formato preferido, áreas de interés y viabilidad económica.
+   * Si no tiene diagnóstico, genera el flag requiereEvaluacion para conectar
+   * con la red de especialistas.
+   */
+  async saveEscalasVida(usuarioId: string, dto: import('./dto/guardar-escalas-vida.dto').GuardarEscalasVidaDto) {
+    const carga: Record<string, any> = {
+      escalasVida: {
+        autonomia: dto.nivelAutonomia,
+        independencia: dto.nivelIndependencia,
+        comunicacion: dto.nivelComunicacion,
+        comprension: dto.nivelComprension,
+        energia: dto.nivelEnergia,
+        movilidad: dto.nivelMovilidad,
+        social: dto.nivelSocial,
+        emocional: dto.nivelEmocional,
+      },
+      tieneDiagnostico: dto.tieneDiagnostico,
+      // FLAG: si no tiene diagnóstico, marcar para sugerir especialistas
+      requiereEvaluacion: !dto.tieneDiagnostico,
+      temporalidadOrigen: dto.temporalidadOrigen ?? null,
+      preferenciaFormato: dto.preferenciaFormato ?? null,
+      areasInteres: JSON.stringify(dto.areasInteres ?? []),
+      viabilidadEconomica: dto.viabilidadEconomica ?? null,
+    }
+
+    const existe = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+
+    if (!existe.empty) {
+      await this.col(COLECCIONES.perfilesExtendidos).doc(existe.docs[0].id).update(carga)
+    } else {
+      const ref = this.col(COLECCIONES.perfilesExtendidos).doc()
+      await ref.set({ id: ref.id, usuarioId, ...carga })
+    }
+
+    return {
+      escalasVida: carga.escalasVida,
+      tieneDiagnostico: carga.tieneDiagnostico,
+      requiereEvaluacion: carga.requiereEvaluacion,
+      temporalidadOrigen: carga.temporalidadOrigen,
+      preferenciaFormato: carga.preferenciaFormato,
+      areasInteres: this.parsearCampoJson(carga.areasInteres),
+      viabilidadEconomica: carga.viabilidadEconomica,
+    }
   }
 
   async getDependents(usuarioId: string) {

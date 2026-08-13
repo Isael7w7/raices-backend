@@ -96,6 +96,11 @@ export class AuthService {
       ...(dto.bio && { bio: dto.bio }),
       // Vínculo explícito institución ↔ usuario: el perfil guarda el ID de su institución
       ...(dto.rol === 'institucion' && { institucionId: uid }),
+      // ── Campos requeridos por Spec MVP Raíces ──
+      ...(dto.destinatarioRegistro && { destinatarioRegistro: dto.destinatarioRegistro }),
+      ...(dto.curp && { curp: dto.curp.toUpperCase() }),
+      ...(dto.telefonoContacto && { telefonoContacto: dto.telefonoContacto }),
+      ...(dto.preferenciasAcompanamiento && { preferenciasAcompanamiento: dto.preferenciasAcompanamiento }),
     }
 
     // Si el rol es 'institucion', crear también el documento en la colección
@@ -285,6 +290,11 @@ export class AuthService {
       tutorId: d.tutorId ?? null,
       institucionId: d.institucionId ?? null,
       features: d.features ?? { ...FEATURES_POR_DEFECTO },
+      // ── Campos Spec MVP Raíces ──
+      destinatarioRegistro: d.destinatarioRegistro ?? null,
+      curp: d.curp ?? null,
+      telefonoContacto: d.telefonoContacto ?? null,
+      preferenciasAcompanamiento: d.preferenciasAcompanamiento ?? null,
     }
 
     // Para usuarios institución, adjuntar los datos básicos de su institución.

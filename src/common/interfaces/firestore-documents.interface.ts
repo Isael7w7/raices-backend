@@ -135,6 +135,14 @@ export interface PerfilExtendidoDoc {
   etapaVida?: string
   preocupacionesActuales?: string
   nivelApoyo?: string
+  // ── Campos requeridos por Spec MVP Raíces ──
+  escalasVida?: Record<string, number>
+  tieneDiagnostico?: boolean
+  requiereEvaluacion?: boolean
+  temporalidadOrigen?: string
+  preferenciaFormato?: string
+  areasInteres?: string
+  viabilidadEconomica?: string
 }
 
 /**

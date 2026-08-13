@@ -270,4 +270,121 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
       }
     }
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Resúmenes narrativos (Spec MVP Raíces: 1 párrafo y 3 párrafos)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Genera un resumen narrativo del perfil del usuario:
+   * - 1 párrafo: historia interpretativa basada estrictamente en datos
+   * - 3 párrafos: (1) Quién eres, (2) Tu contexto, (3) Tus intereses/aspiraciones
+   *
+   * RESTRICCIÓN: El prompt instruye al LLM usar SOLO los datos proporcionados.
+   * Si falta un dato, se indica "no especificado". No se permite inventar información.
+   */
+  async generarResumen(usuarioId: string) {
+    const [perfil, registro, historial] = await Promise.all([
+      this.getUserProfile(usuarioId),
+      this.db.collection(COLECCIONES.perfiles).doc(usuarioId).get(),
+      this.getUserHistory(usuarioId),
+    ])
+
+    const datosUsuario = registro.data()
+
+    // Construir datos para el prompt (solo campos necesarios, sin datos sensibles)
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
+      : []
+    const escalasVida = perfil?.escalasVida ?? null
+    const metasActuales = perfil?.metasActuales
+      ? (parsearCampoJson(perfil.metasActuales) as string[])
+      : []
+    const areasApoyo = perfil?.areasApoyo
+      ? (parsearCampoJson(perfil.areasApoyo) as string[])
+      : []
+    const areasInteres = perfil?.areasInteres
+      ? (parsearCampoJson(perfil.areasInteres) as string[])
+      : []
+    const viabilidadEconomica = perfil?.viabilidadEconomica ?? 'no especificada'
+    const preferenciaFormato = perfil?.preferenciaFormato ?? 'no especificada'
+    const tieneDiagnostico = perfil?.tieneDiagnostico ?? false
+    const temporalidadOrigen = perfil?.temporalidadOrigen ?? 'no especificada'
+
+    const datosParaPrompt = `
+DATOS DEL USUARIO (usar EXCLUSIVAMENTE estos datos, NO inventar información):
+- Nombre: ${datosUsuario?.nombreCompleto ?? 'no especificado'}
+- Rol: ${datosUsuario?.rol ?? 'no especificado'}
+- Ciudad: ${datosUsuario?.ciudad ?? 'no especificada'}, ${datosUsuario?.estado ?? ''}
+- Etapa de vida: ${perfil?.etapaVida ?? 'no especificada'}
+- Discapacidades: ${tiposDiscapacidad.length > 0 ? tiposDiscapacidad.join(', ') : 'no especificadas'}
+- Diagnóstico formal: ${tieneDiagnostico ? 'Sí' : 'No'}
+- Temporalidad/Origen: ${temporalidadOrigen}
+- Escalas de vida: ${escalasVida ? JSON.stringify(escalasVida) : 'no completadas'}
+- Nivel de apoyo: ${perfil?.nivelApoyo ?? 'no especificado'}
+- Metas actuales: ${metasActuales.length > 0 ? metasActuales.join(', ') : 'no especificadas'}
+- Áreas de apoyo: ${areasApoyo.length > 0 ? areasApoyo.join(', ') : 'no especificadas'}
+- Áreas de interés: ${areasInteres.length > 0 ? areasInteres.join(', ') : 'no especificadas'}
+- Preocupaciones: ${perfil?.preocupacionesActuales ?? 'ninguna'}
+- Viabilidad económica: ${viabilidadEconomica}
+- Preferencia de formato: ${preferenciaFormato}
+- Publicaciones en comunidad: ${historial.cantidadPublicaciones}
+- Solicitudes de empleo: ${historial.cantidadPostulaciones}
+- Favoritos guardados: ${historial.favoritos.length}
+- Historial educativo: ${perfil?.historialEducacion ? (parsearCampoJson(perfil.historialEducacion) as string[]).join(', ') : 'no especificado'}
+- Historial de terapia: ${perfil?.historialTerapia ? (parsearCampoJson(perfil.historialTerapia) as string[]).join(', ') : 'no especificado'}
+`
+
+    if (!this.jsonModel || !perfil) {
+      return {
+        resumenUnParrafo: 'Datos insuficientes para generar un resumen personalizado. Completa tu perfil para obtener un resumen detallado.',
+        resumenTresParrafos: {
+          quienEres: 'Completa tu perfil para generar un resumen personalizado.',
+          contexto: '',
+          intereses: '',
+        },
+        simulado: true,
+      }
+    }
+
+    const prompt = `Genera un resumen narrativo sobre esta persona basándote EXCLUSIVAMENTE en los datos proporcionados.
+
+REGLAS ESTRICTAS:
+1. Usa SOLO la información listada en los datos del usuario.
+2. NO inventes datos no proporcionados.
+3. Si un dato falta, indica "no especificado" o "no ha proporcionado esta información".
+4. El tono debe ser empático, respetuoso y positivo.
+5. Adapta el lenguaje al contexto de la plataforma Raíces (apoyo a personas con discapacidad).
+6. El resumen de 1 párrafo debe tener entre 80 y 150 palabras.
+7. Cada párrafo del resumen de 3 párrafos debe tener entre 40 y 80 palabras.
+
+${datosParaPrompt}
+
+Responde SOLO con JSON válido:
+{
+  "resumenUnParrafo": "historia interpretativa en 1 párrafo",
+  "resumenTresParrafos": {
+    "quienEres": "primer párrafo: quién es esta persona",
+    "contexto": "segundo párrafo: su contexto y situación actual",
+    "intereses": "tercer párrafo: sus intereses, metas y aspiraciones"
+  }
+}`
+
+    try {
+      const result = await this.jsonModel.generateContent(prompt)
+      const text = this.extractText(result)
+      return { ...this.parseJsonResponse(text), simulado: false }
+    } catch (e: any) {
+      this.logger.warn(`generarResumen falló (${e?.message ?? e}) — usando respuesta genérica`)
+      return {
+        resumenUnParrafo: 'No se pudo generar el resumen en este momento. Intenta de nuevo más tarde.',
+        resumenTresParrafos: {
+          quienEres: 'No se pudo generar el resumen.',
+          contexto: '',
+          intereses: '',
+        },
+        simulado: true,
+      }
+    }
+  }
 }

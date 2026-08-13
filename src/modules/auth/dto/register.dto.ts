@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray } from 'class-validator'
+import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray, Length } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class RegisterDto {
@@ -30,4 +30,43 @@ export class RegisterDto {
   @IsOptional() @IsString() profesion?: string
   @ApiPropertyOptional({ description: 'Biografía corta del usuario', example: 'Mamá de Santiago (8 años, TEA).' })
   @IsOptional() @IsString() bio?: string
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Campos requeridos por el Especificación Funcional MVP Raíces
+  // ═══════════════════════════════════════════════════════════════════
+
+  @ApiPropertyOptional({
+    description: 'Para quién se realiza el registro (destinatario del perfil)',
+    enum: ['para_mi', 'para_hijo', 'para_familiar', 'para_cuidado'],
+    example: 'para_hijo',
+  })
+  @IsOptional()
+  @IsIn(['para_mi', 'para_hijo', 'para_familiar', 'para_cuidado'])
+  destinatarioRegistro?: string
+
+  @ApiPropertyOptional({
+    description: 'CURP del usuario (18 caracteres alfanuméricos, formato oficial mexicano)',
+    example: 'GAPL800101MCYRL093',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(18, 18, { message: 'La CURP debe tener exactamente 18 caracteres' })
+  curp?: string
+
+  @ApiPropertyOptional({
+    description: 'Teléfono o WhatsApp de contacto del usuario',
+    example: '9991234567',
+  })
+  @IsOptional()
+  @IsString()
+  telefonoContacto?: string
+
+  @ApiPropertyOptional({
+    description: 'Preferencia de cómo recibir acompañamiento en la plataforma',
+    enum: ['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'],
+    example: 'recomendaciones_paso',
+  })
+  @IsOptional()
+  @IsIn(['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'])
+  preferenciasAcompanamiento?: string
 }

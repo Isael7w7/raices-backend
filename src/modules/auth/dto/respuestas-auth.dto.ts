@@ -21,6 +21,18 @@ export class UsuarioSesionDto {
 
   @ApiProperty({ description: 'Banderas de funcionalidades', example: { chat: true, postulaciones: true } })
   features!: Record<string, boolean>
+
+  @ApiPropertyOptional({ description: 'Para quién se registró', enum: ['para_mi', 'para_hijo', 'para_familiar', 'para_cuidado'], nullable: true })
+  destinatarioRegistro?: string | null
+
+  @ApiPropertyOptional({ description: 'CURP del usuario', nullable: true })
+  curp?: string | null
+
+  @ApiPropertyOptional({ description: 'Teléfono de contacto', nullable: true })
+  telefonoContacto?: string | null
+
+  @ApiPropertyOptional({ description: 'Preferencia de acompañamiento', enum: ['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'], nullable: true })
+  preferenciasAcompanamiento?: string | null
 }
 
 export class RespuestaSesionDto {
@@ -125,4 +137,16 @@ export class RespuestaPerfilDto {
 
   @ApiPropertyOptional({ type: InstitucionBreveDto, description: 'Datos de la institución (solo rol institución)' })
   institucion?: InstitucionBreveDto | null
+
+  @ApiPropertyOptional({ description: 'Para quién se registró', enum: ['para_mi', 'para_hijo', 'para_familiar', 'para_cuidado'], nullable: true })
+  destinatarioRegistro?: string | null
+
+  @ApiPropertyOptional({ description: 'CURP del usuario', nullable: true })
+  curp?: string | null
+
+  @ApiPropertyOptional({ description: 'Teléfono de contacto', nullable: true })
+  telefonoContacto?: string | null
+
+  @ApiPropertyOptional({ description: 'Preferencia de acompañamiento', enum: ['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'], nullable: true })
+  preferenciasAcompanamiento?: string | null
 }

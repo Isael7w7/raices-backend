@@ -6,6 +6,8 @@ import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, 
 import { UsersService } from './users.service'
 import { StorageService } from '../storage/storage.service'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
+import { GuardarEscalasVidaDto } from './dto/guardar-escalas-vida.dto'
+import { EscalasVidaGuardadasDto } from './dto/respuestas-escalas.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
@@ -95,6 +97,24 @@ export class UsersController {
   @ApiResponse({ status: 401, description: 'No autorizado' })
   saveProfiling(@CurrentUser() user: CurrentUserPayload, @Body() dto: GuardarPerfilNecesidadesDto) {
     return this.svc.saveProfilingData(user.id, dto)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Escalas "Cómo vives hoy" (Spec MVP Raíces)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Post('escalas-vida')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Guardar evaluación "Cómo vives hoy"',
+    description: 'Guarda las 8 escalas de vida (autonomía, independencia, comunicación, comprensión, energía, movilidad, social, emocional), diagnóstico, temporalidad, formato preferido, áreas de interés y viabilidad económica. Si no tiene diagnóstico, genera un flag para sugerir conexión con especialistas.',
+  })
+  @ApiBody({ type: GuardarEscalasVidaDto })
+  @ApiCreatedResponse({ type: EscalasVidaGuardadasDto, description: 'Escalas guardadas con éxito' })
+  @ApiResponse({ status: 400, description: 'Datos de entrada inválidos' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  saveEscalasVida(@CurrentUser() user: CurrentUserPayload, @Body() dto: GuardarEscalasVidaDto) {
+    return this.svc.saveEscalasVida(user.id, dto)
   }
 
   @Get('dependientes/count')

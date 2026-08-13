@@ -43,22 +43,27 @@ describe('CatalogsService', () => {
   // ── getDiscapacidades ───────────────────────────────────────────────
 
   describe('getDiscapacidades', () => {
-    it('should return an array of 10 discapacidad strings', () => {
+    it('should return an array of 15 discapacidad strings (incluyendo neurodivergencias)', () => {
       const result = service.getDiscapacidades()
 
       expect(result).toBeInstanceOf(Array)
-      expect(result).toHaveLength(10)
+      expect(result).toHaveLength(15)
       expect(result).toEqual([
+        'Intelectual/Cognitiva',
         'Motriz',
         'Visual',
         'Auditiva',
-        'Intelectual',
-        'Psicosocial',
+        'Habla/Comunicación',
         'TEA / Autismo',
-        'Síndrome de Down',
-        'Lenguaje',
+        'TDAH',
+        'Dislexia',
+        'Dispraxia',
+        'Tourette',
+        'Altas capacidades',
+        'Otra neurodivergencia',
+        'Psicosocial',
         'Múltiple',
-        'Otra',
+        'Prefiero no responder',
       ])
     })
 

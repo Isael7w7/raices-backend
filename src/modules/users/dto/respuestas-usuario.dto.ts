@@ -43,6 +43,28 @@ export class PerfilNecesidadesDto {
 
   @ApiProperty({ example: 'medio', nullable: true })
   nivelApoyo!: string | null
+
+  // ── Campos Spec MVP Raíces ──
+  @ApiPropertyOptional({ example: { autonomia: 2, independencia: 3 }, nullable: true, description: 'Escalas "Cómo vives hoy" (8 escalas × 4 niveles)' })
+  escalasVida?: Record<string, number> | null
+
+  @ApiPropertyOptional({ example: true, nullable: true, description: 'Tiene diagnóstico formal' })
+  tieneDiagnostico?: boolean | null
+
+  @ApiPropertyOptional({ example: false, description: 'Requiere evaluación diagnóstica (si no tiene diagnóstico)' })
+  requiereEvaluacion?: boolean
+
+  @ApiPropertyOptional({ example: 'infancia', nullable: true, description: 'Temporalidad/Origen de la condición' })
+  temporalidadOrigen?: string | null
+
+  @ApiPropertyOptional({ example: 'imagenes', nullable: true, description: 'Formato preferido de contenido' })
+  preferenciaFormato?: string | null
+
+  @ApiPropertyOptional({ example: ['educacion', 'comunidad'], type: [String], nullable: true, description: 'Áreas de interés del usuario' })
+  areasInteres?: string[] | null
+
+  @ApiPropertyOptional({ example: 'bajo_costo', nullable: true, description: 'Viabilidad económica' })
+  viabilidadEconomica?: string | null
 }
 
 export class InstitucionPerfilDto {
