@@ -26,7 +26,18 @@ async function bootstrap() {
     // sesión (token_acceso, token_refresco) en requests cross-origin.
     credentials: true,
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie", "ETag"],
+    // Cabeceras de petición permitidas. Incluye las cabeceras de caché
+    // condicional (If-None-Match / If-Match) y X-Requested-With para que el
+    // preflight CORS del frontend no sea bloqueado al enviar If-None-Match.
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Cookie",
+      "ETag",
+      "If-None-Match",
+      "If-Match",
+      "X-Requested-With",
+    ],
     exposedHeaders: ["Content-Type", "ETag"],
   });
 
