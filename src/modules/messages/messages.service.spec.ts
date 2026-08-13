@@ -56,8 +56,12 @@ describe('MessagesService', () => {
       const unreadSnap = { docs: [{ ref: { update: jest.fn() } }], empty: false }
       const sentSnap = { docs: [{ id: 'm1', data: () => ({ contenido: 'Hola' }) }] }
       const receivedSnap = { docs: [{ id: 'm2', data: () => ({ contenido: 'Hi' }) }] }
+      // IDOR protection: verification query returns non-empty (conversation exists)
+      const verifySnap = { docs: [{ id: 'm0' }], empty: false }
 
       firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(verifySnap) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(verifySnap) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(unreadSnap) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(sentSnap) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(receivedSnap) })
@@ -73,8 +77,12 @@ describe('MessagesService', () => {
       const emptySnap = { docs: [] as never[], empty: true }
       const sentSnap = { docs: [] as never[] }
       const receivedSnap = { docs: [] as never[] }
+      // IDOR protection: verification query returns non-empty (conversation exists)
+      const verifySnap = { docs: [{ id: 'm0' }], empty: false }
 
       firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(verifySnap) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(verifySnap) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(sentSnap) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(receivedSnap) })
@@ -82,6 +90,16 @@ describe('MessagesService', () => {
 
       await service.getMessages('u1', 'u2')
       expect(batch.commit).not.toHaveBeenCalled()
+    })
+
+    it('should throw ForbiddenException when no conversation exists between users', async () => {
+      const emptySnap = { docs: [] as never[], empty: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(emptySnap) })
+
+      await expect(service.getMessages('u1', 'stranger')).rejects.toThrow(ForbiddenException)
     })
   })
 

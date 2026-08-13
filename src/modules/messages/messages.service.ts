@@ -42,6 +42,21 @@ export class MessagesService {
   }
 
   async getMessages(usuarioId: string, socioId: string) {
+    // ═══════════════════════════════════════════════════════════════════
+    // IDOR Protection: Verificar que exista al menos un mensaje entre
+    // ambos usuarios antes de mostrar la conversación completa.
+    // Esto impide que un usuario acceda a mensajes de otros usuarios
+    // conociendo únicamente sus IDs.
+    // ═══════════════════════════════════════════════════════════════════
+    const verificarEnviados = await this.db.collection(COLECCIONES.mensajesDirectos)
+      .where('remitenteId', '==', usuarioId).where('destinatarioId', '==', socioId).limit(1).get()
+    const verificarRecibidos = await this.db.collection(COLECCIONES.mensajesDirectos)
+      .where('remitenteId', '==', socioId).where('destinatarioId', '==', usuarioId).limit(1).get()
+
+    if (verificarEnviados.empty && verificarRecibidos.empty) {
+      throw new ForbiddenException('No tienes permiso para ver esta conversación')
+    }
+
     const noLeidosSnap = await this.db.collection(COLECCIONES.mensajesDirectos)
       .where('remitenteId', '==', socioId)
       .where('destinatarioId', '==', usuarioId)
