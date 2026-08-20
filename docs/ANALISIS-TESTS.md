@@ -179,7 +179,7 @@ No hay tests que verifiquen:
 ```typescript
 // ai.service.ts - 0 tests
 // Contiene lógica compleja:
-// - Llamadas a API externa (Anthropic)
+// - Llamadas a Vertex AI (Gemini)
 // - Fallback a respuestas mock
 // - Parsing de JSON de respuesta
 // - Manejo de errores de red
@@ -272,8 +272,8 @@ describe('Auth + Users Integration', () => {
 ```typescript
 describe('AiService', () => {
   describe('chat', () => {
-    it('should return mock response when Anthropic not configured', async () => { ... })
-    it('should call Anthropic API when configured', async () => { ... })
+    it('should return mock response when Vertex AI not configured', async () => { ... })
+    it('should call Vertex AI (Gemini) when configured', async () => { ... })
     it('should handle API errors gracefully', async () => { ... })
     it('should limit history to last 6 messages', async () => { ... })
   })

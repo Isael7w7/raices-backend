@@ -238,7 +238,7 @@ await this.db.collection('auditoria').add({
 
 ### 8. 🟠 Sin Content Security Policy para AI
 **Riesgo:** Bajo  
-**Descripción:** El servicio de AI envía el perfil del usuario completo a la API de Anthropic:
+**Descripción:** El servicio de AI envía el perfil del usuario completo a la API de Vertex AI (Gemini):
 ```typescript
 const sistema = `Eres el asistente de Raíces para Florecer...
 Perfil del usuario: etapa=${perfil?.etapaVida ?? 'no especificada'}, discapacidades=${tiposDiscapacidad}.`
@@ -247,6 +247,7 @@ Perfil del usuario: etapa=${perfil?.etapaVida ?? 'no especificada'}, discapacida
 **Recomendación:** 
 - Anonimizar datos sensibles antes de enviarlos a APIs externas
 - Revisar compliance con GDPR/LFPDPPP
+- Nota: Vertex AI está dentro del ecosistema GCP, lo cual reduce el riesgo de cumplimiento
 
 ### 9. 🟡 Sin Validación de Tamaño de Archivos
 **Riesgo:** Bajo  

@@ -367,7 +367,7 @@ async chat(usuarioId: string, mensaje: string, historial: any[] = []) {
   // ⚠️ PENDIENTE: Logging de uso para costos
   // ⚠️ PENDIENTE: Límite de tokens por usuario
 
-  // ⚠️ RIESGO: Se envía perfil completo a API externa
+  // ⚠️ RIESGO: Se envía perfil completo a API externa (Vertex AI / Gemini)
   const sistema = `Eres el asistente de Raíces para Florecer...
   Perfil del usuario: etapa=${perfil?.etapaVida ?? 'no especificada'}, discapacidades=${tiposDiscapacidad}.`
 }
@@ -376,9 +376,9 @@ async chat(usuarioId: string, mensaje: string, historial: any[] = []) {
 **Recomendaciones:**
 - Añadir `@Throttle(20, 3600)` (20 chats por hora)
 - Validar `mensaje` con `@MaxLength(2000)`
-- Anonimizar datos sensibles antes de enviar a Anthropic
+- Anonimizar datos sensibles antes de enviar a Vertex AI
 - Implementar límite de tokens por usuario
-- Loguear uso para monitoreo de costos
+- Loguear uso para monitoreo de costos en GCP
 
 ---
 
