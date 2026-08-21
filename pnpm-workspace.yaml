@@ -7,6 +7,7 @@ allowBuilds:
   '@nestjs/core': true
   '@scarf/scarf': true
   '@swc/core': true
+  canvas: true
   esbuild: true
   protobufjs: true
   unrs-resolver: true

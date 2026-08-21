@@ -1,7 +1,21 @@
+// Mock de dependencias pesadas que usan ESM (pdf-img-convert → pdfjs-dist)
+jest.mock('pdf-img-convert', () => ({ convert: jest.fn().mockResolvedValue([]) }))
+jest.mock('sharp', () => {
+  const mock = jest.fn(() => ({
+    ensureAlpha: jest.fn().mockReturnThis(),
+    raw: jest.fn().mockReturnThis(),
+    toBuffer: jest.fn().mockResolvedValue({ data: Buffer.alloc(4), info: { width: 1, height: 1, channels: 4, size: 4 } }),
+  }))
+  return Object.assign(mock, { __esModule: true, default: mock })
+})
+jest.mock('jsqr', () => ({ __esModule: true, default: jest.fn() }))
+
 import { Test, TestingModule } from '@nestjs/testing'
 import { InstitutionsController } from './institutions.controller'
 import { InstitutionsService } from './institutions.service'
+import { CsfQrService } from './csf-qr.service'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { BadRequestException } from '@nestjs/common'
 
 describe('InstitutionsController', () => {
   let controller: InstitutionsController
@@ -18,6 +32,10 @@ describe('InstitutionsController', () => {
     remove: jest.fn(),
   }
 
+  const mockCsfQrService = {
+    extraerUrlSatFromCsf: jest.fn(),
+  }
+
   const mockFirestore = { collection: jest.fn() }
 
   beforeEach(async () => {
@@ -25,6 +43,7 @@ describe('InstitutionsController', () => {
       controllers: [InstitutionsController],
       providers: [
         { provide: InstitutionsService, useValue: mockService },
+        { provide: CsfQrService, useValue: mockCsfQrService },
         { provide: FIRESTORE, useValue: mockFirestore },
       ],
     }).compile()
@@ -155,6 +174,47 @@ describe('InstitutionsController', () => {
 
       expect(mockService.update).toHaveBeenCalledWith('inst-1', dto, 'user1', 'institucion')
       expect(result).toEqual(updated)
+    })
+  })
+
+  // ── validarCsfQr ──────────────────────────────────────────────────
+
+  describe('validarCsfQr', () => {
+    it('should return URL SAT when QR is valid', async () => {
+      mockCsfQrService.extraerUrlSatFromCsf.mockResolvedValue('https://siat.sat.gob.mx/consultaPublica')
+
+      const file = {
+        buffer: Buffer.from('fake-pdf'),
+        mimetype: 'application/pdf',
+        originalname: 'csf.pdf',
+      } as Express.Multer.File
+
+      const result = await controller.validarCsfQr(file)
+
+      expect(mockCsfQrService.extraerUrlSatFromCsf).toHaveBeenCalledWith(file.buffer, file.mimetype)
+      expect(result).toEqual({
+        exito: true,
+        mensaje: 'Código QR de la CSF leído correctamente',
+        urlSat: 'https://siat.sat.gob.mx/consultaPublica',
+      })
+    })
+
+    it('should throw BadRequestException when no file is provided', async () => {
+      await expect(controller.validarCsfQr(undefined as any)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should propagate service errors for invalid QR', async () => {
+      mockCsfQrService.extraerUrlSatFromCsf.mockRejectedValue(
+        new BadRequestException('No se detectó un código QR válido'),
+      )
+
+      const file = {
+        buffer: Buffer.from('fake-image'),
+        mimetype: 'image/png',
+        originalname: 'csf.png',
+      } as Express.Multer.File
+
+      await expect(controller.validarCsfQr(file)).rejects.toThrow(BadRequestException)
     })
   })
 
