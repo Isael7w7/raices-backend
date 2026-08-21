@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard'
 import { DatabaseModule } from './database/database.module'
 import { CommonGuardsModule } from './common/guards/common-guards.module'
 import { AuthModule } from './modules/auth/auth.module'
@@ -62,7 +63,7 @@ import { RoutesModule } from './modules/routes/routes.module'
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: CustomThrottlerGuard,
     },
   ],
 })
