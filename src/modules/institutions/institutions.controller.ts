@@ -18,6 +18,7 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
+import { InstitucionVerificadaGuard } from '../../common/guards/institucion-verificada.guard'
 
 @ApiTags('Instituciones')
 @Controller('instituciones')
@@ -115,7 +116,7 @@ export class InstitutionsController {
   // ─── POST /instituciones ──────────────────────────────────────────
   @Post()
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 creaciones por minuto
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({

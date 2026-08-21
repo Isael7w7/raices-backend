@@ -11,6 +11,7 @@ import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
+import { InstitucionVerificadaGuard } from '../../common/guards/institucion-verificada.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
@@ -58,7 +59,7 @@ export class JobsController {
 
   @Post()
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 vacantes por minuto
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @HttpCode(201)
@@ -72,7 +73,7 @@ export class JobsController {
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Editar vacante', description: 'Actualiza campos de una vacante. Debe pertenecer a la institución del usuario.' })
@@ -85,7 +86,7 @@ export class JobsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @HttpCode(204)
@@ -226,7 +227,7 @@ export class JobsController {
 
   @Patch('postulaciones/:id/estado')
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 cambios de estado por minuto
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
   @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Cambiar estado de postulación', description: 'Permite a la institución dueña de la vacante (o admin) aceptar o rechazar una postulación. Notifica al postulante.' })

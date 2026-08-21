@@ -7,6 +7,7 @@ import { InstitutionsModule } from '../../src/modules/institutions/institutions.
 import { AdminModule } from '../../src/modules/admin/admin.module'
 import { HealthModule } from '../../src/modules/health/health.module'
 import { MessagesModule } from '../../src/modules/messages/messages.module'
+import { JobsModule } from '../../src/modules/jobs/jobs.module'
 
 /**
  * Módulo raíz de pruebas E2E: monta solo los módulos de negocio bajo prueba
@@ -28,6 +29,7 @@ import { MessagesModule } from '../../src/modules/messages/messages.module'
     AdminModule,
     HealthModule,
     MessagesModule,
+    JobsModule,
   ],
 })
 export class E2eTestModule {}

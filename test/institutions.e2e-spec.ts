@@ -43,7 +43,7 @@ const instInactiva = {
 }
 
 async function sembrarUsuarios() {
-  await sembrarPerfil({ id: 'uid-owner', email: 'owner@test.com', rol: 'institucion', activo: true })
+  await sembrarPerfil({ id: 'uid-owner', email: 'owner@test.com', rol: 'institucion', activo: true, verificado: true })
   await sembrarPerfil({ id: 'uid-admin', email: 'admin@test.com', rol: 'admin', activo: true })
   await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true })
   await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'tutor', activo: true })
@@ -179,7 +179,7 @@ describe('Instituciones (E2E)', () => {
     it('201: rol institución crea y queda pendiente de verificación', async () => {
       // El owner ya tiene una institución (canónica) → anti-duplicado devuelve 400;
       // se usa un usuario institución sin institución previa.
-      await sembrarPerfil({ id: 'uid-inst2', email: 'inst2@test.com', rol: 'institucion', activo: true })
+      await sembrarPerfil({ id: 'uid-inst2', email: 'inst2@test.com', rol: 'institucion', activo: true, verificado: true })
 
       const res = await request(http).post('/api/instituciones').send(dto).set('Authorization', token('uid-inst2'))
 
