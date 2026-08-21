@@ -161,7 +161,7 @@ describe('POST /api/instituciones/validar-csf-qr (E2E)', () => {
           contentType: 'application/pdf',
         })
 
-      expect(res.status).toBe(201)
+      expect(res.status).toBe(200)
       expect(res.body).toEqual({
         exito: true,
         mensaje: 'Código QR de la CSF leído correctamente',
@@ -185,7 +185,7 @@ describe('POST /api/instituciones/validar-csf-qr (E2E)', () => {
           contentType: 'image/png',
         })
 
-      expect(res.status).toBe(201)
+      expect(res.status).toBe(200)
       expect(res.body.exito).toBe(true)
       expect(res.body.urlSat).toBe(urlEsperada)
       expect(mockCsfQrService.extraerUrlSatFromCsf).toHaveBeenCalledWith(
@@ -205,7 +205,7 @@ describe('POST /api/instituciones/validar-csf-qr (E2E)', () => {
           contentType: 'image/jpeg',
         })
 
-      expect(res.status).toBe(201)
+      expect(res.status).toBe(200)
       expect(res.body.exito).toBe(true)
     })
   })

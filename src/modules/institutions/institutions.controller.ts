@@ -1,7 +1,7 @@
 import {
   Controller, Get, Post, Put, Delete,
   Param, Body, Query,
-  UseGuards, UseInterceptors, UploadedFile, HttpCode, BadRequestException,
+  UseGuards, UseInterceptors, UploadedFile, HttpCode, HttpStatus, BadRequestException,
 } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import {
@@ -31,6 +31,7 @@ export class InstitutionsController {
 
   // ─── POST /instituciones/validar-csf-qr ──────────────────────────
   @Post('validar-csf-qr')
+  @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 validaciones por minuto
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
