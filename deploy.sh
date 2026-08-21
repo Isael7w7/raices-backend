@@ -22,8 +22,8 @@ REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="raices-backend"
 # Use Artifact Registry (recommended) instead of Container Registry
 IMAGE_NAME="${REGION}-docker.pkg.dev/${PROJECT_ID}/raices/${SERVICE_NAME}"
-# Modo ADC: si FIREBASE_CREDENTIALS está vacío, el secreto NO es obligatorio;
-# el backend autentica con la cuenta de servicio adjunta al Cloud Run.
+# Modo ADC: el backend autentica con la cuenta de servicio adjunta al Cloud Run.
+# Si los secretos no existen en Secret Manager, se despliegan sin ellos (modo ADC).
 # Forzar el modo con secreto obligatorio: REQUIRE_SECRETS=true
 REQUIRE_SECRETS="${REQUIRE_SECRETS:-false}"
 # Firebase service account for Cloud Run (needs access to the secrets)
@@ -187,10 +187,10 @@ sync_secrets_from_env_file() {
         fi
         if [ -n "${target}" ]; then
             value="${line#*=}"
-            if [ -z "${value}" ]; then
-                log_warn "Variable ${target} vacía en ${env_file} — omitida."
-                continue
-            fi
+        if [ -z "${value}" ]; then
+            log_info "Variable ${target} vacía en ${env_file} — se usará ADC (cuenta de servicio)."
+            continue
+        fi
             store_secret_version "${target}" "${value}"
             if [ "${target}" = "FIREBASE_CREDENTIALS" ]; then
                 found_firebase=1
@@ -199,7 +199,7 @@ sync_secrets_from_env_file() {
     done < "${env_file}"
 
     if [ -z "${found_firebase}" ]; then
-        log_warn "FIREBASE_CREDENTIALS no está definido en ${env_file} (ni como FIREBASE_SERVICE_ACCOUNT). El secreto NO se actualizará; si no existe en Secret Manager, el deploy se abortará."
+        log_info "FIREBASE_CREDENTIALS no está en ${env_file} — el backend usará ADC (cuenta de servicio de Cloud Run)."
     fi
 }
 
@@ -214,7 +214,7 @@ ensure_secrets_exist() {
             log_info "Create it with: $0 secrets <env_file>  (o: gcloud secrets create FIREBASE_CREDENTIALS)"
             exit 1
         fi
-        log_warn "Secret 'FIREBASE_CREDENTIALS' no existe — desplegando en modo ADC (cuenta de servicio adjunta)."
+        log_info "Secret 'FIREBASE_CREDENTIALS' no existe — desplegando en modo ADC (cuenta de servicio adjunta)."
     fi
 }
 
@@ -311,14 +311,14 @@ deploy_to_cloud_run() {
                 secrets_ref+=","
             fi
             secrets_ref+="${name}=projects/${PROJECT_ID}/secrets/${name}:latest"
-        else
-            log_warn "Secret '${name}' no existe — se omitirá del --set-secrets."
-        fi
+    else
+        log_info "Secret '${name}' no existe — se omitirá del --set-secrets."
+    fi
     done
     if [ -n "${secrets_ref}" ]; then
         deploy_cmd+=" --set-secrets=${secrets_ref}"
     else
-        log_warn "Sin secretos de Secret Manager para montar — el backend usa ADC (cuenta de servicio adjunta)."
+        log_info "Sin secretos de Secret Manager — el backend usará ADC (cuenta de servicio de Cloud Run)."
     fi
 
     # Execute deployment
