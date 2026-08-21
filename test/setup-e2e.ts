@@ -1,7 +1,8 @@
 /**
  * Setup de pruebas E2E.
  *
- * Mockea los módulos de firebase-admin (app, firestore, auth, storage) y axios
+ * Mockea los módulos de firebase-admin (app, firestore, auth, storage), axios,
+ * y dependencias pesadas ESM (pdf-img-convert → pdfjs-dist, sharp, jsqr)
  * para poder levantar la aplicación NestJS real (pipes, guards, controladores)
  * sin credenciales ni emuladores. Los servicios usan un Firestore en memoria
  * que implementa el subconjunto de la API usado por los módulos bajo prueba:
@@ -12,6 +13,18 @@
  */
 
 /* eslint-disable */
+
+// ─── Dependencias ESM/pesadas (CsfQrService → pdf-img-convert → pdfjs-dist) ──
+jest.mock('pdf-img-convert', () => ({ convert: jest.fn().mockResolvedValue([]) }))
+jest.mock('sharp', () => {
+  const mock = jest.fn(() => ({
+    ensureAlpha: jest.fn().mockReturnThis(),
+    raw: jest.fn().mockReturnThis(),
+    toBuffer: jest.fn().mockResolvedValue({ data: Buffer.alloc(4), info: { width: 1, height: 1, channels: 4, size: 4 } }),
+  }))
+  return Object.assign(mock, { __esModule: true, default: mock })
+})
+jest.mock('jsqr', () => ({ __esModule: true, default: jest.fn() }))
 
 // ─── FieldValue / FieldPath (sentinels) ──────────────────────────────────────
 const mockFieldValue = {
