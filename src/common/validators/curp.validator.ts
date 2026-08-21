@@ -38,13 +38,13 @@ export function esCurpValida(curp: string): boolean {
   // Debe coincidir con la regex oficial
   if (!CURP_REGEX.test(curpUpper)) return false
 
-  // Validar que la entidad federativa (posiciones 12-13) sea válida
-  const entidad = curpUpper.substring(10, 12)
-  if (!ENTIDADES_FEDERATIVAS.has(entidad)) return false
-
   // Validar que la posición 11 sea H (hombre) o M (mujer)
   const sexo = curpUpper[10]
   if (sexo !== 'H' && sexo !== 'M') return false
+
+  // Validar que la entidad federativa (posiciones 12-13) sea válida
+  const entidad = curpUpper.substring(11, 13)
+  if (!ENTIDADES_FEDERATIVAS.has(entidad)) return false
 
   return true
 }
@@ -69,14 +69,14 @@ export function validarCurp(curp: string): string | null {
     return 'La CURP no tiene un formato válido. Debe contener solo letras y números en el formato oficial'
   }
 
-  const entidad = curpUpper.substring(10, 12)
-  if (!ENTIDADES_FEDERATIVAS.has(entidad)) {
-    return `La entidad federativa "${entidad}" no es válida`
-  }
-
   const sexo = curpUpper[10]
   if (sexo !== 'H' && sexo !== 'M') {
-    return 'El性别 (posición 11) debe ser H (hombre) o M (mujer)'
+    return 'La posición 11 (sexo) debe ser H (hombre) o M (mujer)'
+  }
+
+  const entidad = curpUpper.substring(11, 13)
+  if (!ENTIDADES_FEDERATIVAS.has(entidad)) {
+    return `La entidad federativa "${entidad}" no es válida`
   }
 
   return null
