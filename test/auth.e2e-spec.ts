@@ -45,7 +45,7 @@ describe('Autenticación (E2E)', () => {
     it('201: rol institución crea también el documento en "instituciones"', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
-        .send({ email: 'inst@test.com', password: 'secreta123', nombreCompleto: 'Centro Raíces', rol: 'institucion', categoria: 'funcional' })
+        .send({ email: 'inst@test.com', password: 'secreta123', nombreCompleto: 'Centro Raíces', rol: 'institucion', categoria: 'funcional', curp: 'GAPL800101HMCYRL09' })
 
       expect(res.status).toBe(201)
       const inst = await (globalThis as any).__E2E__.db.collection('instituciones').doc('uid-inst@test.com').get()

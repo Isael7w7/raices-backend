@@ -57,6 +57,13 @@ export class AuthService {
       throw new BadRequestException('La categoría es obligatoria para registrar una institución')
     }
 
+    // La CURP es obligatoria para instituciones: es el documento principal
+    // de identidad del representante legal y se valida antes de permitir
+    // que la institución opere en la plataforma.
+    if (dto.rol === 'institucion' && !dto.curp) {
+      throw new BadRequestException('La CURP del representante legal es obligatoria para registrar una institución')
+    }
+
     const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
