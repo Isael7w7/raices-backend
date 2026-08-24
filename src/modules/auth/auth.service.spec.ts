@@ -288,6 +288,8 @@ describe('AuthService', () => {
         ciudad: 'Mérida', estado: 'Yucatán', categoria: 'funcional',
         descripcion: 'Terapias físicas y ocupacionales', telefono: '9999990001',
         tiposDiscapacidad: ['tea', 'motriz'],
+        // La CURP del representante legal es obligatoria para instituciones
+        curp: 'GAPL800101MCYRL093',
       }
       const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const batchSet = jest.fn()
@@ -333,7 +335,7 @@ describe('AuthService', () => {
     })
 
     it('should rollback the Firebase user when the Firestore batch commit fails', async () => {
-      const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional' }
+      const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional', curp: 'GAPL800101MCYRL093' }
       const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const batchCommit = jest.fn().mockRejectedValue(new Error('commit failed'))
       firestoreMock.batch.mockReturnValue({ set: jest.fn(), commit: batchCommit })
@@ -359,6 +361,14 @@ describe('AuthService', () => {
       const dtoInst = { ...dto, rol: 'institucion' as const }
       await expect(service.register(dtoInst)).rejects.toThrow(BadRequestException)
       // No se debe crear el usuario en Firebase Auth si la validación falla
+      expect(authMock.createUser).not.toHaveBeenCalled()
+    })
+
+    it('should throw BadRequestException when registering an institution without CURP', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional' }
+      await expect(service.register(dtoInst)).rejects.toThrow(
+        'La CURP del representante legal es obligatoria para registrar una institución',
+      )
       expect(authMock.createUser).not.toHaveBeenCalled()
     })
 
