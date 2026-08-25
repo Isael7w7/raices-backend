@@ -112,18 +112,39 @@ export class InstitutionsController {
   // ─── PUT /instituciones/mi-institucion ────────────────────────────
   @Put('mi-institucion')
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones por minuto
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
     summary: 'Actualizar mi institución',
-    description: 'Permite actualizar la información de la institución del usuario autenticado.',
+    description: 'Permite actualizar la información de la institución del usuario autenticado. Solo cuentas con rol institución o admin.',
   })
   @ApiBody({ type: UpdateInstitucionDto })
   @ApiOkResponse({ type: InstitucionDto, description: 'Institución actualizada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente: se requiere rol institución o admin' })
   @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
   updateMine(@CurrentUser() user: CurrentUserPayload, @Body() dto: UpdateInstitucionDto) {
     return this.svc.updateMine(user.id, dto)
+  }
+
+  // ─── DELETE /instituciones/mi-institucion ─────────────────────────
+  @Delete('mi-institucion')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 eliminaciones por minuto
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Eliminar mi institución',
+    description: 'Elimina suavemente (soft-delete) la institución del usuario autenticado. Solo cuentas con rol institución o admin.',
+  })
+  @ApiNoContentResponse({ description: 'Institución eliminada' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente: se requiere rol institución o admin' })
+  @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada (o ya fue eliminada)' })
+  removeMine(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.removeMine(user.id)
   }
 
   // ─── GET /instituciones ───────────────────────────────────────────

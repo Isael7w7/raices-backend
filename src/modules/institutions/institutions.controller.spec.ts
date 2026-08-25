@@ -30,6 +30,7 @@ describe('InstitutionsController', () => {
     updateMine: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    removeMine: jest.fn(),
   }
 
   const mockCsfQrService = {
@@ -219,6 +220,21 @@ describe('InstitutionsController', () => {
   })
 
   // ── remove ──────────────────────────────────────────────────────────
+
+  // ── removeMine ──────────────────────────────────────────────────────
+
+  describe('removeMine', () => {
+    it('should soft-delete the user institution', async () => {
+      mockService.removeMine.mockResolvedValue(undefined)
+
+      const result = await controller.removeMine({ id: 'user1', email: 'user1@test.com', rol: 'institucion', nombreCompleto: 'User 1', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } })
+
+      expect(mockService.removeMine).toHaveBeenCalledWith('user1')
+      expect(result).toBeUndefined()
+    })
+  })
+
+  // ── remove ───────────────────────────────────────────────────────
 
   describe('remove', () => {
     it('should remove institution by id with user context', async () => {

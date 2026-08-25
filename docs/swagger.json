@@ -1318,6 +1318,74 @@
         ]
       }
     },
+    "/instituciones/validar-csf-qr": {
+      "post": {
+        "operationId": "InstitutionsController_validarCsfQr",
+        "summary": "Validar código QR de la CSF",
+        "description": "Extrae y valida el código QR de una Constancia de Situación Fiscal (CSF) enviada como archivo. Acepta PDF o imagen. Retorna la URL del SAT si el QR es válido.",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "documento": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archivo CSF en PDF o imagen (max 10MB)"
+                  }
+                },
+                "required": [
+                  "documento"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "QR de la CSF leído correctamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "exito": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "mensaje": {
+                      "type": "string",
+                      "example": "Código QR de la CSF leído correctamente"
+                    },
+                    "urlSat": {
+                      "type": "string",
+                      "example": "https://siat.sat.gob.mx/..."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Archivo inválido, sin QR detectado o dominio no es del SAT"
+          },
+          "401": {
+            "description": "No autenticado"
+          }
+        },
+        "tags": [
+          "Instituciones"
+        ],
+        "security": [
+          {
+            "jwt-auth": []
+          }
+        ]
+      }
+    },
     "/instituciones/mi-institucion": {
       "get": {
         "operationId": "InstitutionsController_findMine",
@@ -1354,7 +1422,7 @@
       "put": {
         "operationId": "InstitutionsController_updateMine",
         "summary": "Actualizar mi institución",
-        "description": "Permite actualizar la información de la institución del usuario autenticado.",
+        "description": "Permite actualizar la información de la institución del usuario autenticado. Solo cuentas con rol institución o admin.",
         "parameters": [],
         "requestBody": {
           "required": true,
@@ -1380,8 +1448,39 @@
           "401": {
             "description": "No autenticado"
           },
+          "403": {
+            "description": "Rol insuficiente: se requiere rol institución o admin"
+          },
           "404": {
             "description": "El usuario no tiene institución registrada"
+          }
+        },
+        "tags": [
+          "Instituciones"
+        ],
+        "security": [
+          {
+            "jwt-auth": []
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "InstitutionsController_removeMine",
+        "summary": "Eliminar mi institución",
+        "description": "Elimina suavemente (soft-delete) la institución del usuario autenticado. Solo cuentas con rol institución o admin.",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "Institución eliminada"
+          },
+          "401": {
+            "description": "No autenticado"
+          },
+          "403": {
+            "description": "Rol insuficiente: se requiere rol institución o admin"
+          },
+          "404": {
+            "description": "El usuario no tiene institución registrada (o ya fue eliminada)"
           }
         },
         "tags": [
@@ -1590,7 +1689,7 @@
       "put": {
         "operationId": "InstitutionsController_update",
         "summary": "Actualizar institución",
-        "description": "Actualiza los datos de una institución por su ID.",
+        "description": "Actualiza los datos de una institución por su ID. Solo cuentas con rol institución o admin (la propiedad se valida en el servicio).",
         "parameters": [
           {
             "name": "id",
@@ -1626,8 +1725,11 @@
           "401": {
             "description": "No autenticado"
           },
+          "403": {
+            "description": "Rol insuficiente: se requiere rol institución o admin (o no eres propietario)"
+          },
           "404": {
-            "description": "Institución no encontrada"
+            "description": "Institución no encontrada (o eliminada/inactiva)"
           }
         },
         "tags": [
@@ -1642,7 +1744,7 @@
       "delete": {
         "operationId": "InstitutionsController_remove",
         "summary": "Eliminar institución",
-        "description": "Elimina suavemente (soft-delete) una institución de la base de datos.",
+        "description": "Elimina suavemente (soft-delete) una institución de la base de datos. Solo cuentas con rol institución o admin (la propiedad se valida en el servicio).",
         "parameters": [
           {
             "name": "id",
@@ -1660,6 +1762,9 @@
           },
           "401": {
             "description": "No autenticado"
+          },
+          "403": {
+            "description": "Rol insuficiente: se requiere rol institución o admin (o no eres propietario)"
           },
           "404": {
             "description": "Institución no encontrada"

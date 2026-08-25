@@ -243,4 +243,85 @@ describe('Instituciones (E2E)', () => {
       expect(res.status).toBe(404)
     })
   })
+
+  describe('DELETE /api/instituciones/mi-institucion (soft-delete)', () => {
+    it('401: sin token', async () => {
+      const res = await request(http).delete('/api/instituciones/mi-institucion')
+      expect(res.status).toBe(401)
+    })
+
+    it('403: rol pcd no puede eliminar (RolesGuard)', async () => {
+      const res = await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-pcd'))
+      expect(res.status).toBe(403)
+      expect(res.body.message).toBe('Rol insuficiente')
+
+      // La institución no debe haberse tocado
+      const inst = await leerDoc('instituciones', 'inst-visible')
+      expect(inst.activa).toBe(true)
+      expect(inst.fechaEliminacion).toBeUndefined()
+    })
+
+    it('403: rol tutor no puede eliminar (RolesGuard)', async () => {
+      const res = await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-tutor'))
+      expect(res.status).toBe(403)
+
+      const inst = await leerDoc('instituciones', 'inst-visible')
+      expect(inst.activa).toBe(true)
+    })
+
+    it('404: usuario institución sin institución registrada', async () => {
+      await sembrarPerfil({ id: 'uid-inst-sin', email: 'instsin@test.com', rol: 'institucion', activo: true })
+      const res = await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-inst-sin'))
+      expect(res.status).toBe(404)
+    })
+
+    it('204: el propietario elimina su institución (soft-delete)', async () => {
+      const res = await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-owner'))
+
+      expect(res.status).toBe(204)
+      expect(res.text).toBe('')
+
+      const inst = await leerDoc('instituciones', 'inst-visible')
+      expect(inst.activa).toBe(false)
+      expect(inst.fechaEliminacion).toBeDefined()
+    })
+
+    it('204: un admin puede eliminar la institución que creó', async () => {
+      await sembrarInstitucion({ ...instVisible, id: 'inst-de-admin', creadoPor: 'uid-admin' })
+
+      const res = await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(204)
+
+      const inst = await leerDoc('instituciones', 'inst-de-admin')
+      expect(inst.activa).toBe(false)
+      expect(inst.fechaEliminacion).toBeDefined()
+    })
+
+    it('404: segunda eliminación es idempotente (ya eliminada)', async () => {
+      // Propietario con una sola institución para probar el caso exacto
+      await sembrarPerfil({ id: 'uid-unica', email: 'unica@test.com', rol: 'institucion', activo: true })
+      await sembrarInstitucion({ ...instVisible, id: 'inst-unica', creadoPor: 'uid-unica' })
+
+      await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-unica'))
+        .expect(204)
+
+      const res = await request(http)
+        .delete('/api/instituciones/mi-institucion')
+        .set('Authorization', token('uid-unica'))
+      expect(res.status).toBe(404)
+    })
+  })
 })

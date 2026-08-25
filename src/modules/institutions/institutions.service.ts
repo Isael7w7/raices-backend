@@ -223,6 +223,25 @@ export class InstitutionsService {
     return this.findOneInterno(id)
   }
 
+  // ─── Eliminar mi institución (soft-delete, autenticado) ───────────
+  async removeMine(usuarioId: string) {
+    // Mismas reglas que updateMine: solo instituciones activas del usuario.
+    // Una ya eliminada responde 404 (idempotente para el cliente).
+    const snap = await this.col(COLECCIONES.instituciones)
+      .where('creadoPor', '==', usuarioId)
+      .where('activa', '==', true)
+      .limit(1)
+      .get()
+
+    if (snap.empty) throw new NotFoundException('No tienes una institución registrada')
+
+    const id = snap.docs[0].id
+    await this.col(COLECCIONES.instituciones).doc(id).update({
+      activa: false,
+      fechaEliminacion: new Date().toISOString(),
+    })
+  }
+
   // ─── Actualizar institución por ID (admin o propietario) ───────────
   async update(id: string, dto: UpdateInstitucionDto, usuarioId: string, rol: string) {
     const doc = await this.col(COLECCIONES.instituciones).doc(id).get()

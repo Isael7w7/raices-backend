@@ -1,6 +1,6 @@
 # 📚 Documentación de Endpoints API — Raíces para Florecer
 
-**Última actualización:** 11 de agosto, 2026  
+**Última actualización:** 25 de agosto, 2026  
 **Base URL:** `https://raices-backend-jftu6lrbda-uc.a.run.app/api`
 
 ---
@@ -342,7 +342,12 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ### PUT `/instituciones/mi-institucion`
 **Descripción:** Actualizar institución propia  
-**Autenticación:** Bearer Token requerido (rol: institución)
+**Autenticación:** Bearer Token requerido (rol: institución o admin)
+
+**Errores:**
+- `401`: No autenticado
+- `403`: Rol insuficiente (se requiere rol institución o admin)
+- `404`: El usuario no tiene institución registrada
 
 **Request Body:**
 ```json
@@ -352,6 +357,21 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
   "telefono": "5559876543"
 }
 ```
+
+---
+
+### DELETE `/instituciones/mi-institucion`
+**Descripción:** Eliminar institución propia (soft-delete: `activa: false` + `fechaEliminacion`)  
+**Autenticación:** Bearer Token requerido (rol: institución o admin)
+
+**Response:** `204 No Content`
+
+**Errores:**
+- `401`: No autenticado
+- `403`: Rol insuficiente (se requiere rol institución o admin)
+- `404`: El usuario no tiene institución registrada (o ya fue eliminada)
+
+> Nota: rate limit de 5 eliminaciones por minuto. Una segunda llamada después de eliminar responde `404`.
 
 ---
 

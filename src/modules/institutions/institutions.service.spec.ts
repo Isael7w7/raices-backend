@@ -463,6 +463,55 @@ describe('InstitutionsService', () => {
 
   // ── update ──────────────────────────────────────────────────────────
 
+  // ── removeMine ──────────────────────────────────────────────────────
+
+  describe('removeMine', () => {
+    it('should soft-delete the user institution (activa: false + fechaEliminacion)', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          empty: false,
+          docs: [{ id: 'inst-1', data: () => ({ nombre: 'Mi Centro', creadoPor: 'user1', activa: true }) }],
+        }),
+        doc: jest.fn().mockReturnValue({ update: updateMock }),
+      })
+
+      await service.removeMine('user1')
+
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({ activa: false, fechaEliminacion: expect.any(String) }),
+      )
+    })
+
+    it('should throw NotFoundException if user has no institution', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      await expect(service.removeMine('user-no-inst')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should ignore already soft-deleted institutions (activa == true filter)', async () => {
+      const whereMock = jest.fn().mockReturnThis()
+
+      firestoreMock.collection.mockReturnValue({
+        where: whereMock,
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      await expect(service.removeMine('user1')).rejects.toThrow(NotFoundException)
+
+      expect(whereMock).toHaveBeenCalledWith('creadoPor', '==', 'user1')
+      expect(whereMock).toHaveBeenCalledWith('activa', '==', true)
+    })
+  })
+
   describe('update', () => {
     it('should update institution by id when owner', async () => {
       const existingData = { nombre: 'Centro Viejo', activa: true, creadoPor: 'user1' }

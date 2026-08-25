@@ -240,21 +240,41 @@ describe('Security Suite (E2E)', () => {
         calificacionPromedio: 0,
         cantidadCalificaciones: 0,
       })
+      await sembrarInstitucion({
+        id: 'inst-owner2',
+        nombre: 'Centro Owner2',
+        categoria: 'funcional',
+        activa: true,
+        verificada: true,
+        creadoPor: 'uid-inst',
+        calificacionPromedio: 0,
+        cantidadCalificaciones: 0,
+      })
     })
 
     it('403: PCD no puede actualizar institución ajena', async () => {
       const res = await request(http)
-        .put('/api/instituciones/inst-owner1')
+        .put('/api/instituciones/inst-owner2')
         .send({ descripcion: 'Hackeada' })
         .set('Authorization', token('uid-pcd'))
       expect(res.status).toBe(403)
     })
 
-    it('200: propietario puede actualizar su institución', async () => {
+    // RolesGuard tiene prioridad sobre la propiedad: aunque el tutor sea el
+    // dueño del documento, PUT /instituciones/:id exige rol institucion/admin.
+    it('403: tutor ni siquiera siendo propietario puede actualizar', async () => {
       const res = await request(http)
         .put('/api/instituciones/inst-owner1')
         .send({ descripcion: 'Actualizada' })
         .set('Authorization', token('uid-tutor'))
+      expect(res.status).toBe(403)
+    })
+
+    it('200: propietario con rol institucion puede actualizar su institución', async () => {
+      const res = await request(http)
+        .put('/api/instituciones/inst-owner2')
+        .send({ descripcion: 'Actualizada' })
+        .set('Authorization', token('uid-inst'))
       expect(res.status).toBe(200)
     })
   })
