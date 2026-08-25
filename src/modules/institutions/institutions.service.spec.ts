@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
+import { plainToInstance } from 'class-transformer'
 import { InstitutionsService } from './institutions.service'
+import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { FIRESTORE } from '../../database/firebase.provider'
 
 // ─── Mock helpers ────────────────────────────────────────────────────────
@@ -441,6 +443,22 @@ describe('InstitutionsService', () => {
 
       await expect(service.updateMine('user-no-inst', { nombre: 'Test' })).rejects.toThrow(NotFoundException)
     })
+
+    it('should ignore soft-deleted institutions (activa == true filter)', async () => {
+      const whereMock = jest.fn().mockReturnThis()
+
+      firestoreMock.collection.mockReturnValue({
+        where: whereMock,
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      await expect(service.updateMine('user1', { nombre: 'Test' })).rejects.toThrow(NotFoundException)
+
+      // Debe filtrar tanto por creadoPor como por activa (no editar eliminadas)
+      expect(whereMock).toHaveBeenCalledWith('creadoPor', '==', 'user1')
+      expect(whereMock).toHaveBeenCalledWith('activa', '==', true)
+    })
   })
 
   // ── update ──────────────────────────────────────────────────────────
@@ -506,6 +524,25 @@ describe('InstitutionsService', () => {
       })
 
       await expect(service.update('nonexistent', { nombre: 'Test' }, 'user1', 'admin')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw NotFoundException when updating a soft-deleted (inactive) institution', async () => {
+      const updateMock = jest.fn()
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(
+            mockDoc({ nombre: 'Centro Eliminado', activa: false, creadoPor: 'user1' }, true, 'inst-1')
+          ),
+          update: updateMock,
+        }),
+      })
+
+      await expect(
+        service.update('inst-1', { nombre: 'Revive' }, 'user1', 'admin')
+      ).rejects.toThrow(NotFoundException)
+      // No debe haber escrito nada en Firestore
+      expect(updateMock).not.toHaveBeenCalled()
     })
 
     it('should return existing institution when no fields to update', async () => {
@@ -581,5 +618,33 @@ describe('InstitutionsService', () => {
 
       await expect(service.remove('nonexistent', 'user1', 'admin')).rejects.toThrow(NotFoundException)
     })
+  })
+})
+
+// ── Sanitización XSS del DTO de actualización ───────────────────────────
+
+describe('UpdateInstitucionDto (sanitización XSS)', () => {
+  it('should sanitize HTML in nombre and descripcion via @Transform', () => {
+    const dto = plainToInstance(UpdateInstitucionDto, {
+      nombre: '<script>alert("xss")</script>',
+      descripcion: "Texto con <b>negritas</b> y comillas '",
+    })
+
+    expect(dto.nombre).not.toContain('<')
+    expect(dto.nombre).not.toContain('>')
+    // <b> → &lt;b&gt;  |  </b> → &lt;&#x2F;b&gt;  |  ' → &#x27;
+    expect(dto.descripcion).toBe(
+      'Texto con &lt;b&gt;negritas&lt;&#x2F;b&gt; y comillas &#x27;'
+    )
+  })
+
+  it('should not alter values without HTML special characters', () => {
+    const dto = plainToInstance(UpdateInstitucionDto, {
+      nombre: 'Centro de Rehabilitación DIF Mérida',
+      ciudad: 'Mérida',
+    })
+
+    expect(dto.nombre).toBe('Centro de Rehabilitación DIF Mérida')
+    expect(dto.ciudad).toBe('Mérida')
   })
 })

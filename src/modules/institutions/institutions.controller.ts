@@ -202,17 +202,19 @@ export class InstitutionsController {
   // ─── PUT /instituciones/:id ───────────────────────────────────────
   @Put(':id')
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 actualizaciones por minuto
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
     summary: 'Actualizar institución',
-    description: 'Actualiza los datos de una institución por su ID.',
+    description: 'Actualiza los datos de una institución por su ID. Solo cuentas con rol institución o admin (la propiedad se valida en el servicio).',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiBody({ type: UpdateInstitucionDto })
   @ApiOkResponse({ type: InstitucionDto, description: 'Institución actualizada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 404, description: 'Institución no encontrada' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente: se requiere rol institución o admin (o no eres propietario)' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada (o eliminada/inactiva)' })
   update(@Param('id') id: string, @Body() dto: UpdateInstitucionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.update(id, dto, user.id, user.rol)
   }
@@ -220,15 +222,17 @@ export class InstitutionsController {
   // ─── DELETE /instituciones/:id ────────────────────────────────────
   @Delete(':id')
   @HttpCode(204)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
     summary: 'Eliminar institución',
-    description: 'Elimina suavemente (soft-delete) una institución de la base de datos.',
+    description: 'Elimina suavemente (soft-delete) una institución de la base de datos. Solo cuentas con rol institución o admin (la propiedad se valida en el servicio).',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiNoContentResponse({ description: 'Institución eliminada' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente: se requiere rol institución o admin (o no eres propietario)' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.remove(id, user.id, user.rol)

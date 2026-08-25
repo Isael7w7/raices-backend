@@ -206,6 +206,7 @@ export class InstitutionsService {
   async updateMine(usuarioId: string, dto: UpdateInstitucionDto) {
     const snap = await this.col(COLECCIONES.instituciones)
       .where('creadoPor', '==', usuarioId)
+      .where('activa', '==', true)
       .limit(1)
       .get()
 
@@ -226,6 +227,12 @@ export class InstitutionsService {
   async update(id: string, dto: UpdateInstitucionDto, usuarioId: string, rol: string) {
     const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Institución no encontrada')
+
+    // Una institución eliminada (soft-delete) o inactiva no es editable:
+    // responde 404 para no revelar su existencia (misma regla que findOne público).
+    if (doc.data()?.activa !== true) {
+      throw new NotFoundException('Institución no encontrada')
+    }
 
     // Solo admin o el propietario pueden actualizar
     const creadoPor = doc.data()?.creadoPor
