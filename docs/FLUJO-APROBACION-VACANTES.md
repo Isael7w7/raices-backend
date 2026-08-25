@@ -135,6 +135,15 @@ sequenceDiagram
 - Se retornan **únicamente** vacantes cuya institución tenga `activa === true` **y** `verificada === true`.
 - Vacantes de instituciones inactivas o no aprobadas quedan ocultas del público.
 
+### Actualización y eliminación — `institutions.service.ts`
+
+| Regla | Detalle |
+|-------|---------|
+| Roles en `PUT`/`DELETE` `/instituciones/:id` | `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles('institucion', 'admin')` — defensa en profundidad: el guard rechaza otros roles con `403` y el servicio valida además la propiedad (`creadoPor`) |
+| Institución eliminada (soft-delete) o inactiva | `update(id)` responde `404 Institución no encontrada` **antes** de validar permisos, para no revelar su existencia |
+| `updateMine` | Solo localiza instituciones con `activa == true`: no se puede editar una institución ya eliminada vía `mi-institucion` |
+| Sanitización XSS | `nombre` y `descripcion` se escapan con `sanitizeHtml` tanto en `CreateInstitucionDto` como en `UpdateInstitucionDto` |
+
 ### Aprobación — `admin.service.ts` (`approveInstitution`)
 
 - Escribe **`{ verificada: true, activa: true }`** en `instituciones/{id}`.
@@ -153,10 +162,11 @@ sequenceDiagram
 | `GET` | `/api/autenticacion/yo` | Autenticado | Perfil con objeto `institucion` adjunto |
 | `GET` | `/api/usuarios/perfil` | Autenticado | Perfil completo con `institucion` adjunta |
 | `GET` | `/api/instituciones/mi-institucion` | Autenticado | Institución del usuario (doc canónico o por `creadoPor`) |
-| `PUT` | `/api/instituciones/mi-institucion` | Autenticado | Actualizar su institución |
+| `PUT` | `/api/instituciones/mi-institucion` | Autenticado | Actualizar su institución (solo si está activa) |
 | `GET` | `/api/instituciones` | Público | Directorio (solo `activa && verificada`) |
 | `GET` | `/api/instituciones/:id` | Público | Detalle público (solo `activa && verificada`; `404` si está pendiente o inactiva) |
 | `GET` | `/api/instituciones/:id/detalle` | Autenticado | Detalle sin filtrar estado (admin o propietario) |
+| `PUT`/`DELETE` | `/api/instituciones/:id` | `institucion`, `admin` | Actualizar / soft-delete por ID (`RolesGuard` + propiedad validada en el servicio; `404` si está inactiva o eliminada) |
 | `POST` | `/api/empleo` | `institucion`, `admin` | Crear vacante (requiere institución aprobada) |
 | `GET` | `/api/empleo` | Público | Listado de vacantes (solo instituciones aprobadas) |
 | `PUT`/`DELETE` | `/api/empleo/:id` | `institucion`, `admin` | Editar / desactivar vacante |
@@ -199,6 +209,9 @@ sequenceDiagram
 | Institución no aprobada | `403` | `La institución debe estar aprobada por un administrador para publicar vacantes` |
 | Rol distinto a institución/admin | `403` | `Rol insuficiente` |
 | Admin sin `institucionId` | `400` | `Como administrador, debes proporcionar el ID de la institución (institucionId).` |
+| Actualizar institución eliminada/inactiva (`:id`) | `404` | `Institución no encontrada` |
+| Actualizar sin institución activa (`mi-institucion`) | `404` | `No tienes una institución registrada` |
+| Rol distinto a institución/admin en `PUT`/`DELETE /instituciones/:id` | `403` | `Rol insuficiente` |
 
 ---
 
@@ -208,6 +221,7 @@ Las reglas anteriores están cubiertas por la suite de Jest:
 
 | Suite | Cobertura relevante |
 |-------|---------------------|
+| `institutions.service.spec.ts` | Directorio público filtra `activa && verificada`; detalle público `404` si pendiente/inactiva; anti-duplicado en `create`; `updateMine` ignora eliminadas; edición bloqueada de instituciones inactivas; sanitización XSS del DTO |
 | `jobs.service.spec.ts` | Crear vacante con institución aprobada; 403 por no aprobada / inactiva; 404 por institución inexistente; filtro de `findAll` por `verificada` |
 | `jobs.controller.spec.ts` | El endpoint `POST /empleo` acepta un usuario con rol `institucion` (delegación al servicio) |
 | `roles.guard.spec.ts` | `RolesGuard` con `['institucion', 'admin']` permite `rol: 'institucion'` (sin 403) |
@@ -226,6 +240,12 @@ Porque nace con `verificada: false`. Un admin debe aprobarla (`POST /administrac
 
 **¿Quién puede crear instituciones (`POST /api/instituciones`)?**
 Solo cuentas con rol `institucion` o `admin`. El `RolesGuard` rechaza con `403` a los demás roles (pcd, tutor).
+
+**¿Se puede editar una institución eliminada o pendiente?**
+Una institución **pendiente** sí es editable por su propietario (vía `mi-institucion` o `:id`). Una institución **eliminada** (soft-delete, `activa: false`) no: `update(id)` responde `404` y `updateMine` solo consulta instituciones activas.
+
+**¿Qué protección XSS tienen los textos de la institución?**
+`nombre` y `descripcion` se escapan con `sanitizeHtml` tanto al crear (`CreateInstitucionDto`) como al actualizar (`UpdateInstitucionDto`).
 
 **¿Puede una institución publicar vacantes antes de ser aprobada?**
 No. `createJob` devuelve `403` con el mensaje de aprobación pendiente.
