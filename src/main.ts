@@ -103,7 +103,6 @@ async function bootstrap() {
     .addTag("Catálogos", "Catálogos de referencia (parentescos, discapacidades, etc.)")
     .addTag("Mensajes", "Mensajería directa entre usuarios")
     .addTag("Rutas de Desarrollo", "Rutas y caminos de desarrollo personalizados")
-    .addTag("Documentos de Identidad", "Upload y validación de documentos de identidad (CURP, identificación oficial)")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
