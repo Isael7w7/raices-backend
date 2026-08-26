@@ -18,6 +18,7 @@ export class DiscoveryController {
   @UseETag()
   @ApiOperation({ summary: 'Búsqueda inteligente de instituciones', description: 'Cruza el perfil del usuario con las instituciones y ordena por coincidencia de discapacidad' })
   @ApiQuery({ name: 'categoria', required: false })
+  @ApiQuery({ name: 'categorias', required: false, description: 'Categorías prioritarias separadas por coma (ej: laboral,funcional). Las coincidentes aparecen primero respetando el orden del array.' })
   @ApiQuery({ name: 'ciudad', required: false })
   @ApiQuery({ name: 'busqueda', required: false })
   @ApiQuery({ name: 'tipoDiscapacidad', required: false })

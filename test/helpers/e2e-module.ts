@@ -4,6 +4,8 @@ import { DatabaseModule } from '../../src/database/database.module'
 import { AuthModule } from '../../src/modules/auth/auth.module'
 import { UsersModule } from '../../src/modules/users/users.module'
 import { InstitutionsModule } from '../../src/modules/institutions/institutions.module'
+import { DiscoveryModule } from '../../src/modules/discovery/discovery.module'
+import { RecommendationsModule } from '../../src/modules/recommendations/recommendations.module'
 import { AdminModule } from '../../src/modules/admin/admin.module'
 import { HealthModule } from '../../src/modules/health/health.module'
 import { MessagesModule } from '../../src/modules/messages/messages.module'
@@ -26,6 +28,8 @@ import { JobsModule } from '../../src/modules/jobs/jobs.module'
     AuthModule,
     UsersModule,
     InstitutionsModule,
+    RecommendationsModule,
+    DiscoveryModule,
     AdminModule,
     HealthModule,
     MessagesModule,

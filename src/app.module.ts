@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module'
 import { UsersModule } from './modules/users/users.module'
 import { InstitutionsModule } from './modules/institutions/institutions.module'
 import { DiscoveryModule } from './modules/discovery/discovery.module'
+import { RecommendationsModule } from './modules/recommendations/recommendations.module'
 import { FavoritesModule } from './modules/favorites/favorites.module'
 import { ReviewsModule } from './modules/reviews/reviews.module'
 import { CommunityModule } from './modules/community/community.module'
@@ -46,6 +47,7 @@ import { RoutesModule } from './modules/routes/routes.module'
     UsersModule,
     InstitutionsModule,
     DiscoveryModule,
+    RecommendationsModule,
     FavoritesModule,
     ReviewsModule,
     CommunityModule,

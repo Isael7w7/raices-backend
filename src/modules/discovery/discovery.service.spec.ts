@@ -77,6 +77,24 @@ describe('DiscoveryService', () => {
       expect(result[0].coincidePerfil).toBe(false)
     })
 
+    it('should prioritize requested categorias respecting array order', async () => {
+      const instituciones = [
+        { id: 'inst1', nombre: 'Educ', activa: true, categoria: 'educativo', tiposDiscapacidad: '[]' },
+        { id: 'inst2', nombre: 'Laboral', activa: true, categoria: 'laboral', tiposDiscapacidad: '[]' },
+        { id: 'inst3', nombre: 'Social', activa: true, categoria: 'social', tiposDiscapacidad: '[]' },
+        { id: 'inst4', nombre: 'Funcional', activa: true, categoria: 'funcional', tiposDiscapacidad: '[]' },
+      ]
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [], empty: true }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: instituciones.map(i => ({ id: i.id, data: () => i })) }) })
+
+      const result = await service.discover('u1', { categorias: 'funcional,laboral' })
+
+      // Prioritarias primero (orden del array), luego el resto en su orden previo
+      expect(result.map((r: any) => r.id)).toEqual(['inst4', 'inst2', 'inst1', 'inst3'])
+    })
+
     it('should limit to 50 institutions', async () => {
       const instituciones = Array.from({ length: 60 }, (_, i) => ({
         id: `inst${i}`, nombre: `Centro ${i}`, activa: true, calificacionPromedio: i, tiposDiscapacidad: '[]',

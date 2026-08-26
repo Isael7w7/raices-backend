@@ -76,6 +76,7 @@ export interface InstitucionDoc {
   categoria?: string
   descripcion?: string
   telefono?: string
+  servicios?: string[] | string
   tiposDiscapacidad?: string[] | string
   creadoPor?: string
   usuarioId?: string
@@ -219,6 +220,21 @@ export interface NotificacionDoc {
   entidadId?: string | null
   leida?: boolean
   fechaCreacion?: string
+}
+
+/**
+ * Documento de la colección `interacciones`.
+ * Registra eventos de comportamiento del usuario con instituciones
+ * (guardar, ver detalle, click en tarjeta) para calcular pesos de
+ * recomendación por categoría.
+ */
+export interface InteraccionDoc {
+  id?: string
+  usuarioId?: string
+  institucionId?: string
+  tipo?: 'guardar' | 'ver_detalle' | 'click_card'
+  categoria?: string | null
+  createdAt?: string // ISO string
 }
 
 /**

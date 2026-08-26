@@ -14,6 +14,7 @@ export const COLECCIONES = {
   notificaciones: 'notificaciones',
   postulaciones: 'postulaciones',
   instituciones: 'instituciones',
+  interacciones: 'interacciones',
   vacantes: 'vacantes',
   configuraciones: 'configuraciones',
   documentosIdentidad: 'documentosIdentidad',
