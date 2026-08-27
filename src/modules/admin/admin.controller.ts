@@ -6,7 +6,7 @@ import {
   EstadisticasDto, AnaliticasDto, NecesidadesInteligenciaDto, VisitantesActivosDto,
   InstitucionAdminDto, PaginaInstitucionesAdminDto, UsuarioAdminDto, PaginaUsuariosAdminDto,
   ResenaAdminDto, PaginaResenasAdminDto, RespuestaToggleUsuarioDto, RespuestaToggleVerificacionDto,
-  RespuestaRolDto, AlertaDto, ConfiguracionDto,
+  RespuestaRolDto, AlertaDto, ConfiguracionDto, VerificacionIdentidadInstitucionDto,
 } from './dto/respuestas-admin.dto'
 import { InstitucionDto } from '../institutions/dto/respuestas-institucion.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
@@ -103,6 +103,19 @@ export class AdminController {
   @ApiOkResponse({ type: [InstitucionDto], description: 'Instituciones pendientes (activa=true, verificada=false)' })
   pending() { return this.svc.getPendingInstitutions() }
 
+  @Get('instituciones/:id/verificacion-identidad')
+  @UseETag()
+  @ApiOperation({
+    summary: 'Verificación de identidad de institución',
+    description: 'Retorna el estado de verificación de identidad del representante legal de una institución. Indica si la institución puede ser aprobada (requiere identidad del representante aprobada).',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiOkResponse({ type: VerificacionIdentidadInstitucionDto, description: 'Estado de verificación de identidad de la institución' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada' })
+  verificacionIdentidadInstitucion(@Param('id') id: string) {
+    return this.svc.getVerificacionIdentidadInstitucion(id)
+  }
+
   @Post('instituciones/:id/aprobar')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(204)
@@ -112,9 +125,13 @@ export class AdminController {
     recurso: 'institucion',
     obtenerRecursoId: (id: string) => id,
   })
-  @ApiOperation({ summary: 'Aprobar institución', description: 'Activa la institución y envía correo de notificación' })
+  @ApiOperation({
+    summary: 'Aprobar institución',
+    description: 'Activa la institución y envía correo de notificación. Requiere que el representante legal tenga identidad verificada (CURP + identificación oficial aprobados).',
+  })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiNoContentResponse({ description: 'Institución aprobada' })
+  @ApiResponse({ status: 400, description: 'Identidad del representante no verificada (faltan documentos o están pendientes/rechazados)' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada' })
   approve(@Param('id') id: string) { return this.svc.approveInstitution(id) }
 

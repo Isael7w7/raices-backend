@@ -1,8 +1,8 @@
 # 📋 Guía de Integración Frontend — Cambios Backend MVP Raíces
 
-> **Última actualización:** 13 de agosto de 2026
+> **Última actualización:** 27 de agosto de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.6 (COBERTURA 100% + Swagger)
+> **Última versión:** v1.7 (Flujo conectado: Identidad + Institución)
 
 ---
 
@@ -17,6 +17,7 @@
 | v1.4 | 13/08/2026 | Validación CURP regex, escalas de vida en IA | 5 archivos |
 | v1.5 | 13/08/2026 | Fecha nacimiento, domicilio, rol institucional — COBERTURA 100% | 6 archivos |
 | v1.6 | 13/08/2026 | Documentación Swagger/OpenAPI actualizada (105 endpoints) | 3 archivos |
+| v1.7 | 27/08/2026 | Flujo conectado: identidad del representante + aprobación de institución | 4 archivos |
 
 ---
 
@@ -364,6 +365,8 @@ export interface ResumenIA {
 
 ## 6C. Admin: Validación de Identidad (Solo admin)
 
+> **⚠️ IMPORTANTE (v1.7):** La aprobación de instituciones ahora requiere que el representante legal tenga identidad verificada. Ver sección 6D para los nuevos endpoints.
+
 ### Endpoint: `GET /api/administracion/documentos-identidad/pendientes`
 
 **Respuesta:**
@@ -401,6 +404,182 @@ export interface ResumenIA {
 ```
 
 **Respuesta:** 204 No Content
+
+---
+
+## 6D. Flujo Conectado: Identidad ↔ Institución (v1.7)
+
+> **Fecha:** 27 de agosto de 2026
+> **Archivos modificados:** admin.service.ts, admin.controller.ts, respuestas-admin.dto.ts, institucion-verificada.guard.ts
+
+### Contexto
+
+Ahora existe una **dependencia obligatoria** entre la verificación de identidad del representante legal y la aprobación de la institución:
+
+```
+Institución solo se puede aprobar SI:
+  → El representante legal tiene estadoValidacionIdentidad = "aprobado"
+  → Esto significa que subió CURP + Identificación oficial
+  → Y ambos documentos fueron aprobados por un administrador
+```
+
+### Endpoint: `GET /api/administracion/instituciones/pendientes`
+
+**Descripción:** Lista de instituciones pendientes de aprobación. Ahora incluye el estado de verificación de identidad del representante.
+
+**Respuesta:**
+```typescript
+[{
+  id: string
+  nombre: string
+  categoria: string
+  ciudad: string
+  activa: boolean
+  verificada: boolean
+  fechaCreacion: string
+
+  // NUEVO en v1.7: Datos del representante legal
+  representante: {
+    nombre: string | null
+    email: string | null
+    curp: string | null
+  }
+
+  // NUEVO en v1.7: Estado de verificación de identidad
+  verificacionIdentidad: {
+    estado: 'sin_documentos' | 'pendiente' | 'aprobado' | 'rechazado'
+    tieneCurp: boolean          // true si ya subió CURP
+    tieneIdentificacion: boolean // true si ya subió identificación oficial
+    puedeAprobarse: boolean     // true SOLO si estado === 'aprobado'
+  }
+}]
+```
+
+**Uso en frontend:**
+- Si `puedeAprobarse === true` → Mostrar botón "Aprobar"
+- Si `puedeAprobarse === false` → Mostrar tooltip con razón (faltan documentos, pendientes, rechazados)
+
+---
+
+### Endpoint: `GET /api/administracion/instituciones/:id/verificacion-identidad`
+
+**Descripción:** Consulta detallada del estado de verificación de identidad del representante legal de una institución. Útil para mostrar un modal/panel antes de aprobar.
+
+**Parámetros:**
+| Param | Tipo | Descripción |
+|-------|------|-------------|
+| id | string | ID de la institución |
+
+**Respuesta:**
+```typescript
+{
+  institucionId: string
+  nombreInstitucion: string | null
+
+  representante: {
+    usuarioId: string
+    nombre: string | null
+    email: string | null
+    curp: string | null
+  } | null
+
+  verificacionIdentidad: {
+    estado: 'sin_documentos' | 'pendiente' | 'aprobado' | 'rechazado'
+    tieneCurp: boolean
+    tieneIdentificacion: boolean
+    puedeAprobarse: boolean
+    motivo: string | null  // Razón por la que no puede aprobarse
+  }
+
+  documentos: [{
+    id: string
+    tipo: 'curp' | 'identificacion_oficial'
+    estado: 'pendiente' | 'aprobado' | 'rechazado'
+    motivoRechazo: string | null
+    fechaSubida: string | null
+    fechaRevision: string | null
+  }]
+}
+```
+
+**Ejemplo de respuesta cuando NO puede aprobarse:**
+```json
+{
+  "institucionId": "inst-uid-2",
+  "nombreInstitucion": "Centro Terapéutico",
+  "representante": {
+    "usuarioId": "uid-456",
+    "nombre": "María López",
+    "email": "maria@centro.com",
+    "curp": null
+  },
+  "verificacionIdentidad": {
+    "estado": "sin_documentos",
+    "tieneCurp": false,
+    "tieneIdentificacion": false,
+    "puedeAprobarse": false,
+    "motivo": "Faltan documentos: CURP, Identificación oficial"
+  },
+  "documentos": []
+}
+```
+
+---
+
+### Endpoint: `POST /api/administracion/instituciones/:id/aprobar` (CAMBIADO)
+
+**⚠️ CAMBIO en v1.7:** Ahora valida la identidad del representante antes de aprobar.
+
+**Respuestas:**
+| Codigo | Descripcion |
+|--------|-------------|
+| 204 | Institucion aprobada (identidad verificada) |
+| 400 | Identidad del representante no verificada |
+| 404 | Institucion no encontrada |
+
+**Errores 400 posibles:**
+```json
+// Sin documentos
+{
+  "statusCode": 400,
+  "message": "No se puede aprobar la institución: el representante legal aún no ha subido CURP e Identificación oficial. Estado actual: sin_documentos. El representante debe subir sus documentos en /api/usuarios/documento-identidad y esperar la revisión de un administrador."
+}
+
+// Documentos pendientes
+{
+  "statusCode": 400,
+  "message": "No se puede aprobar la institución: los documentos de identidad del representante están pendientes de revisión."
+}
+
+// Documentos rechazados
+{
+  "statusCode": 400,
+  "message": "No se puede aprobar la institución: los documentos de identidad del representante fueron rechazados. Motivo: CURP ilegible."
+}
+```
+
+---
+
+### Flujo completo para el Admin
+
+```
+1. Admin entra a "Instituciones Pendientes"
+   GET /api/administracion/instituciones/pendientes
+
+2. Ve lista con estado de identidad de cada representante:
+   - 🟢 Aprobado → Puede aprobar
+   - 🟡 Pendiente → Esperar
+   - 🔴 Rechazado → Representante debe subir nuevos docs
+   - ⚪ Sin docs → Representante debe subir documentos
+
+3. Para ver detalle, hace click en una institución:
+   GET /api/administracion/instituciones/:id/verificacion-identidad
+
+4. Si puedeAprobarse === true, aprueba:
+   POST /api/administracion/instituciones/:id/aprobar → 204
+
+5. Si NO puede aprobarse, ve el motivo y notifica al representante
+```
 
 ---
 
@@ -555,6 +734,7 @@ export interface ResumenIA {
 Los siguientes módulos ya fueron implementados:
 - ✅ Upload de documentos de identidad (CURP + identificación oficial)
 - ✅ Flujo de validación diferida de identidad (admin aprueba → correo de aceptación)
+- ✅ **Flujo conectado: identidad del representante → aprobación de institución (v1.7)**
 - ✅ Módulo de "Rutas y Caminos de Desarrollo" completo
 - ✅ Visibilidad diferenciada Cuidador/Padre ↔ PCD
 - ✅ Tono contextual e historial de instituciones previas

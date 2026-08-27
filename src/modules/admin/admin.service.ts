@@ -274,20 +274,116 @@ export class AdminService {
       .where('activa', '==', true)
       .where('verificada', '==', false)
       .get()
-    const instituciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    let instituciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+
+    // Enriquecer con estado de validación de identidad del representante
+    const usuarioIds = [...new Set(
+      instituciones.map((i: any) => i.usuarioId ?? i.creadoPor).filter(Boolean)
+    )] as string[]
+
+    const mapaPerfiles = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+
+    // Para cada usuario, buscar sus documentos de identidad
+    const mapaDocsIdentidad = new Map<string, any[]>()
+    for (const uid of usuarioIds) {
+      const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+        .where('usuarioId', '==', uid).get()
+      mapaDocsIdentidad.set(uid, docsSnap.docs.map(d => d.data()))
+    }
+
+    instituciones = instituciones.map((inst: any) => {
+      const usuarioId = inst.usuarioId ?? inst.creadoPor
+      const perfil = mapaPerfiles.get(usuarioId)
+      const docsIdentidad = mapaDocsIdentidad.get(usuarioId) ?? []
+
+      const tieneCurp = docsIdentidad.some(d => d.tipo === 'curp')
+      const tieneIdentificacion = docsIdentidad.some(d => d.tipo === 'identificacion_oficial')
+      const estadoIdentidad = perfil?.estadoValidacionIdentidad ?? 'sin_documentos'
+
+      return {
+        ...inst,
+        // Datos del representante legal
+        representante: {
+          nombre: perfil?.nombreCompleto ?? null,
+          email: perfil?.email ?? null,
+          curp: perfil?.curp ?? null,
+        },
+        // Estado de verificación de identidad
+        verificacionIdentidad: {
+          estado: estadoIdentidad,
+          tieneCurp,
+          tieneIdentificacion,
+          puedeAprobarse: estadoIdentidad === 'aprobado',
+        },
+      }
+    })
+
     instituciones.sort((a: any, b: any) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
     return instituciones
   }
 
   async approveInstitution(id: string) {
+    const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
+    if (!doc.exists) throw new NotFoundException('Institución no encontrada')
+    const inst = doc.data()!
+
+    // ── Validación de identidad del representante legal ──
+    // La institución solo se puede aprobar si su representante tiene
+    // identidad verificada (CURP + identificación oficial aprobados).
+    const usuarioId = inst.usuarioId ?? inst.creadoPor
+    if (usuarioId) {
+      const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+      if (perfilDoc.exists) {
+        const perfil = perfilDoc.data()!
+        const estadoIdentidad = perfil.estadoValidacionIdentidad ?? 'sin_documentos'
+
+        if (estadoIdentidad !== 'aprobado') {
+          // Verificar qué documentos faltan para dar un mensaje más claro
+          const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+            .where('usuarioId', '==', usuarioId).get()
+          const documentos = docsSnap.docs.map(d => d.data())
+          const tieneCurp = documentos.some(d => d.tipo === 'curp')
+          const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+
+          const faltantes: string[] = []
+          if (!tieneCurp) faltantes.push('CURP')
+          if (!tieneIdentificacion) faltantes.push('Identificación oficial (INE/pasaporte)')
+
+          if (faltantes.length > 0) {
+            throw new BadRequestException(
+              `No se puede aprobar la institución: el representante legal aún no ha subido ${faltantes.join(' y ')}. ` +
+              `Estado actual: ${estadoIdentidad}. ` +
+              `El representante debe subir sus documentos en /api/usuarios/documento-identidad y esperar la revisión de un administrador.`
+            )
+          }
+
+          // Tiene documentos pero están pendientes o rechazados
+          if (estadoIdentidad === 'pendiente') {
+            throw new BadRequestException(
+              `No se puede aprobar la institución: los documentos de identidad del representante están pendientes de revisión. ` +
+              `El representante debe esperar a que un administrador revise sus documentos.`
+            )
+          }
+
+          if (estadoIdentidad === 'rechazado') {
+            const ultimoDoc = documentos
+              .filter(d => d.estado === 'rechazado')
+              .sort((a, b) => (b.fechaSubida ?? '').localeCompare(a.fechaSubida ?? ''))[0]
+
+            throw new BadRequestException(
+              `No se puede aprobar la institución: los documentos de identidad del representante fueron rechazados. ` +
+              `Motivo: ${ultimoDoc?.motivoRechazo ?? 'No especificado'}. ` +
+              `El representante debe subir nuevos documentos en /api/usuarios/documento-identidad.`
+            )
+          }
+        }
+      }
+    }
+
     // Aprobar deja la institución verificada Y activa: así puede aparecer en el
     // directorio público y publicar vacantes (jobs exige activa + verificada).
     await this.col(COLECCIONES.instituciones).doc(id).update({ verificada: true, activa: true })
-    const doc = await this.col(COLECCIONES.instituciones).doc(id).get()
-    if (doc.exists) {
-      const inst = doc.data()!
-      await this.email.sendInstitutionApproved(inst.emailContacto ?? inst.email ?? '', inst.nombre)
-    }
+    await this.email.sendInstitutionApproved(inst.emailContacto ?? inst.email ?? '', inst.nombre)
   }
 
   async rejectInstitution(id: string) {
@@ -720,6 +816,91 @@ export class AdminService {
 
     const orden: Record<string, number> = { critica: 0, media: 1, info: 2 }
     return alertas.sort((a, b) => (orden[a.severidad] ?? 9) - (orden[b.severidad] ?? 9))
+  }
+
+  /* ───────────────── Verificación de identidad de institución ───────────────── */
+
+  /**
+   * Retorna el estado de verificación de identidad del representante legal
+   * de una institución. Útil para que el admin sepa si puede aprobar la
+   * institución antes de intentar hacerlo.
+   */
+  async getVerificacionIdentidadInstitucion(institucionId: string) {
+    const instDoc = await this.col(COLECCIONES.instituciones).doc(institucionId).get()
+    if (!instDoc.exists) throw new NotFoundException('Institución no encontrada')
+    const inst = instDoc.data()!
+
+    const usuarioId = inst.usuarioId ?? inst.creadoPor
+    if (!usuarioId) {
+      return {
+        institucionId,
+        nombreInstitucion: inst.nombre ?? null,
+        representante: null,
+        verificacionIdentidad: {
+          estado: 'sin_documentos',
+          tieneCurp: false,
+          tieneIdentificacion: false,
+          puedeAprobarse: false,
+          motivo: 'No se encontró el representante legal de la institución',
+        },
+        documentos: [],
+      }
+    }
+
+    const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    const perfil = perfilDoc.exists ? perfilDoc.data()! : null
+
+    const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+      .where('usuarioId', '==', usuarioId).orderBy('fechaSubida', 'desc').get()
+    const documentos = docsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Record<string, any>))
+
+    const tieneCurp = documentos.some((d: any) => d.tipo === 'curp')
+    const tieneIdentificacion = documentos.some((d: any) => d.tipo === 'identificacion_oficial')
+    const estadoIdentidad = perfil?.estadoValidacionIdentidad ?? 'sin_documentos'
+
+    // Determinar si puede aprobarse
+    const puedeAprobarse = estadoIdentidad === 'aprobado'
+    let motivo = null
+    if (!puedeAprobarse) {
+      const faltantes: string[] = []
+      if (!tieneCurp) faltantes.push('CURP')
+      if (!tieneIdentificacion) faltantes.push('Identificación oficial')
+
+      if (faltantes.length > 0) {
+        motivo = `Faltan documentos: ${faltantes.join(', ')}`
+      } else if (estadoIdentidad === 'pendiente') {
+        motivo = 'Documentos pendientes de revisión por administrador'
+      } else if (estadoIdentidad === 'rechazado') {
+        const rechazado = documentos.find((d: any) => d.estado === 'rechazado')
+        motivo = `Documentos rechazados: ${rechazado?.motivoRechazo ?? 'Sin motivo especificado'}`
+      }
+    }
+
+    return {
+      institucionId,
+      nombreInstitucion: inst.nombre ?? null,
+      representante: {
+        usuarioId,
+        nombre: perfil?.nombreCompleto ?? null,
+        email: perfil?.email ?? null,
+        curp: perfil?.curp ?? null,
+      },
+      verificacionIdentidad: {
+        estado: estadoIdentidad,
+        tieneCurp,
+        tieneIdentificacion,
+        puedeAprobarse,
+        motivo,
+      },
+      documentos: documentos.map((d: any) => ({
+        id: d.id,
+        tipo: d.tipo,
+        estado: d.estado,
+        motivoRechazo: d.motivoRechazo ?? null,
+        fechaSubida: d.fechaSubida ?? null,
+        fechaRevision: d.fechaRevision ?? null,
+      })),
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════

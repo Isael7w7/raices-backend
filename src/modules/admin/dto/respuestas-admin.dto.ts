@@ -197,3 +197,51 @@ export class AlertaDto {
 export class ConfiguracionDto {
   [clave: string]: string
 }
+
+export class VerificacionIdentidadInstitucionDto {
+  @ApiProperty({ example: 'inst-uid' }) institucionId!: string
+  @ApiProperty({ example: 'Centro de Rehabilitación', nullable: true }) nombreInstitucion!: string | null
+  @ApiProperty({
+    type: 'object',
+    properties: {
+      usuarioId: { type: 'string', example: 'uid-123' },
+      nombre: { type: 'string', example: 'Juan Pérez', nullable: true },
+      email: { type: 'string', example: 'juan@test.com', nullable: true },
+      curp: { type: 'string', example: 'GAPL800101HMCYRL09', nullable: true },
+    },
+    nullable: true,
+  })
+  representante!: { usuarioId: string; nombre: string | null; email: string | null; curp: string | null } | null
+  @ApiProperty({
+    type: 'object',
+    properties: {
+      estado: { type: 'string', example: 'aprobado', enum: ['sin_documentos', 'pendiente', 'aprobado', 'rechazado'] },
+      tieneCurp: { type: 'boolean', example: true },
+      tieneIdentificacion: { type: 'boolean', example: true },
+      puedeAprobarse: { type: 'boolean', example: true },
+      motivo: { type: 'string', example: null, nullable: true, description: 'Razón por la que no puede aprobarse (si aplica)' },
+    },
+  })
+  verificacionIdentidad!: {
+    estado: string
+    tieneCurp: boolean
+    tieneIdentificacion: boolean
+    puedeAprobarse: boolean
+    motivo: string | null
+  }
+  @ApiProperty({
+    type: 'array',
+    items: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        tipo: { type: 'string', enum: ['curp', 'identificacion_oficial'] },
+        estado: { type: 'string', enum: ['pendiente', 'aprobado', 'rechazado'] },
+        motivoRechazo: { type: 'string', nullable: true },
+        fechaSubida: { type: 'string', nullable: true },
+        fechaRevision: { type: 'string', nullable: true },
+      },
+    },
+  })
+  documentos!: { id: string; tipo: string; estado: string; motivoRechazo: string | null; fechaSubida: string | null; fechaRevision: string | null }[]
+}
