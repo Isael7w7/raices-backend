@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 import { crearAppE2E } from './helpers/app.e2e'
 import { limpiarDb, sembrarPerfil, sembrarInstitucion, leerDoc, token } from './helpers/fixtures'
 import type { INestApplication } from '@nestjs/common'
