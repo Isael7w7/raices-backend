@@ -7,7 +7,7 @@ export class UsuarioSesionDto {
   @ApiProperty({ description: 'Correo electrónico', example: 'usuario@correo.mx' })
   email!: string
 
-  @ApiProperty({ description: 'Rol del usuario', enum: ['pcd', 'tutor', 'institucion', 'admin'], example: 'pcd' })
+  @ApiProperty({ description: 'Rol del usuario', enum: ['pcd', 'padre_tutor', 'institucion', 'especialista', 'empresa', 'admin'], example: 'pcd' })
   rol!: string
 
   @ApiProperty({ description: 'Nombre completo', example: 'Juan Pérez' })
@@ -36,6 +36,9 @@ export class UsuarioSesionDto {
 
   @ApiPropertyOptional({ description: 'Tono contextual de la plataforma', enum: ['formal', 'cercano', 'empatico', 'directo', 'infantil'], nullable: true })
   tonoContextual?: string | null
+
+  @ApiPropertyOptional({ description: 'Estado de acreditación del padre/tutor (solo rol padre_tutor)', enum: ['pendiente', 'aprobado', 'rechazado'], nullable: true })
+  estadoAcreditacionTutor?: string | null
 }
 
 export class RespuestaSesionDto {
@@ -111,7 +114,7 @@ export class RespuestaPerfilDto {
   @ApiProperty({ example: 'usuario@correo.mx' })
   email!: string
 
-  @ApiProperty({ enum: ['pcd', 'tutor', 'institucion', 'admin'], example: 'pcd' })
+  @ApiProperty({ enum: ['pcd', 'padre_tutor', 'institucion', 'especialista', 'empresa', 'admin'], example: 'pcd' })
   rol!: string
 
   @ApiProperty({ example: 'Juan Pérez' })

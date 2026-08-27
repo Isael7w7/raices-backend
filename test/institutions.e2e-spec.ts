@@ -46,7 +46,7 @@ async function sembrarUsuarios() {
   await sembrarPerfil({ id: 'uid-owner', email: 'owner@test.com', rol: 'institucion', activo: true, verificado: true })
   await sembrarPerfil({ id: 'uid-admin', email: 'admin@test.com', rol: 'admin', activo: true })
   await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true })
-  await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'tutor', activo: true })
+  await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'padre_tutor', activo: true })
 }
 
 describe('Instituciones (E2E)', () => {

@@ -61,6 +61,8 @@ export interface PerfilDoc {
   telefonoContacto?: string
   preferenciasAcompanamiento?: string
   estadoValidacionIdentidad?: string
+  certificadoDiscapacidad?: boolean
+  estadoAcreditacionTutor?: string
   fechaNacimiento?: string
   domicilio?: string
   tonoContextual?: string
@@ -158,6 +160,33 @@ export interface PerfilExtendidoDoc {
 }
 
 /**
+ * Documento de la colección `foros` (foros institucionales tipo Classroom).
+ */
+export interface ForoDoc {
+  id?: string
+  titulo?: string
+  descripcion?: string
+  institucionId?: string
+  creadorId?: string
+  preguntasDetonantes?: string[]
+  exclusivoPadres?: boolean
+  activo?: boolean
+  fechaCreacion?: string
+}
+
+/**
+ * Documento de la colección `respuestasForo` (respuestas a preguntas detonantes).
+ */
+export interface RespuestaForoDoc {
+  id?: string
+  foroId?: string
+  preguntaIndex?: number
+  autorId?: string
+  contenido?: string
+  fechaCreacion?: string
+}
+
+/**
  * Documento de la colección `publicaciones`.
  */
 export interface PublicacionDoc {
@@ -166,6 +195,8 @@ export interface PublicacionDoc {
   contenido?: string
   grupoId?: string | null
   mediaUrl?: string | null
+  categoriaCreativa?: string | null
+  exclusivoPadres?: boolean
   cantidadMeGustas?: number
   fechaCreacion?: string
   fechaActualizacion?: string
@@ -190,6 +221,7 @@ export interface GrupoDoc {
   nombre?: string
   descripcion?: string
   esPublico?: boolean
+  exclusivoPadres?: boolean
   creadorId?: string
   cantidadMiembros?: number
   fechaCreacion?: string
@@ -223,6 +255,27 @@ export interface NotificacionDoc {
 }
 
 /**
+ * Documento de la colección `especialistas`.
+ */
+export interface EspecialistaDoc {
+  id?: string
+  nombre?: string
+  especialidad?: string
+  tiposDiscapacidad?: string[] | string
+  edadMinima?: number | null
+  edadMaxima?: number | null
+  ciudad?: string
+  estado?: string
+  modalidad?: string
+  urlFoto?: string | null
+  descripcion?: string
+  calificacionPromedio?: number
+  cantidadCalificaciones?: number
+  activo?: boolean
+  fechaCreacion?: string
+}
+
+/**
  * Documento de la colección `interacciones`.
  * Registra eventos de comportamiento del usuario con instituciones
  * (guardar, ver detalle, click en tarjeta) para calcular pesos de
@@ -243,7 +296,7 @@ export interface InteraccionDoc {
 export interface DocumentoIdentidadDoc {
   id?: string
   usuarioId?: string
-  tipo?: 'curp' | 'identificacion_oficial'
+  tipo?: 'curp' | 'identificacion_oficial' | 'certificado_discapacidad'
   urlDocumento?: string
   numeroCurp?: string | null
   estado?: 'pendiente' | 'aprobado' | 'rechazado'

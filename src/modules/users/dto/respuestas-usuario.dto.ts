@@ -124,7 +124,7 @@ export class PerfilUsuarioDto {
   @ApiProperty({ example: 'usuario@correo.mx' })
   email!: string
 
-  @ApiProperty({ enum: ['pcd', 'tutor', 'institucion', 'admin'], example: 'pcd' })
+  @ApiProperty({ enum: ['pcd', 'padre_tutor', 'institucion', 'especialista', 'empresa', 'admin'], example: 'pcd' })
   rol!: string
 
   @ApiPropertyOptional({ example: 'Mérida' })
@@ -153,6 +153,12 @@ export class PerfilUsuarioDto {
 
   @ApiPropertyOptional({ type: InstitucionPerfilDto, description: 'Datos de la institución (solo rol institución)' })
   institucion?: InstitucionPerfilDto | null
+
+  @ApiPropertyOptional({ example: true, nullable: true, description: 'Si el usuario tiene certificado de discapacidad subido y validado' })
+  certificadoDiscapacidad?: boolean | null
+
+  @ApiPropertyOptional({ example: 'pendiente', nullable: true, description: 'Estado de acreditación del padre/tutor (solo rol padre_tutor)', enum: ['pendiente', 'aprobado', 'rechazado'] })
+  estadoAcreditacionTutor?: string | null
 }
 
 export class RespuestaAvatarDto {

@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger, NotFoundException, ForbiddenException } from '@nestjs/common'
+import { Injectable, Inject, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { Firestore, FieldValue, Query, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -7,11 +7,30 @@ import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
+import { CrearForoDto } from './dto/crear-foro.dto'
+import { CrearRespuestaForoDto } from './dto/crear-respuesta-foro.dto'
+
+/** Mapa de etiquetas de rol para identificación visual */
+const ETIQUETAS_ROL: Record<string, string> = {
+  pcd: 'Persona con discapacidad',
+  padre_tutor: 'Padre / Tutor',
+  tutor: 'Padre / Tutor',
+  institucion: 'Institución',
+  especialista: 'Especialista',
+  empresa: 'Empresa',
+  admin: 'Administrador',
+}
+
+/** Etiqueta de rol amigable para mostrar en la UI */
+export function etiquetaRol(rol: string | undefined | null): string | null {
+  return rol ? (ETIQUETAS_ROL[rol] ?? rol) : null
+}
 
 /** Objeto de autor por defecto cuando el autor no existe o está deshabilitado */
 const AUTOR_NO_DISPONIBLE = Object.freeze({
   nombreCompleto: 'Usuario no disponible',
   urlAvatar: null,
+  rol: null,
 })
 
 /** Spread seguro de un snapshot de Firestore; retorna objeto vacío si data() es undefined */
@@ -98,6 +117,8 @@ export class CommunityService {
         return {
           ...p,
           nombreCompleto: autor.nombreCompleto,
+          rol: autor.rol ?? null,
+          etiquetaRol: etiquetaRol(autor.rol),
           urlAvatar: autor.urlAvatar ?? null,
         }
       })
@@ -143,6 +164,8 @@ export class CommunityService {
         return {
           ...c,
           nombreCompleto: autor.nombreCompleto,
+          rol: autor.rol ?? null,
+          etiquetaRol: etiquetaRol(autor.rol),
           urlAvatar: autor.urlAvatar ?? null,
         }
       })
@@ -156,13 +179,22 @@ export class CommunityService {
     }
   }
 
-  async createPost(user: CurrentUserPayload, contenido: string, grupoId?: string, mediaUrl?: string) {
+  async createPost(
+    user: CurrentUserPayload,
+    contenido: string,
+    grupoId?: string,
+    mediaUrl?: string,
+    categoriaCreativa?: string,
+    exclusivoPadres?: boolean,
+  ) {
     const media = normalizarMediaUrl(mediaUrl)
     verificarMultimediaPermitida(user, media)
     const ref = this.db.collection(COLECCIONES.publicaciones).doc()
     await ref.set({
       id: ref.id, autorId: user.id, contenido, grupoId: grupoId ?? null,
       mediaUrl: media,
+      categoriaCreativa: categoriaCreativa ?? null,
+      exclusivoPadres: exclusivoPadres === true,
       cantidadMeGustas: 0, fechaCreacion: new Date().toISOString(),
     })
 
@@ -170,9 +202,14 @@ export class CommunityService {
     const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null
     return {
       id: ref.id, autorId: user.id, contenido, grupoId: grupoId ?? null,
-      mediaUrl: media, cantidadMeGustas: 0,
+      mediaUrl: media,
+      categoriaCreativa: categoriaCreativa ?? null,
+      exclusivoPadres: exclusivoPadres === true,
+      cantidadMeGustas: 0,
       fechaCreacion: new Date().toISOString(),
       nombreCompleto: autor?.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
+      rol: autor?.rol ?? null,
+      etiquetaRol: etiquetaRol(autor?.rol),
       urlAvatar: autor?.urlAvatar ?? null,
       usuarioMeGusta: false,
     }
@@ -260,7 +297,8 @@ export class CommunityService {
     const batch = this.db.batch()
     batch.set(ref, {
       id: ref.id, nombre: dto.nombre, descripcion: dto.descripcion ?? '',
-      esPublico: dto.esPublico !== false, creadorId,
+      esPublico: dto.esPublico !== false, exclusivoPadres: dto.exclusivoPadres === true,
+      creadorId,
       cantidadMiembros: 1, fechaCreacion: new Date().toISOString(),
     })
     batch.set(refMiembro, {
@@ -370,5 +408,195 @@ export class CommunityService {
       this.logger.error(`Error al obtener miembros/testimonios: ${(error as Error).message}`, (error as Error).stack)
       return paginar([], 0, pagina, limite)
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Foros Institucionales (tipo Classroom)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async createForo(user: CurrentUserPayload, dto: CrearForoDto) {
+    const perfilDoc = await this.db.collection(COLECCIONES.perfiles).doc(user.id).get()
+    const perfil = perfilDoc.exists ? perfilDoc.data() : null
+    const institucionId = perfil?.institucionId ?? user.id
+
+    const ref = this.db.collection(COLECCIONES.foros).doc()
+    const foroData = {
+      id: ref.id,
+      titulo: dto.titulo,
+      descripcion: dto.descripcion ?? '',
+      institucionId,
+      creadorId: user.id,
+      preguntasDetonantes: dto.preguntasDetonantes,
+      exclusivoPadres: dto.exclusivoPadres === true,
+      activo: true,
+      fechaCreacion: new Date().toISOString(),
+    }
+    await ref.set(foroData)
+    return { ...foroData, nombreInstitucion: perfil?.nombreCompleto ?? null }
+  }
+
+  async getForos(pagina = 1, limite = 20, buscar?: string): Promise<RespuestaPaginada<any>> {
+    const snap = await this.db.collection(COLECCIONES.foros)
+      .where('activo', '==', true).get()
+    let foros = snap.docs.map(d => extraerDoc(d))
+
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      foros = foros.filter(f =>
+        (f.titulo ?? '').toLowerCase().includes(termino) ||
+        (f.descripcion ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    // Enriquecer con nombre de institución
+    const instIds = [...new Set(foros.map(f => f.institucionId).filter(Boolean))] as string[]
+    const mapaInst = instIds.length > 0
+      ? await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds)
+      : new Map()
+
+    foros = foros.map(f => ({
+      ...f,
+      nombreInstitucion: mapaInst.get(f.institucionId)?.nombre ?? null,
+    }))
+
+    foros.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+    const total = foros.length
+    const inicio = (pagina - 1) * limite
+    return paginar(foros.slice(inicio, inicio + limite), total, pagina, limite)
+  }
+
+  async getForoById(foroId: string) {
+    const doc = await this.db.collection(COLECCIONES.foros).doc(foroId).get()
+    if (!doc.exists) throw new NotFoundException('Foro no encontrado')
+    const foro = extraerDoc(doc)
+
+    // Obtener respuestas del foro
+    const respuestasSnap = await this.db.collection(COLECCIONES.respuestasForo)
+      .where('foroId', '==', foroId).get()
+    const respuestas = respuestasSnap.docs.map(d => extraerDoc(d))
+
+    // Enriquecer respuestas con datos de autor
+    const autorIds = [...new Set(respuestas.map(r => r.autorId).filter(Boolean))] as string[]
+    const mapaAutores = autorIds.length > 0
+      ? await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autorIds)
+      : new Map()
+
+    const respuestasEnriquecidas = respuestas.map(r => {
+      const autor = mapaAutores.get(r.autorId) ?? AUTOR_NO_DISPONIBLE
+      return {
+        ...r,
+        nombreCompleto: autor.nombreCompleto,
+        rol: autor.rol ?? null,
+        etiquetaRol: etiquetaRol(autor.rol),
+        urlAvatar: autor.urlAvatar ?? null,
+      }
+    })
+
+    // Agrupar respuestas por pregunta detonante
+    const preguntasConRespuestas = (foro.preguntasDetonantes ?? []).map((pregunta: string, idx: number) => ({
+      pregunta,
+      respuestas: respuestasEnriquecidas.filter((r: any) => r.preguntaIndex === idx),
+    }))
+
+    // Nombre de institución
+    const instDoc = foro.institucionId
+      ? await this.db.collection(COLECCIONES.instituciones).doc(foro.institucionId).get()
+      : null
+
+    return {
+      ...foro,
+      nombreInstitucion: instDoc?.exists ? instDoc.data()?.nombre ?? null : null,
+      preguntasConRespuestas,
+    }
+  }
+
+  async createRespuestaForo(user: CurrentUserPayload, foroId: string, dto: CrearRespuestaForoDto) {
+    // Verificar que el foro exista y esté activo
+    const foroDoc = await this.db.collection(COLECCIONES.foros).doc(foroId).get()
+    if (!foroDoc.exists) throw new NotFoundException('Foro no encontrado')
+    const foro = foroDoc.data()!
+    if (!foro.activo) throw new BadRequestException('Este foro no está activo')
+
+    // Verificar que el índice de pregunta sea válido
+    const preguntas = foro.preguntasDetonantes ?? []
+    if (dto.preguntaIndex >= preguntas.length) {
+      throw new BadRequestException(`Índice de pregunta inválido. El foro tiene ${preguntas.length} preguntas detonantes (0-${preguntas.length - 1})`)
+    }
+
+    // Verificar exclusivoPadres: solo padres/tutores pueden responder
+    if (foro.exclusivoPadres && user.rol !== 'padre_tutor' && user.rol !== 'admin') {
+      throw new ForbiddenException('Este foro es exclusivo para padres/tutores')
+    }
+
+    const ref = this.db.collection(COLECCIONES.respuestasForo).doc()
+    await ref.set({
+      id: ref.id,
+      foroId,
+      preguntaIndex: dto.preguntaIndex,
+      autorId: user.id,
+      contenido: dto.contenido,
+      fechaCreacion: new Date().toISOString(),
+    })
+
+    const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(user.id).get()
+    const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null
+
+    return {
+      id: ref.id,
+      foroId,
+      preguntaIndex: dto.preguntaIndex,
+      autorId: user.id,
+      contenido: dto.contenido,
+      fechaCreacion: new Date().toISOString(),
+      nombreCompleto: autor?.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
+      rol: autor?.rol ?? null,
+      etiquetaRol: etiquetaRol(autor?.rol),
+      urlAvatar: autor?.urlAvatar ?? null,
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Espacio "Conectemos" (Contenido Creativo PCD)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async getConectemosPosts(pagina = 1, limite = 20, categoriaCreativa?: string, buscar?: string): Promise<RespuestaPaginada<any>> {
+    let q: Query = this.db.collection(COLECCIONES.publicaciones)
+      .where('categoriaCreativa', '!=', null)
+
+    const snap = await q.get()
+    let publicaciones = snap.docs.map(d => extraerDoc(d))
+
+    if (categoriaCreativa) {
+      publicaciones = publicaciones.filter(p => p.categoriaCreativa === categoriaCreativa)
+    }
+    if (buscar) {
+      const termino = buscar.toLowerCase()
+      publicaciones = publicaciones.filter(p =>
+        (p.contenido ?? '').toLowerCase().includes(termino)
+      )
+    }
+
+    publicaciones = ordenar(publicaciones, 'fechaCreacion', 'desc')
+
+    // Enriquecer con datos de autor
+    const autoresIds = [...new Set(publicaciones.map(p => p.autorId).filter(Boolean))] as string[]
+    const mapaAutores = autoresIds.length > 0
+      ? await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+      : new Map()
+
+    const enriquecidas = publicaciones.map(p => {
+      const autor = mapaAutores.get(p.autorId) ?? AUTOR_NO_DISPONIBLE
+      return {
+        ...p,
+        nombreCompleto: autor.nombreCompleto,
+        rol: autor.rol ?? null,
+        etiquetaRol: etiquetaRol(autor.rol),
+        urlAvatar: autor.urlAvatar ?? null,
+      }
+    })
+
+    const total = enriquecidas.length
+    const inicio = (pagina - 1) * limite
+    return paginar(enriquecidas.slice(inicio, inicio + limite), total, pagina, limite)
   }
 }

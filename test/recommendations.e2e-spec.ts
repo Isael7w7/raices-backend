@@ -15,7 +15,7 @@ const instituciones = [
 
 async function sembrarEscenario() {
   await sembrarPerfil({ id: 'uid-user', email: 'user@test.com', rol: 'pcd', activo: true })
-  await sembrarPerfil({ id: 'uid-otro', email: 'otro@test.com', rol: 'tutor', activo: true })
+  await sembrarPerfil({ id: 'uid-otro', email: 'otro@test.com', rol: 'padre_tutor', activo: true })
   for (const inst of instituciones) await sembrarInstitucion(inst)
 }
 

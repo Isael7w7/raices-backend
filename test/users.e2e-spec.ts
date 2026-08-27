@@ -19,8 +19,8 @@ describe('Usuarios y vínculo tutor-PCD (E2E)', () => {
 
   beforeEach(async () => {
     limpiarDb()
-    await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'tutor', activo: true, nombreCompleto: 'Tutor' })
-    await sembrarPerfil({ id: 'uid-otro-tutor', email: 'otro@test.com', rol: 'tutor', activo: true, nombreCompleto: 'Otro' })
+    await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'padre_tutor', activo: true, nombreCompleto: 'Tutor' })
+    await sembrarPerfil({ id: 'uid-otro-tutor', email: 'otro@test.com', rol: 'padre_tutor', activo: true, nombreCompleto: 'Otro' })
     await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true, nombreCompleto: 'PCD Libre' })
     await sembrarPerfil({ id: 'uid-pcd-vinculada', email: 'vinculada@test.com', rol: 'pcd', activo: true, tutorId: 'uid-otro-tutor', nombreCompleto: 'PCD Vinculada' })
   })

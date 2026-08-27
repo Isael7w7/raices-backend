@@ -70,18 +70,18 @@ describe('Verificación de Instituciones (E2E)', () => {
       expect(res.body.usuario.rol).toBe('institucion')
     })
 
-    it('201: tutor NO necesita CURP', async () => {
+    it('201: padre_tutor NO necesita CURP', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
         .send({
           email: 'tutor@test.com',
           password: '123456',
           nombreCompleto: 'Tutor Test',
-          rol: 'tutor',
+          rol: 'padre_tutor',
         })
 
       expect(res.status).toBe(201)
-      expect(res.body.usuario.rol).toBe('tutor')
+      expect(res.body.usuario.rol).toBe('padre_tutor')
     })
 
     it('201: PCD NO necesita CURP', async () => {
@@ -226,7 +226,7 @@ describe('Verificación de Instituciones (E2E)', () => {
       await sembrarPerfil({
         id: 'uid-tutor',
         email: 'tutor@test.com',
-        rol: 'tutor',
+        rol: 'padre_tutor',
         activo: true,
         nombreCompleto: 'Tutor',
       })

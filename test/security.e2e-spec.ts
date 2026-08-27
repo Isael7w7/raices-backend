@@ -42,8 +42,8 @@ describe('Security Suite (E2E)', () => {
     // Seed users with different roles
     await sembrarPerfil({ id: 'uid-admin', email: 'admin@test.com', rol: 'admin', activo: true, nombreCompleto: 'Admin' })
     await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true, nombreCompleto: 'PCD User' })
-    await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'tutor', activo: true, nombreCompleto: 'Tutor' })
-    await sembrarPerfil({ id: 'uid-tutor2', email: 'tutor2@test.com', rol: 'tutor', activo: true, nombreCompleto: 'Tutor 2' })
+    await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'padre_tutor', activo: true, nombreCompleto: 'Tutor' })
+    await sembrarPerfil({ id: 'uid-tutor2', email: 'tutor2@test.com', rol: 'padre_tutor', activo: true, nombreCompleto: 'Tutor 2' })
     await sembrarPerfil({ id: 'uid-inst', email: 'inst@test.com', rol: 'institucion', activo: true, nombreCompleto: 'Institución' })
     await sembrarPerfil({ id: 'uid-pcd-vinculada', email: 'vinculada@test.com', rol: 'pcd', activo: true, tutorId: 'uid-tutor2', nombreCompleto: 'PCD Vinculada' })
   })

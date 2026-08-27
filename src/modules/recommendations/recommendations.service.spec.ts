@@ -203,4 +203,161 @@ describe('RecommendationsService', () => {
     expect(pagina2.datos).toHaveLength(5)
     expect(pagina2.paginacion).toEqual({ total: 25, pagina: 2, limite: 20, totalPaginas: 2 })
   })
+
+  // ── verificarOnboarding ──────────────────────────────────────────────
+
+  describe('verificarOnboarding', () => {
+    it('debe retornar onboardingCompleto=false cuando faltan campos obligatorios', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ id: 'u1', nombreCompleto: 'Ana', rol: 'pcd' })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(false)
+      expect(resultado.camposFaltantes).toContain('fechaNacimiento')
+      expect(resultado.camposFaltantes).toContain('curp')
+      expect(resultado.camposFaltantes).toContain('perfilNecesidades')
+      expect(resultado.porcentaje).toBeGreaterThanOrEqual(0)
+    })
+
+    it('debe retornar onboardingCompleto=true cuando todos los campos están presentes', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({
+              id: 'u1', nombreCompleto: 'Ana', rol: 'pcd',
+              fechaNacimiento: '2015-03-15', curp: 'GAPL800101MCYRL093',
+              certificadoDiscapacidad: true
+            })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ data: () => ({ tiposDiscapacidad: '["tea"]', tieneDiagnostico: true }) }]
+            }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(true)
+      expect(resultado.camposFaltantes).toHaveLength(0)
+      expect(resultado.porcentaje).toBe(100)
+    })
+
+    it('debe verificar acreditación de tutor para rol padre_tutor', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({
+              id: 'u1', nombreCompleto: 'Carlos', rol: 'padre_tutor',
+              fechaNacimiento: '1985-01-01', curp: 'GAPL850101HDFRR500'
+            })
+          }) }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(false)
+      expect(resultado.camposFaltantes).toContain('acreditacionTutor')
+    })
+  })
+
+  // ── especialistasRecomendados ───────────────────────────────────────
+
+  describe('especialistasRecomendados', () => {
+    it('debe retornar especialistas ordenados por final_score', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ id: 'u1', nombreCompleto: 'Ana', rol: 'pcd', fechaNacimiento: '2015-03-15', ciudad: 'Mérida' })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ data: () => ({ tiposDiscapacidad: '["tea"]' }) }]
+            }) }
+        }
+        if (nombre === 'especialistas') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [
+            { id: 'esp-1', data: () => ({ nombre: 'Dra. López', especialidad: 'TEA', tiposDiscapacidad: ['tea', 'tdah'], edadMinima: 2, edadMaxima: 18, ciudad: 'Mérida', calificacionPromedio: 4.8, activo: true }) },
+            { id: 'esp-2', data: () => ({ nombre: 'Dr. García', especialidad: 'Motriz', tiposDiscapacidad: ['motriz'], edadMinima: 10, edadMaxima: 30, ciudad: 'Cancún', calificacionPromedio: 4.2, activo: true }) },
+          ] }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.especialistasRecomendados('u1')
+
+      expect(resultado.datos).toHaveLength(2)
+      // Dra. López should be first (matches tea, age 11 within 2-18, same city)
+      expect(resultado.datos[0].id).toBe('esp-1')
+      expect(resultado.datos[0].score_discapacidad).toBe(1)
+      expect(resultado.datos[0].score_edad).toBe(1)
+      expect(resultado.datos[0].final_score).toBeGreaterThan(0)
+      // Dr. García should be second (no disability match, age 11 outside 10-30... actually 11 is within)
+      expect(resultado.datos[1].id).toBe('esp-2')
+    })
+
+    it('debe retornar lista vacía si no hay especialistas', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true, data: () => ({ id: 'u1', rol: 'pcd' })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true }) }
+        }
+        if (nombre === 'especialistas') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.especialistasRecomendados('u1')
+
+      expect(resultado.datos).toHaveLength(0)
+      expect(resultado.paginacion.total).toBe(0)
+    })
+
+    it('debe retornar datos vacíos si el usuario no existe', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.especialistasRecomendados('u1')
+
+      expect(resultado.datos).toHaveLength(0)
+    })
+  })
 })

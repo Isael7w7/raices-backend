@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler'
 import { RecommendationsService } from './recommendations.service'
 import { RegistrarInteraccionDto } from './dto/registrar-interaccion.dto'
 import { RecomendacionesQueryDto, InteraccionRegistradaDto, PaginaRecomendacionesDto, PesosInteraccionDto } from './dto/respuestas-recomendaciones.dto'
+import { EstadoOnboardingDto, PaginaEspecialistasDto } from './dto/respuestas-especialistas.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
@@ -53,5 +54,29 @@ export class RecommendationsController {
   @ApiResponse({ status: 401, description: 'No autenticado' })
   recomendaciones(@CurrentUser() user: CurrentUserPayload, @Query() q: RecomendacionesQueryDto) {
     return this.svc.recomendaciones(user.id, q.pagina, q.limite)
+  }
+
+  // ─── GET /usuarios/onboarding ──────────────────────────────────────
+  @Get('onboarding')
+  @ApiOperation({
+    summary: 'Estado de onboarding del usuario',
+    description: 'Verifica si el usuario ha completado el onboarding obligatorio. Retorna campos faltantes y porcentaje de completitud. Usado para revelación progresiva.',
+  })
+  @ApiOkResponse({ type: EstadoOnboardingDto, description: 'Estado de completitud del onboarding' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  async onboarding(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.verificarOnboarding(user.id)
+  }
+
+  // ─── GET /usuarios/especialistas ──────────────────────────────────
+  @Get('especialistas')
+  @ApiOperation({
+    summary: 'Especialistas recomendados',
+    description: 'Recomienda especialistas individuales basándose en la edad, tipo de discapacidad y ubicación de la PCD. Incluye scores de matching porfactor.',
+  })
+  @ApiOkResponse({ type: PaginaEspecialistasDto, description: 'Listado paginado de especialistas ordenados por final_score descendente' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  especialistas(@CurrentUser() user: CurrentUserPayload, @Query() q: RecomendacionesQueryDto) {
+    return this.svc.especialistasRecomendados(user.id, q.pagina, q.limite)
   }
 }

@@ -14,4 +14,7 @@ export class CrearGrupoDto {
 
   @ApiPropertyOptional({ description: 'El grupo es público o privado', default: true })
   @IsOptional() @IsBoolean() esPublico?: boolean
+
+  @ApiPropertyOptional({ description: 'Si el grupo es exclusivo para padres/tutores', default: false })
+  @IsOptional() @IsBoolean() exclusivoPadres?: boolean
 }

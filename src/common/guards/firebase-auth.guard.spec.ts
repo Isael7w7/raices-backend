@@ -114,7 +114,7 @@ describe('FirebaseAuthGuard', () => {
     it('should authenticate via httpOnly cookie when Authorization header is absent', async () => {
       const perfil = {
         email: 'test@test.com',
-        rol: 'tutor',
+        rol: 'padre_tutor',
         nombreCompleto: 'Test Tutor',
         activo: true,
         verificado: true,
@@ -134,7 +134,7 @@ describe('FirebaseAuthGuard', () => {
       expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token-123')
 
       const request = context.switchToHttp().getRequest()
-      expect(request.user).toMatchObject({ id: 'test-uid-123', rol: 'tutor' })
+      expect(request.user).toMatchObject({ id: 'test-uid-123', rol: 'padre_tutor' })
     })
 
     it('should reject cookie-authenticated unsafe method from a disallowed Origin (CSRF)', async () => {

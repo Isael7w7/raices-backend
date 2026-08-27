@@ -4,14 +4,19 @@ import { CommunityService } from './community.service'
 import { CrearPublicacionDto } from './dto/crear-publicacion.dto'
 import { CrearComentarioDto } from './dto/crear-comentario.dto'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
+import { CrearForoDto } from './dto/crear-foro.dto'
+import { CrearRespuestaForoDto } from './dto/crear-respuesta-foro.dto'
 import { ActualizarPublicacionDto } from './dto/actualizar-publicacion.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import {
   GrupoDto, PaginaGruposDto, PublicacionDto, PaginaPublicacionesDto, ComentarioDto, PaginaComentariosDto,
   RespuestaMeGustaDto, RespuestaUnirseDto, RespuestaSalirDto, EstadisticasComunidadDto, MiembroDto, PaginaMiembrosDto,
+  ForoDto, PaginaForosDto, ForoConRespuestasDto, RespuestaForoDto,
 } from './dto/respuestas-comunidad.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { RolesGuard } from '../../common/guards/roles.guard'
+import { Roles } from '../../common/decorators/roles.decorator'
 import { FeatureGuard } from '../../common/guards/feature.guard'
 import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
@@ -63,7 +68,7 @@ export class CommunityController {
   @ApiResponse({ status: 403, description: 'Funcionalidad de comunidad desactivada para tu cuenta' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   createPost(@Body() dto: CrearPublicacionDto, @CurrentUser() user: CurrentUserPayload) {
-    return this.svc.createPost(user, dto.contenido, dto.grupoId, dto.mediaUrl)
+    return this.svc.createPost(user, dto.contenido, dto.grupoId, dto.mediaUrl, dto.categoriaCreativa, dto.exclusivoPadres)
   }
 
   @Post('publicaciones/:id/comentarios')
@@ -175,5 +180,78 @@ export class CommunityController {
   @ApiOkResponse({ type: PaginaMiembrosDto, description: 'Lista paginada de miembros con testimonios' })
   members(@Query() paginacion: PaginacionDto) {
     return this.svc.getMembers(paginacion.pagina, paginacion.limite)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Foros Institucionales (tipo Classroom)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Post('foros')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Crear foro institucional', description: 'Crea un foro tipo Classroom con preguntas detonantes. Solo instituciones y admins.' })
+  @ApiCreatedResponse({ type: ForoDto, description: 'Foro creado' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere institucion o admin)' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  createForo(@Body() dto: CrearForoDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.createForo(user, dto)
+  }
+
+  @Get('foros')
+  @UseETag()
+  @ApiOperation({ summary: 'Listar foros activos', description: 'Retorna los foros institucionales activos con paginación' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Buscar por título o descripción' })
+  @ApiOkResponse({ type: PaginaForosDto, description: 'Lista paginada de foros' })
+  getForos(@Query() paginacion: PaginacionDto) {
+    return this.svc.getForos(paginacion.pagina, paginacion.limite, paginacion.buscar)
+  }
+
+  @Get('foros/:id')
+  @UseETag()
+  @ApiOperation({ summary: 'Detalle de foro con respuestas', description: 'Obtiene un foro con sus preguntas detonantes y respuestas agrupadas' })
+  @ApiParam({ name: 'id', description: 'ID del foro' })
+  @ApiOkResponse({ type: ForoConRespuestasDto, description: 'Foro con preguntas y respuestas' })
+  @ApiResponse({ status: 404, description: 'Foro no encontrado' })
+  getForoById(@Param('id') id: string) {
+    return this.svc.getForoById(id)
+  }
+
+  @Post('foros/:id/respuestas')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Responder pregunta detonante', description: 'Permite a cualquier usuario autenticado responder a una pregunta detonante del foro' })
+  @ApiParam({ name: 'id', description: 'ID del foro' })
+  @ApiCreatedResponse({ type: RespuestaForoDto, description: 'Respuesta creada' })
+  @ApiResponse({ status: 403, description: 'Foro exclusivo para padres/tutores' })
+  @ApiResponse({ status: 404, description: 'Foro no encontrado' })
+  createRespuestaForo(
+    @Param('id') foroId: string,
+    @Body() dto: CrearRespuestaForoDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.svc.createRespuestaForo(user, foroId, dto)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Espacio "Conectemos" (Contenido Creativo PCD)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('conectemos/publicaciones')
+  @UseETag()
+  @ApiOperation({ summary: 'Galería Conectemos', description: 'Obtiene la galería pública de creaciones del espacio Conectemos (publicaciones con categoría creativa)' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'categoriaCreativa', required: false, description: 'Filtrar por categoría: arte, dibujo, historia, general' })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Buscar en contenido' })
+  @ApiOkResponse({ type: PaginaPublicacionesDto, description: 'Galería paginada de creaciones' })
+  getConectemosPosts(@Query() query: Record<string, string>) {
+    const pagina = Number(query.pagina) || 1
+    const limite = Number(query.limite) || 20
+    return this.svc.getConectemosPosts(pagina, limite, query.categoriaCreativa, query.buscar)
   }
 }

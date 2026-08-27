@@ -5,7 +5,7 @@ import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorato
 /**
  * Tipo de documento de identidad que se puede subir.
  */
-export type TipoDocumentoIdentidad = 'curp' | 'identificacion_oficial'
+export type TipoDocumentoIdentidad = 'curp' | 'identificacion_oficial' | 'certificado_discapacidad'
 
 /**
  * Estado de validación de los documentos de identidad.
@@ -23,10 +23,10 @@ export type EstadoValidacionIdentidad =
 export class SubirDocumentoIdentidadDto {
   @ApiProperty({
     description: 'Tipo de documento',
-    enum: ['curp', 'identificacion_oficial'],
+    enum: ['curp', 'identificacion_oficial', 'certificado_discapacidad'],
     example: 'curp',
   })
-  @IsIn(['curp', 'identificacion_oficial'])
+  @IsIn(['curp', 'identificacion_oficial', 'certificado_discapacidad'])
   tipo!: TipoDocumentoIdentidad
 
   @ApiPropertyOptional({
@@ -71,6 +71,9 @@ export class EstadoValidacionIdentidadDto {
 
   @ApiProperty({ example: true })
   tieneIdentificacion!: boolean
+
+  @ApiProperty({ example: true, description: 'Si el usuario ha subido el certificado de discapacidad' })
+  tieneCertificadoDiscapacidad!: boolean
 
   @ApiProperty({ example: 'GAPL800101MCYRL093', nullable: true })
   numeroCurp?: string | null

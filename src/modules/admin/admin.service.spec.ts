@@ -194,7 +194,7 @@ describe('AdminService', () => {
     it('should return list of users', async () => {
       const users = [
         { id: 'u1', data: () => ({ email: 'a@test.com', nombreCompleto: 'A', rol: 'pcd', activo: true }) },
-        { id: 'u2', data: () => ({ email: 'b@test.com', nombreCompleto: 'B', rol: 'tutor', activo: false }) },
+        { id: 'u2', data: () => ({ email: 'b@test.com', nombreCompleto: 'B', rol: 'padre_tutor', activo: false }) },
       ]
 
       firestoreMock.collection.mockReturnValue({

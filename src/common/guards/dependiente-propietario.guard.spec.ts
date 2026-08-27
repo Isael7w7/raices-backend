@@ -40,21 +40,21 @@ describe('DependientePropietarioGuard', () => {
   })
 
   it('should allow when no dependienteId is provided (action sobre el propio usuario)', async () => {
-    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'tutor' }, body: {} })
+    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'padre_tutor' }, body: {} })
     const result = await guard.canActivate(ctx)
     expect(result).toBe(true)
     expect(db.collection).not.toHaveBeenCalled()
   })
 
   it('should throw BadRequestException when dependienteId is present but not a string', async () => {
-    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'tutor' }, body: { dependienteId: 123 } })
+    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'padre_tutor' }, body: { dependienteId: 123 } })
     await expect(guard.canActivate(ctx)).rejects.toThrow(BadRequestException)
     expect(db.collection).not.toHaveBeenCalled()
   })
 
   it('should allow when dependienteId comes in the body and belongs to the tutor', async () => {
     const ctx = mockExecutionContext({
-      user: { id: 'tutor-1', rol: 'tutor' },
+      user: { id: 'tutor-1', rol: 'padre_tutor' },
       body: { dependienteId: 'dep-1' },
     })
     const result = await guard.canActivate(ctx)
@@ -65,7 +65,7 @@ describe('DependientePropietarioGuard', () => {
 
   it('should allow when dependienteId comes in the route params', async () => {
     const ctx = mockExecutionContext({
-      user: { id: 'tutor-1', rol: 'tutor' },
+      user: { id: 'tutor-1', rol: 'padre_tutor' },
       params: { dependienteId: 'dep-1' },
       body: {},
     })
@@ -76,14 +76,14 @@ describe('DependientePropietarioGuard', () => {
   it('should throw NotFoundException when the dependiente does not exist', async () => {
     db = mockFirestore(null, false)
     guard = new DependientePropietarioGuard(db as any)
-    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'tutor' }, body: { dependienteId: 'ghost' } })
+    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'padre_tutor' }, body: { dependienteId: 'ghost' } })
     await expect(guard.canActivate(ctx)).rejects.toThrow(NotFoundException)
   })
 
   it('should throw NotFoundException when the dependiente belongs to another tutor', async () => {
     db = mockFirestore({ id: 'dep-1', tutorId: 'other-tutor' })
     guard = new DependientePropietarioGuard(db as any)
-    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'tutor' }, body: { dependienteId: 'dep-1' } })
+    const ctx = mockExecutionContext({ user: { id: 'tutor-1', rol: 'padre_tutor' }, body: { dependienteId: 'dep-1' } })
     await expect(guard.canActivate(ctx)).rejects.toThrow(NotFoundException)
   })
 })

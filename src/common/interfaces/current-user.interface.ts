@@ -9,7 +9,7 @@ import { FeatureFlags, FEATURES_POR_DEFECTO } from './feature-flags.interface'
 export interface CurrentUserPayload {
   id: string
   email: string
-  rol: 'pcd' | 'tutor' | 'institucion' | 'institucional' | 'admin'
+  rol: 'pcd' | 'padre_tutor' | 'institucion' | 'especialista' | 'empresa' | 'institucional' | 'admin'
   nombreCompleto: string
   verificado: boolean
   /** Si el usuario es una PCD vinculada a un tutor, aquí está el ID del tutor */

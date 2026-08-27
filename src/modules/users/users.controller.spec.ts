@@ -49,7 +49,7 @@ describe('UsersController', () => {
     const guards = Reflect.getMetadata('__guards__', handler) ?? []
     expect(guards).toContain(RolesGuard)
 
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['tutor', 'admin'])
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor', 'admin'])
 
     // Orden de declaración: la ruta estática debe declararse antes de @Get('dependientes/:id')
     const metodos = Object.getOwnPropertyNames(UsersController.prototype)
@@ -66,7 +66,7 @@ describe('UsersController', () => {
     const guards = Reflect.getMetadata('__guards__', handler) ?? []
     expect(guards).toContain(RolesGuard)
 
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['tutor'])
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor'])
   })
 
   it('delega en el servicio al consultar permisos de un dependiente', async () => {
@@ -74,18 +74,18 @@ describe('UsersController', () => {
       dependienteId: 'dep1', nombre: 'María', esCuentaVinculada: false, pcdUserId: null, features: {},
     })
 
-    const user = { id: 'tutor-1', email: 't@test.com', rol: 'tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
+    const user = { id: 'tutor-1', email: 't@test.com', rol: 'padre_tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
 
     const result = await controller.getDependentPermissions(user as any, 'dep1')
 
-    expect(mockSvc.getDependentPermissions).toHaveBeenCalledWith('tutor-1', 'dep1', 'tutor')
+    expect(mockSvc.getDependentPermissions).toHaveBeenCalledWith('tutor-1', 'dep1', 'padre_tutor')
     expect(result.dependienteId).toBe('dep1')
   })
 
   it('delega en el servicio al guardar permisos de un dependiente', async () => {
     mockSvc.updateDependentFeatures.mockResolvedValue({ id: 'dep1', features: { chat: false } })
 
-    const user = { id: 'tutor-1', email: 't@test.com', rol: 'tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
+    const user = { id: 'tutor-1', email: 't@test.com', rol: 'padre_tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
     const dto = { chat: false }
 
     const result = await controller.saveDependentPermissions(user as any, 'dep1', dto as any)

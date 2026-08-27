@@ -396,4 +396,166 @@ describe('CommunityService', () => {
       expect(result.totalComentarios).toBe(45)
     })
   })
+
+  describe('createForo', () => {
+    it('should create a foro with preguntas detonantes', async () => {
+      const perfilData = { institucionId: 'inst-1' }
+      const setMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(perfilData, true, 'u1')) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'foro-1', set: setMock }) })
+
+      const user = usuario('u1', {}, 'institucion')
+      const result = await service.createForo(user, {
+        titulo: 'Inclusión laboral',
+        descripcion: 'Discutamos estrategias',
+        preguntasDetonantes: ['¿Qué funciona?', '¿Qué barreras hay?'],
+      })
+
+      expect(result.titulo).toBe('Inclusión laboral')
+      expect(result.preguntasDetonantes).toHaveLength(2)
+      expect(result.activo).toBe(true)
+      expect(setMock).toHaveBeenCalled()
+    })
+  })
+
+  describe('getForos', () => {
+    it('should return active foros', async () => {
+      const foros = [
+        { id: 'f1', data: () => ({ titulo: 'Foro 1', activo: true, institucionId: 'inst-1' }) },
+      ]
+      const instDoc = { id: 'inst-1', data: () => ({ nombre: 'Centro TEA' }) }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: foros }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [instDoc] }) })
+
+      const result = await service.getForos()
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].nombreInstitucion).toBe('Centro TEA')
+    })
+  })
+
+  describe('getForoById', () => {
+    it('should return foro with grouped responses', async () => {
+      const foroData = { titulo: 'Foro Test', preguntasDetonantes: ['P1', 'P2'], institucionId: 'inst-1', activo: true }
+      const respuestas = [
+        { id: 'r1', preguntaIndex: 0, autorId: 'u1', contenido: 'Respuesta 1' },
+        { id: 'r2', preguntaIndex: 1, autorId: 'u2', contenido: 'Respuesta 2' },
+      ]
+      const autores = [
+        { id: 'u1', data: () => ({ nombreCompleto: 'Juan', rol: 'pcd', urlAvatar: null }) },
+        { id: 'u2', data: () => ({ nombreCompleto: 'María', rol: 'padre_tutor', urlAvatar: null }) },
+      ]
+      const instData = { nombre: 'Centro' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(foroData, true, 'f1')) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: respuestas.map(r => ({ id: r.id, data: () => r })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: autores, size: 2 }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(instData, true, 'inst-1')) }) })
+
+      const result = await service.getForoById('f1')
+      expect(result.preguntasConRespuestas).toHaveLength(2)
+      expect(result.preguntasConRespuestas[0].pregunta).toBe('P1')
+      expect(result.preguntasConRespuestas[0].respuestas).toHaveLength(1)
+      expect(result.preguntasConRespuestas[0].respuestas[0].nombreCompleto).toBe('Juan')
+    })
+
+    it('should throw NotFoundException when foro does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
+
+      await expect(service.getForoById('nonexistent')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  describe('createRespuestaForo', () => {
+    it('should create a response to a foro question', async () => {
+      const foroData = { preguntasDetonantes: ['P1'], activo: true, exclusivoPadres: false }
+      const autorData = { nombreCompleto: 'Juan', rol: 'pcd' }
+      const setMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(foroData, true, 'f1')) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'resp-1', set: setMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
+
+      const user = usuario('u1')
+      const result = await service.createRespuestaForo(user, 'f1', {
+        preguntaIndex: 0,
+        contenido: 'Mi respuesta',
+      })
+
+      expect(result.contenido).toBe('Mi respuesta')
+      expect(result.rol).toBe('pcd')
+      expect(result.etiquetaRol).toBe('Persona con discapacidad')
+    })
+
+    it('should throw ForbiddenException when foro is exclusive to parents and user is pcd', async () => {
+      const foroData = { preguntasDetonantes: ['P1'], activo: true, exclusivoPadres: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(foroData, true, 'f1')) }) })
+
+      const user = usuario('u1', {}, 'pcd')
+      await expect(service.createRespuestaForo(user, 'f1', { preguntaIndex: 0, contenido: 'X' })).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should allow padre_tutor to respond to exclusive foro', async () => {
+      const foroData = { preguntasDetonantes: ['P1'], activo: true, exclusivoPadres: true }
+      const autorData = { nombreCompleto: 'Tutor', rol: 'padre_tutor' }
+      const setMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(foroData, true, 'f1')) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'resp-1', set: setMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
+
+      const user = usuario('u1', {}, 'padre_tutor')
+      const result = await service.createRespuestaForo(user, 'f1', { preguntaIndex: 0, contenido: 'X' })
+      expect(result.rol).toBe('padre_tutor')
+      expect(result.etiquetaRol).toBe('Padre / Tutor')
+    })
+  })
+
+  describe('getConectemosPosts', () => {
+    it('should return posts with categoriaCreativa', async () => {
+      const posts = [
+        { id: 'p1', autorId: 'u1', contenido: 'Mi arte', categoriaCreativa: 'arte', fechaCreacion: '2024-01-01' },
+      ]
+      const authorData = { nombreCompleto: 'Ana', rol: 'pcd', urlAvatar: 'url' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: posts.map(p => ({ id: p.id, data: () => p })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u1', data: () => authorData }], size: 1 }) })
+
+      const result = await service.getConectemosPosts()
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].categoriaCreativa).toBe('arte')
+      expect(result.datos[0].etiquetaRol).toBe('Persona con discapacidad')
+    })
+  })
+
+  describe('createPost with categoriaCreativa and exclusivoPadres', () => {
+    it('should persist categoriaCreativa and exclusivoPadres', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const autorData = { nombreCompleto: 'Juan', rol: 'pcd' }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
+
+      const result = await service.createPost(usuario('u1'), 'Mi creación', undefined, undefined, 'arte', true)
+
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
+        categoriaCreativa: 'arte',
+        exclusivoPadres: true,
+      }))
+      expect(result.categoriaCreativa).toBe('arte')
+      expect(result.exclusivoPadres).toBe(true)
+      expect(result.etiquetaRol).toBe('Persona con discapacidad')
+    })
+  })
 })

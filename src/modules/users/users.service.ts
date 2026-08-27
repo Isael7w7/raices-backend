@@ -301,7 +301,7 @@ export class UsersService {
    */
   async subirDocumentoIdentidad(
     usuarioId: string,
-    tipo: 'curp' | 'identificacion_oficial',
+    tipo: 'curp' | 'identificacion_oficial' | 'certificado_discapacidad',
     file: Express.Multer.File,
     numeroCurp?: string,
   ) {
@@ -366,6 +366,7 @@ export class UsersService {
     const documentos = docsSnap.docs.map(d => d.data())
     const tieneCurp = documentos.some(d => d.tipo === 'curp')
     const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+    const tieneCertificadoDiscapacidad = documentos.some(d => d.tipo === 'certificado_discapacidad')
 
     // Determinar estado general
     let estado: string = 'sin_documentos'
@@ -392,6 +393,7 @@ export class UsersService {
       estado,
       tieneCurp,
       tieneIdentificacion,
+      tieneCertificadoDiscapacidad,
       numeroCurp: perfil.curp ?? null,
       motivoRechazo: ultimoDoc?.motivoRechazo ?? null,
       fechaSubida: ultimoDoc?.fechaSubida ?? null,
@@ -417,6 +419,7 @@ export class UsersService {
     const documentos = docsSnap.docs.map(d => d.data())
     const tieneCurp = documentos.some(d => d.tipo === 'curp')
     const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+    const tieneCertificadoDiscapacidad = documentos.some(d => d.tipo === 'certificado_discapacidad')
 
     // Determinar estado general
     let estado: string = 'sin_documentos'
@@ -433,6 +436,7 @@ export class UsersService {
 
     await this.col(COLECCIONES.perfiles).doc(usuarioId).update({
       estadoValidacionIdentidad: estado,
+      certificadoDiscapacidad: tieneCertificadoDiscapacidad,
     })
   }
 
@@ -441,21 +445,30 @@ export class UsersService {
   // ═══════════════════════════════════════════════════════════════════
 
   /**
-   * Permite a un tutor ver el perfil completo de una PCD vinculada.
-   * Incluye datos extendidos (discapacidad, necesidades, escalas, etc.).
-   * Solo el tutor dueño puede acceder.
+   * Permite a un padre/tutor O a una institución ver el perfil completo
+   * de una PCD. Incluye datos extendidos (discapacidad, necesidades, escalas, etc.).
+   *
+   * - Padres/tutores: solo pueden ver PCDs vinculadas a su cuenta.
+   * - Instituciones: pueden ver cualquier perfil PCD (flujo de descubrimiento B2B).
    */
-  async getPerfilPcdComoTutor(tutorId: string, pcdUserId: string) {
-    // Verificar que la PCD esté vinculada a este tutor
+  async getPerfilPcdComoTutor(actorId: string, actorRol: string, pcdUserId: string) {
     const perfilDoc = await this.col(COLECCIONES.perfiles).doc(pcdUserId).get()
     if (!perfilDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
 
     const perfil = perfilDoc.data()!
-    if (perfil.tutorId !== tutorId) {
-      throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como tutor')
-    }
     if (perfil.rol !== 'pcd') {
       throw new BadRequestException('El usuario indicado no tiene rol PCD')
+    }
+
+    // Padre/tutor: solo puede ver PCDs vinculadas a su cuenta
+    if (actorRol === 'padre_tutor' || actorRol === 'tutor') {
+      if (perfil.tutorId !== actorId) {
+        throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como padre/tutor')
+      }
+    }
+    // Instituciones pueden ver cualquier perfil PCD (validación se hace en el controller con RolesGuard)
+    else if (actorRol !== 'institucion' && actorRol !== 'admin') {
+      throw new ForbiddenException('Rol insuficiente para ver perfil PCD')
     }
 
     // Obtener perfil extendido de la PCD
@@ -477,7 +490,7 @@ export class UsersService {
       fechaCreacion: perfil.fechaCreacion,
       // Datos de tutoría
       esMiPcd: true,
-      tutorId,
+      tutorId: perfil.tutorId ?? null,
       // Datos extendidos de la PCD
       perfilNecesidades: perfilExtendido ? {
         tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
@@ -771,8 +784,8 @@ export class UsersService {
     const pcd = pcdDoc.data()!
     const tutorId = pcd.tutorId
     if (!tutorId) throw new BadRequestException('Esta cuenta PCD no está vinculada a ningún tutor')
-    if (actorRol !== 'admin' && tutorId !== actorId) {
-      throw new ForbiddenException('Solo el tutor dueño puede desvincular esta cuenta')
+    if (actorRol !== 'admin' && actorRol !== 'institucion' && tutorId !== actorId) {
+      throw new ForbiddenException('Solo el padre/tutor dueño puede desvincular esta cuenta')
     }
 
     // Buscar todas las relaciones tutor ↔ PCD (incluye registros promovidos)

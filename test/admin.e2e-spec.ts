@@ -21,7 +21,7 @@ describe('Administración (E2E) — autorización por rol', () => {
     limpiarDb()
     await sembrarPerfil({ id: 'uid-admin', email: 'admin@test.com', rol: 'admin', activo: true, nombreCompleto: 'Admin' })
     await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true, nombreCompleto: 'PCD' })
-    await sembrarPerfil({ id: 'uid-objetivo', email: 'obj@test.com', rol: 'tutor', activo: false, nombreCompleto: 'Objetivo' })
+    await sembrarPerfil({ id: 'uid-objetivo', email: 'obj@test.com', rol: 'padre_tutor', activo: false, nombreCompleto: 'Objetivo' })
     await sembrarInstitucion({
       id: 'inst-pendiente', nombre: 'Pendiente', categoria: 'funcional',
       activa: true, verificada: false, creadoPor: 'uid-owner', fechaCreacion: '2026-01-02T00:00:00.000Z',

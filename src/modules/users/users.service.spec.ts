@@ -1326,7 +1326,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
       })
 
-      const result = await service.getDependentPermissions('user1', 'dep1', 'tutor')
+      const result = await service.getDependentPermissions('user1', 'dep1', 'padre_tutor')
 
       expect(result).toEqual({
         dependienteId: 'dep1',
@@ -1351,7 +1351,7 @@ describe('UsersService', () => {
           doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(perfilData)) }),
         })
 
-      const result: any = await service.getDependentPermissions('user1', 'pcd1', 'tutor')
+      const result: any = await service.getDependentPermissions('user1', 'pcd1', 'padre_tutor')
 
       expect(result.esCuentaVinculada).toBe(true)
       expect(result.pcdUserId).toBe('pcd1')
@@ -1370,7 +1370,7 @@ describe('UsersService', () => {
           doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
         })
 
-      const result: any = await service.getDependentPermissions('user1', 'pcd1', 'tutor')
+      const result: any = await service.getDependentPermissions('user1', 'pcd1', 'padre_tutor')
       expect(result.features).toEqual(featuresPorDefecto)
     })
 
@@ -1391,7 +1391,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep2', tutorId: 'other-tutor' })) }),
       })
 
-      await expect(service.getDependentPermissions('user1', 'dep2', 'tutor')).rejects.toThrow(NotFoundException)
+      await expect(service.getDependentPermissions('user1', 'dep2', 'padre_tutor')).rejects.toThrow(NotFoundException)
     })
 
     it('should throw NotFoundException when dependiente does not exist', async () => {
@@ -1399,7 +1399,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
       })
 
-      await expect(service.getDependentPermissions('user1', 'ghost', 'tutor')).rejects.toThrow(NotFoundException)
+      await expect(service.getDependentPermissions('user1', 'ghost', 'padre_tutor')).rejects.toThrow(NotFoundException)
     })
   })
 
@@ -1513,7 +1513,7 @@ describe('UsersService', () => {
         return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: relDocs }) }
       })
 
-      const result = await service.unlinkPcdFromTutor('tutor1', 'tutor', 'pcd1')
+      const result = await service.unlinkPcdFromTutor('tutor1', 'padre_tutor', 'pcd1')
 
       expect(batchMock.update).toHaveBeenCalledWith(expect.anything(), { tutorId: null })
       expect(batchMock.delete).toHaveBeenCalledTimes(2)
@@ -1542,7 +1542,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
       })
 
-      await expect(service.unlinkPcdFromTutor('tutor1', 'tutor', 'ghost')).rejects.toThrow(NotFoundException)
+      await expect(service.unlinkPcdFromTutor('tutor1', 'padre_tutor', 'ghost')).rejects.toThrow(NotFoundException)
     })
 
     it('should throw BadRequestException when the PCD has no tutor', async () => {
@@ -1550,7 +1550,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', rol: 'pcd', tutorId: null })) }),
       })
 
-      await expect(service.unlinkPcdFromTutor('tutor1', 'tutor', 'pcd1')).rejects.toThrow(BadRequestException)
+      await expect(service.unlinkPcdFromTutor('tutor1', 'padre_tutor', 'pcd1')).rejects.toThrow(BadRequestException)
     })
 
     it('should throw ForbiddenException when a tutor tries to unlink a PCD of another tutor', async () => {
@@ -1558,7 +1558,7 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', rol: 'pcd', tutorId: 'other-tutor' })) }),
       })
 
-      await expect(service.unlinkPcdFromTutor('tutor1', 'tutor', 'pcd1')).rejects.toThrow(ForbiddenException)
+      await expect(service.unlinkPcdFromTutor('tutor1', 'padre_tutor', 'pcd1')).rejects.toThrow(ForbiddenException)
     })
   })
 

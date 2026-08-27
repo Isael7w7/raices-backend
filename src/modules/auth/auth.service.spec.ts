@@ -175,7 +175,7 @@ describe('AuthService', () => {
       // perfiles: validación del tutor (doc.get), email check (where.get), perfil set (doc.set)
       const perfilesCol = {
         doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: true })),
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'padre_tutor', activo: true })),
           set: jest.fn().mockResolvedValue(undefined),
         }),
         where: jest.fn().mockReturnThis(),
@@ -213,7 +213,7 @@ describe('AuthService', () => {
 
       const perfilesCol = {
         doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: true })),
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'padre_tutor', activo: true })),
           set: jest.fn().mockResolvedValue(undefined),
         }),
         where: jest.fn().mockReturnThis(),
@@ -250,7 +250,7 @@ describe('AuthService', () => {
     })
 
     it('should throw BadRequestException when tutorId is provided for a non-PCD role', async () => {
-      const dtoTutor = { ...dto, rol: 'tutor' as const, tutorId: 'tutor-1' }
+      const dtoTutor = { ...dto, rol: 'padre_tutor' as const, tutorId: 'tutor-1' }
       await expect(service.register(dtoTutor)).rejects.toThrow(BadRequestException)
     })
 
@@ -266,7 +266,7 @@ describe('AuthService', () => {
       const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
       firestoreMock.collection.mockReturnValueOnce({
         doc: jest.fn().mockReturnValue({
-          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'tutor', activo: false })),
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'padre_tutor', activo: false })),
         }),
       })
       await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
