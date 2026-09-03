@@ -1,16 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { ConfigService } from '@nestjs/config'
 import { NotFoundException } from '@nestjs/common'
-import { VertexAI } from '@google-cloud/vertexai'
+import { GoogleGenAI } from '@google/genai'
 import { AiService } from './ai.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 
-// ─── Mock de @google-cloud/vertexai ──────────────────────────────────────────
-// Se auto-mockea el módulo; VertexAI será un jest.fn() al que se le configura
-// el comportamiento en cada beforeEach.
-jest.mock('@google-cloud/vertexai')
+// ─── Mock de @google/genai ─────────────────────────────────────────────
+jest.mock('@google/genai')
 
-// ─── Mock helpers ────────────────────────────────────────────────────────────
+// ─── Mock helpers ────────────────────────────────────────────────────────
 
 function mockDoc(data: Record<string, any> | null, exists = true) {
   return { exists, id: 'mock-doc-id', data: () => data }
@@ -32,52 +30,49 @@ function mockCollection(docResult: any, empty = false, docs: any[] = []) {
 
 function geminiResponse(text: string) {
   return {
-    response: {
-      candidates: [{
-        content: {
-          parts: [{ text }],
-          role: 'model',
-        },
-      }],
-    },
+    candidates: [{
+      content: {
+        parts: [{ text }],
+        role: 'model',
+      },
+    }],
   }
 }
 
 function emptyGeminiResponse() {
-  return { response: { candidates: [] } }
+  return { candidates: [] }
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
+// ─── Tests ──────────────────────────────────────────────────────────────
 
 describe('AiService', () => {
   let svc: AiService
   let firestoreMock: Record<string, any>
   let configMock: Record<string, any>
 
-  // Shared mocks para Vertex AI — se reinician en cada test
-  let mockStartChat: jest.Mock
+  // Shared mocks para Google Gen AI — se reinician en cada test
+  let mockSendMessage: jest.Mock
+  let mockChatsCreate: jest.Mock
   let mockGenerateContent: jest.Mock
-  let mockGetGenerativeModel: jest.Mock
-  let mockVertexAIInstance: { getGenerativeModel: jest.Mock }
+  let mockGoogleGenAIInstance: any
 
   beforeEach(async () => {
     jest.clearAllMocks()
 
     // Crear mocks frescos
-    mockStartChat = jest.fn()
+    mockSendMessage = jest.fn()
     mockGenerateContent = jest.fn()
+    mockChatsCreate = jest.fn().mockResolvedValue({
+      sendMessage: mockSendMessage,
+    })
 
-    const mockChatModel = { startChat: mockStartChat }
-    const mockJsonModel = { generateContent: mockGenerateContent }
+    mockGoogleGenAIInstance = {
+      chats: { create: mockChatsCreate },
+      models: { generateContent: mockGenerateContent },
+    }
 
-    mockGetGenerativeModel = jest.fn()
-      .mockReturnValueOnce(mockChatModel)
-      .mockReturnValueOnce(mockJsonModel)
-
-    mockVertexAIInstance = { getGenerativeModel: mockGetGenerativeModel }
-
-    // Configurar el mock del constructor de VertexAI
-    ;(VertexAI as jest.Mock).mockImplementation(() => mockVertexAIInstance)
+    // Configurar el mock del constructor de GoogleGenAI
+    ;(GoogleGenAI as jest.Mock).mockImplementation(() => mockGoogleGenAIInstance)
 
     firestoreMock = { collection: jest.fn() }
     configMock = {
@@ -105,22 +100,11 @@ describe('AiService', () => {
   // ── Inicialización ───────────────────────────────────────────────────────
 
   describe('inicialización', () => {
-    it('debe inicializar Vertex AI con las config correctas', () => {
-      expect(VertexAI).toHaveBeenCalledWith({
+    it('debe inicializar GoogleGenAI con las config correctas', () => {
+      expect(GoogleGenAI).toHaveBeenCalledWith({
+        vertexai: true,
         project: 'test-project',
         location: 'us-central1',
-      })
-      expect(mockGetGenerativeModel).toHaveBeenCalledTimes(2)
-      expect(mockGetGenerativeModel).toHaveBeenNthCalledWith(1, {
-        model: 'gemini-2.0-flash',
-        generationConfig: { maxOutputTokens: 300 },
-      })
-      expect(mockGetGenerativeModel).toHaveBeenNthCalledWith(2, {
-        model: 'gemini-2.0-flash',
-        generationConfig: {
-          maxOutputTokens: 800,
-          responseMimeType: 'application/json',
-        },
       })
     })
 
@@ -143,7 +127,7 @@ describe('AiService', () => {
         ],
       }).compile()
 
-      expect(VertexAI).toHaveBeenCalledWith(
+      expect(GoogleGenAI).toHaveBeenCalledWith(
         expect.objectContaining({ project: 'fallback-project' }),
       )
     })
@@ -162,8 +146,8 @@ describe('AiService', () => {
       }).compile()
 
       const svc = module.get<AiService>(AiService)
-      // El nuevo módulo NO debe llamar a VertexAI (el 1.er call es del beforeEach)
-      expect(VertexAI).toHaveBeenCalledTimes(1)
+      // El nuevo módulo NO debe llamar a GoogleGenAI (el 1.er call es del beforeEach)
+      expect(GoogleGenAI).toHaveBeenCalledTimes(1)
 
       // chat() debe devolver mock
       firestoreMock.collection.mockReturnValue(
@@ -174,7 +158,7 @@ describe('AiService', () => {
     })
 
     it('debe manejar errores de inicialización de Vertex AI', async () => {
-      ;(VertexAI as jest.Mock).mockImplementationOnce(() => {
+      ;(GoogleGenAI as jest.Mock).mockImplementationOnce(() => {
         throw new Error('GCP credentials not found')
       })
 
@@ -203,7 +187,7 @@ describe('AiService', () => {
         }),
       }
 
-      await Test.createTestingModule({
+      const module: TestingModule = await Test.createTestingModule({
         providers: [
           AiService,
           { provide: FIRESTORE, useValue: firestoreMock },
@@ -211,8 +195,11 @@ describe('AiService', () => {
         ],
       }).compile()
 
-      expect(mockGetGenerativeModel).toHaveBeenCalledWith(
-        expect.objectContaining({ model: 'gemini-2.0-flash' }),
+      // With the new SDK, the model name is stored internally and used at call time
+      // Verify the constructor was called with valid project/location (model default is internal)
+      expect(GoogleGenAI).toHaveBeenCalledTimes(2)
+      expect(GoogleGenAI).toHaveBeenLastCalledWith(
+        expect.objectContaining({ project: 'test-project', location: 'us-central1' }),
       )
     })
 
@@ -233,7 +220,7 @@ describe('AiService', () => {
         ],
       }).compile()
 
-      expect(VertexAI).toHaveBeenCalledWith(
+      expect(GoogleGenAI).toHaveBeenCalledWith(
         expect.objectContaining({ location: 'us-central1' }),
       )
     })
@@ -242,7 +229,7 @@ describe('AiService', () => {
   // ── chat() ───────────────────────────────────────────────────────────────
 
   describe('chat', () => {
-    it('debe devolver mock cuando chatModel no está disponible', async () => {
+    it('debe devolver mock cuando el cliente AI no está disponible', async () => {
       const configNoVertex: Record<string, any> = {
         get: jest.fn(() => undefined),
       }
@@ -263,7 +250,7 @@ describe('AiService', () => {
       expect(result.respuesta.length).toBeGreaterThan(0)
     })
 
-    it('debe llamar a Vertex AI chat cuando el modelo está disponible', async () => {
+    it('debe llamar a Google Gen AI chat cuando el modelo está disponible', async () => {
       const perfil = {
         usuarioId: 'user1',
         tiposDiscapacidad: '["tea"]',
@@ -273,19 +260,19 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValueOnce(
         mockCollection(null, false, [{ data: () => perfil }]),
       )
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue(
-          geminiResponse('Hola, puedo ayudarte con eso.'),
-        ),
-      })
+      mockSendMessage.mockResolvedValue(
+        geminiResponse('Hola, puedo ayudarte con eso.'),
+      )
 
       const result: any = await svc.chat('user1', '¿Qué es Raíces?')
 
       expect(result.respuesta).toBe('Hola, puedo ayudarte con eso.')
       expect(result.simulado).toBe(false)
-      expect(mockStartChat).toHaveBeenCalledWith(
+      expect(mockChatsCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          systemInstruction: expect.stringContaining('Raíces'),
+          config: expect.objectContaining({
+            systemInstruction: expect.stringContaining('Raíces'),
+          }),
         }),
       )
     })
@@ -298,12 +285,11 @@ describe('AiService', () => {
         { role: 'user', content: 'msg2' },
         { role: 'assistant', content: 'resp2' },
       ]
-      const mockSend = jest.fn().mockResolvedValue(geminiResponse('Respuesta'))
-      mockStartChat.mockReturnValue({ sendMessage: mockSend })
+      mockSendMessage.mockResolvedValue(geminiResponse('Respuesta'))
 
       await svc.chat('user1', 'msg3', historial)
 
-      expect(mockStartChat).toHaveBeenCalledWith(
+      expect(mockChatsCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           history: [
             { role: 'user', parts: [{ text: 'msg1' }] },
@@ -321,12 +307,11 @@ describe('AiService', () => {
         role: i % 2 === 0 ? 'user' : 'assistant',
         content: `msg${i}`,
       }))
-      const mockSend = jest.fn().mockResolvedValue(geminiResponse('OK'))
-      mockStartChat.mockReturnValue({ sendMessage: mockSend })
+      mockSendMessage.mockResolvedValue(geminiResponse('OK'))
 
       await svc.chat('user1', 'msg10', historial)
 
-      const historyArg = mockStartChat.mock.calls[0][0].history
+      const historyArg = mockChatsCreate.mock.calls[0][0].history
       expect(historyArg).toHaveLength(6)
       expect(historyArg[0].parts[0].text).toBe('msg4')
       expect(historyArg[5].parts[0].text).toBe('msg9')
@@ -334,9 +319,7 @@ describe('AiService', () => {
 
     it('debe caer en mock cuando Vertex AI chat falla', async () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockRejectedValue(new Error('Quota exceeded')),
-      })
+      mockSendMessage.mockRejectedValue(new Error('Quota exceeded'))
 
       const result: any = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
@@ -344,9 +327,7 @@ describe('AiService', () => {
 
     it('debe devolver mock cuando la respuesta de Gemini viene vacía', async () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue(emptyGeminiResponse()),
-      })
+      mockSendMessage.mockResolvedValue(emptyGeminiResponse())
 
       const result: any = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
@@ -361,16 +342,14 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValueOnce(
         mockCollection(null, false, [{ data: () => perfil }]),
       )
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue(geminiResponse('OK')),
-      })
+      mockSendMessage.mockResolvedValue(geminiResponse('OK'))
 
       await svc.chat('user1', 'Hola')
 
-      const systemInstruction = mockStartChat.mock.calls[0][0].systemInstruction
-      expect(systemInstruction).toContain('infancia')
-      expect(systemInstruction).toContain('autismo')
-      expect(systemInstruction).toContain('discapacidad_visual')
+      const configArg = mockChatsCreate.mock.calls[0][0].config
+      expect(configArg.systemInstruction).toContain('infancia')
+      expect(configArg.systemInstruction).toContain('autismo')
+      expect(configArg.systemInstruction).toContain('discapacidad_visual')
     })
 
     it('debe manejar perfil sin tiposDiscapacidad', async () => {
@@ -378,14 +357,12 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValueOnce(
         mockCollection(null, false, [{ data: () => perfil }]),
       )
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue(geminiResponse('OK')),
-      })
+      mockSendMessage.mockResolvedValue(geminiResponse('OK'))
 
       await svc.chat('user1', 'Hola')
 
-      const systemInstruction = mockStartChat.mock.calls[0][0].systemInstruction
-      expect(systemInstruction).toContain('no especificadas')
+      const configArg = mockChatsCreate.mock.calls[0][0].config
+      expect(configArg.systemInstruction).toContain('no especificadas')
     })
   })
 
@@ -468,7 +445,7 @@ describe('AiService', () => {
   }
 
   describe('recommend', () => {
-    it('debe devolver mock cuando jsonModel no está disponible', async () => {
+    it('debe devolver mock cuando el cliente AI no está disponible', async () => {
       const configNoVertex: Record<string, any> = {
         get: jest.fn(() => undefined),
       }
@@ -530,7 +507,7 @@ describe('AiService', () => {
       expect(result.simulado).toBe(true)
     })
 
-    it('debe llamar a Vertex AI para generar recomendaciones personalizadas', async () => {
+    it('debe llamar a Google Gen AI para generar recomendaciones personalizadas', async () => {
       setupRecommendMocks()
       const geminiResult = {
         proximosPasos: ['Paso 1', 'Paso 2', 'Paso 3'],
@@ -591,7 +568,7 @@ describe('AiService', () => {
 
       await svc.recommend('user1')
 
-      const prompt = mockGenerateContent.mock.calls[0][0]
+      const prompt = mockGenerateContent.mock.calls[0][0].contents
       expect(prompt).toContain('Centro Terapia')
       expect(prompt).toContain('funcional')
     })
@@ -635,7 +612,7 @@ describe('AiService', () => {
       ).rejects.toThrow(NotFoundException)
     })
 
-    it('debe devolver mock cuando jsonModel no está disponible', async () => {
+    it('debe devolver mock cuando el cliente AI no está disponible', async () => {
       const configNoVertex: Record<string, any> = {
         get: jest.fn(() => undefined),
       }
@@ -668,7 +645,7 @@ describe('AiService', () => {
       expect(result.proximosPasos).toHaveLength(3)
     })
 
-    it('debe generar recomendaciones para el dependiente via Vertex AI', async () => {
+    it('debe generar recomendaciones para el dependiente via Google Gen AI', async () => {
       firestoreMock.collection.mockReturnValueOnce({
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(
@@ -798,7 +775,7 @@ describe('AiService', () => {
         })
     }
 
-    it('debe devolver mock cuando jsonModel no está disponible', async () => {
+    it('debe devolver mock cuando el cliente AI no está disponible', async () => {
       const configNoVertex: Record<string, any> = {
         get: jest.fn(() => undefined),
       }
@@ -826,7 +803,7 @@ describe('AiService', () => {
       expect(result.simulado).toBe(true)
     })
 
-    it('debe generar resumen narrativo via Vertex AI', async () => {
+    it('debe generar resumen narrativo via Google Gen AI', async () => {
       const perfil = {
         usuarioId: 'user1',
         tiposDiscapacidad: '["tea"]',
@@ -890,7 +867,7 @@ describe('AiService', () => {
 
       await svc.generarResumen('user1')
 
-      const prompt = mockGenerateContent.mock.calls[0][0]
+      const prompt = mockGenerateContent.mock.calls[0][0].contents
       expect(prompt).toContain('Carlos')
       expect(prompt).toContain('tea')
       expect(prompt).toContain('visual')
@@ -931,11 +908,9 @@ describe('AiService', () => {
   describe('extractText (a través de chat)', () => {
     it('debe extraer texto de una respuesta válida de Gemini', async () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue(
-          geminiResponse('Texto de prueba'),
-        ),
-      })
+      mockSendMessage.mockResolvedValue(
+        geminiResponse('Texto de prueba'),
+      )
 
       const result: any = await svc.chat('user1', 'Hola')
       expect(result.respuesta).toBe('Texto de prueba')
@@ -943,9 +918,7 @@ describe('AiService', () => {
 
     it('debe manejar respuesta sin candidatos', async () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue({ response: {} }),
-      })
+      mockSendMessage.mockResolvedValue({ })
 
       const result: any = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
@@ -954,18 +927,14 @@ describe('AiService', () => {
     it('debe concatenar múltiples parts en una sola respuesta', async () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
       const multiPartResponse = {
-        response: {
-          candidates: [{
-            content: {
-              parts: [{ text: 'Hola ' }, { text: 'mundo' }],
-              role: 'model',
-            },
-          }],
-        },
+        candidates: [{
+          content: {
+            parts: [{ text: 'Hola ' }, { text: 'mundo' }],
+            role: 'model',
+          },
+        }],
       }
-      mockStartChat.mockReturnValue({
-        sendMessage: jest.fn().mockResolvedValue(multiPartResponse),
-      })
+      mockSendMessage.mockResolvedValue(multiPartResponse)
 
       const result: any = await svc.chat('user1', 'Hola')
       expect(result.respuesta).toBe('Hola mundo')

@@ -1,6 +1,6 @@
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { VertexAI, GenerativeModel } from '@google-cloud/vertexai'
+import { GoogleGenAI } from '@google/genai'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -15,23 +15,20 @@ const RESPUESTAS_MOCK = [
 ]
 
 /**
- * Configuración de Vertex AI (Gemini). Los valores se leen de variables de
- * entorno montadas desde GCP Secret Manager / config del contenedor:
+ * Configuración de Gemini via Google Gen AI SDK (reemplaza @google-cloud/vertexai).
+ * Los valores se leen de variables de entorno montadas desde GCP Secret Manager:
  *
  * - VERTEX_AI_PROJECT_ID  (fallback: FIREBASE_PROJECT_ID)
  * - VERTEX_AI_LOCATION    (default: us-central1)
  * - VERTEX_AI_MODEL       (default: gemini-2.0-flash)
  *
- * Autenticación: el SDK usa Application Default Credentials (ADC). En Cloud
- * Run se resuelve con la cuenta de servicio adjunta al servicio; en local con
- * `gcloud auth application-default login` o GOOGLE_APPLICATION_CREDENTIALS.
- * No se requiere API key en texto plano.
+ * Autenticación: el SDK usa Application Default Credentials (ADC).
  */
 @Injectable()
 export class AiService {
   private readonly logger = new Logger('AiService')
-  private chatModel: GenerativeModel | null = null
-  private jsonModel: GenerativeModel | null = null
+  private ai: GoogleGenAI | null = null
+  private modelName: string = 'gemini-2.0-flash'
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
@@ -43,7 +40,7 @@ export class AiService {
   private initializeModel(): void {
     const project = this.config.get<string>('VERTEX_AI_PROJECT_ID') ?? this.config.get<string>('FIREBASE_PROJECT_ID')
     const location = this.config.get<string>('VERTEX_AI_LOCATION') ?? 'us-central1'
-    const modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
+    this.modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
 
     if (!project) {
       this.logger.warn('Vertex AI: VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID no configurado — usando respuestas mock')
@@ -51,30 +48,20 @@ export class AiService {
     }
 
     try {
-      const vertexAI = new VertexAI({ project, location })
-      this.chatModel = vertexAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: { maxOutputTokens: 300 },
-      })
-      this.jsonModel = vertexAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          maxOutputTokens: 800,
-          // Garantiza JSON parseable (evita truncamiento → fallback mock)
-          responseMimeType: 'application/json',
-        },
-      })
-      this.logger.log(`✅ Vertex AI inicializado: project=${project}, location=${location}, model=${modelName}`)
+      this.ai = new GoogleGenAI({ vertexai: true, project, location })
+      this.logger.log(`✅ Vertex AI inicializado: project=${project}, location=${location}, model=${this.modelName}`)
     } catch (e: any) {
       this.logger.warn(`⚠️  Vertex AI no disponible (${e?.message ?? e}) — usando respuestas mock`)
-      this.chatModel = null
-      this.jsonModel = null
+      this.ai = null
     }
   }
 
   /** Extrae el texto de la respuesta de Gemini de forma segura. */
   private extractText(result: any): string {
-    const parts = result?.response?.candidates?.[0]?.content?.parts
+    // New SDK: result.candidates[0].content.parts
+    // Legacy SDK fallback: result.response.candidates[0].content.parts
+    const candidates = result?.candidates ?? result?.response?.candidates
+    const parts = candidates?.[0]?.content?.parts
     if (!Array.isArray(parts)) return ''
     return parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
   }
@@ -96,7 +83,7 @@ export class AiService {
   async chat(usuarioId: string, mensaje: string, historial: any[] = []) {
     const perfil = await this.getUserProfile(usuarioId)
 
-    if (!this.chatModel) {
+    if (!this.ai) {
       await new Promise((r) => setTimeout(r, 600))
       const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
       return { respuesta, simulado: true }
@@ -111,14 +98,18 @@ Perfil del usuario: etapa=${perfil?.etapaVida ?? 'no especificada'}, discapacida
 NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y directo.`
 
     try {
-      const chat = this.chatModel.startChat({
-        systemInstruction: sistema,
+      const chat = await this.ai.chats.create({
+        model: this.modelName,
+        config: {
+          maxOutputTokens: 300,
+          systemInstruction: sistema,
+        },
         history: historial.slice(-6).map((m) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
           parts: [{ text: String(m.content) }],
         })),
       })
-      const result = await chat.sendMessage(mensaje)
+      const result = await chat.sendMessage({ message: mensaje })
       const respuesta = this.extractText(result)
       if (!respuesta) throw new Error('Respuesta vacía de Vertex AI')
       return { respuesta, simulado: false }
@@ -162,7 +153,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
     const sinDiagnostico = tiposDiscapacidad.length === 0
     const datosUsuario = registroUsuario.data()
 
-    if (!this.jsonModel || !perfil) {
+    if (!this.ai || !perfil) {
       const pasos = sinDiagnostico ? [
         'Agenda una evaluación diagnóstica — visita una institución de Terapia en tu ciudad para obtener un diagnóstico formal',
         'Completa tu perfil con tus necesidades actuales para recibir recomendaciones más precisas',
@@ -211,7 +202,11 @@ Si no hay diagnóstico, el primer paso DEBE ser buscar evaluación diagnóstica.
 Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razonamiento":"explicación breve en español","sugerenciasInstitucion":[{"categoria":"Terapia|Educación|Empleo","razon":"por qué"}]}`
 
     try {
-      const result = await this.jsonModel.generateContent(prompt)
+      const result = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: prompt,
+        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+      })
       const text = this.extractText(result)
       return { ...this.parseJsonResponse(text), simulado: false }
     } catch (e: any) {
@@ -241,7 +236,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
     const etapaVida = datosPerfil.etapaVida ?? 'no especificada'
     const notas = datosPerfil.notas ?? ''
 
-    if (!this.jsonModel) {
+    if (!this.ai) {
       return {
         proximosPasos: [
           `Buscar instituciones especializadas en ${discapacidades} para ${dep.nombreCompleto}`,
@@ -259,7 +254,11 @@ Genera 3 próximos pasos concretos y accionables para apoyar a esta persona espe
 Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razonamiento":"explicación breve"}`
 
     try {
-      const result = await this.jsonModel.generateContent(prompt)
+      const result = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: prompt,
+        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+      })
       const text = this.extractText(result)
       return { ...this.parseJsonResponse(text), simulado: false }
     } catch (e: any) {
@@ -339,7 +338,7 @@ DATOS DEL USUARIO (usar EXCLUSIVAMENTE estos datos, NO inventar información):
 - Historial de terapia: ${perfil?.historialTerapia ? (parsearCampoJson(perfil.historialTerapia) as string[]).join(', ') : 'no especificado'}
 `
 
-    if (!this.jsonModel || !perfil) {
+    if (!this.ai || !perfil) {
       return {
         resumenUnParrafo: 'Datos insuficientes para generar un resumen personalizado. Completa tu perfil para obtener un resumen detallado.',
         resumenTresParrafos: {
@@ -375,7 +374,11 @@ Responde SOLO con JSON válido:
 }`
 
     try {
-      const result = await this.jsonModel.generateContent(prompt)
+      const result = await this.ai.models.generateContent({
+        model: this.modelName,
+        contents: prompt,
+        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+      })
       const text = this.extractText(result)
       return { ...this.parseJsonResponse(text), simulado: false }
     } catch (e: any) {

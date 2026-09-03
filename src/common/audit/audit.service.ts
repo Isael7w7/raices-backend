@@ -42,9 +42,35 @@ export class AuditService {
    * Registra una acción de auditoría en Firestore.
    * Los errores se loguean pero NO propagan para no bloquear la operación original.
    */
+  /** Serializa un valor de forma segura, eliminando referencias circulares. */
+  private static safeSerialize(value: unknown): unknown {
+    if (value === null || value === undefined) return value
+    if (typeof value !== 'object') return value
+    try {
+      return JSON.parse(JSON.stringify(value))
+    } catch {
+      // Si falla la serialización (referencia circular), extraer solo propiedades simples
+      const safe: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (v === null || v === undefined || typeof v !== 'object') {
+          safe[k] = v
+        } else {
+          try {
+            safe[k] = JSON.parse(JSON.stringify(v))
+          } catch {
+            safe[k] = String(v)
+          }
+        }
+      }
+      return safe
+    }
+  }
+
   async registrar(entry: Omit<AuditLog, 'id' | 'timestamp'> & { timestamp?: string }): Promise<void> {
     try {
-      const doc: AuditLog = {
+      // Sanitizar todo el documento para eliminar referencias circulares
+      // (pueden provenir de objetos Express/Socket en metadatos o recursoNombre)
+      const doc = AuditService.safeSerialize({
         timestamp: entry.timestamp ?? new Date().toISOString(),
         usuarioId: entry.usuarioId,
         usuarioEmail: entry.usuarioEmail,
@@ -58,7 +84,7 @@ export class AuditService {
         metadatos: entry.metadatos,
         ip: entry.ip,
         userAgent: entry.userAgent,
-      }
+      }) as AuditLog
 
       await this.col().add(doc)
       this.logger.debug(`Auditoría registrada: ${entry.accion} → ${entry.recurso}`)
