@@ -10,10 +10,7 @@ importers:
     dependencies:
       '@google-cloud/storage':
         specifier: ^7.21.0
-        version: 7.21.0(encoding@0.1.13)
-      '@google-cloud/vertexai':
-        specifier: ^1.12.0
-        version: 1.12.0(encoding@0.1.13)
+        version: 7.21.0(encoding@0.1.13)(supports-color@5.5.0)
       '@google/genai':
         specifier: ^2.19.0
         version: 2.19.0
@@ -1008,19 +1005,6 @@ packages:
   '@google-cloud/storage@7.21.0':
     resolution: {integrity: sha512-l+IFTkd+6Y5LoAuXyYCKNAKtw/Ci+rAMqgdTB1jv4iZiLhw0rtq+0qjIRbBizXkNzEFmXiXUW0H7sZQQvk1ffA==}
     engines: {node: '>=14'}
-
-  '@google-cloud/vertexai@1.12.0':
-    resolution: {integrity: sha512-XMJIk7GIeavFLP5A3YEUlowKa5Y5PZRrnnuTJcqR0k+lFKkv7+IWpdRp+Xbqb8xNDrvQaE2hP2RYPUylyD5EdA==}
-    engines: {node: '>=18.0.0'}
-
-  '@google/genai@1.52.0':
-    resolution: {integrity: sha512-gwSvbpiN/17O9TbsqSsE/OzZcpv5Fo4RQjdngGgogtuB9RsyJ8ZHhX5KjHj1bp5N9snN2eK8LDGXSaWW2hof8Q==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      '@modelcontextprotocol/sdk': ^1.25.2
-    peerDependenciesMeta:
-      '@modelcontextprotocol/sdk':
-        optional: true
 
   '@google/genai@2.19.0':
     resolution: {integrity: sha512-IM3u1FjpOLyOPsPh0smGA6Ntj2olUWCPbTs/WQj7cA/2AKCGw/652W7IaySx0XtwuscFnMYBoraebQusSZ0zSQ==}
@@ -4965,7 +4949,7 @@ snapshots:
 
   '@google-cloud/promisify@4.0.0': {}
 
-  '@google-cloud/storage@7.21.0(encoding@0.1.13)':
+  '@google-cloud/storage@7.21.0(encoding@0.1.13)(supports-color@5.5.0)':
     dependencies:
       '@google-cloud/paginator': 5.0.2
       '@google-cloud/projectify': 4.0.0
@@ -4974,7 +4958,7 @@ snapshots:
       async-retry: 1.3.3
       duplexify: 4.1.3
       fast-xml-parser: 5.9.3
-      gaxios: 6.7.1(encoding@0.1.13)
+      gaxios: 6.7.1(encoding@0.1.13)(supports-color@5.5.0)
       google-auth-library: 9.15.1(encoding@0.1.13)
       html-entities: 2.6.0
       mime: 3.0.0
@@ -4984,28 +4968,6 @@ snapshots:
     transitivePeerDependencies:
       - encoding
       - supports-color
-
-  '@google-cloud/vertexai@1.12.0(encoding@0.1.13)':
-    dependencies:
-      '@google/genai': 1.52.0
-      google-auth-library: 9.15.1(encoding@0.1.13)
-    transitivePeerDependencies:
-      - '@modelcontextprotocol/sdk'
-      - bufferutil
-      - encoding
-      - supports-color
-      - utf-8-validate
-
-  '@google/genai@1.52.0':
-    dependencies:
-      google-auth-library: 10.9.0
-      p-retry: 4.6.2
-      protobufjs: 7.6.5
-      ws: 8.21.2
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
 
   '@google/genai@2.19.0':
     dependencies:
@@ -6560,7 +6522,7 @@ snapshots:
       jwks-rsa: 4.1.0(supports-color@5.5.0)
     optionalDependencies:
       '@google-cloud/firestore': 8.6.0(supports-color@5.5.0)
-      '@google-cloud/storage': 7.21.0(encoding@0.1.13)
+      '@google-cloud/storage': 7.21.0(encoding@0.1.13)(supports-color@5.5.0)
     transitivePeerDependencies:
       - encoding
       - supports-color
@@ -6629,10 +6591,10 @@ snapshots:
       strip-ansi: 6.0.1
       wide-align: 1.1.5
 
-  gaxios@6.7.1(encoding@0.1.13):
+  gaxios@6.7.1(encoding@0.1.13)(supports-color@5.5.0):
     dependencies:
       extend: 3.0.2
-      https-proxy-agent: 7.0.6
+      https-proxy-agent: 7.0.6(supports-color@5.5.0)
       is-stream: 2.0.1
       node-fetch: 2.7.0(encoding@0.1.13)
       uuid: 9.0.1
@@ -6643,7 +6605,7 @@ snapshots:
   gaxios@7.1.3:
     dependencies:
       extend: 3.0.2
-      https-proxy-agent: 7.0.6
+      https-proxy-agent: 7.0.6(supports-color@5.5.0)
       node-fetch: 3.3.2
       rimraf: 5.0.10
     transitivePeerDependencies:
@@ -6653,14 +6615,14 @@ snapshots:
   gaxios@7.1.5:
     dependencies:
       extend: 3.0.2
-      https-proxy-agent: 7.0.6
+      https-proxy-agent: 7.0.6(supports-color@5.5.0)
       node-fetch: 3.3.2
     transitivePeerDependencies:
       - supports-color
 
   gcp-metadata@6.1.1(encoding@0.1.13):
     dependencies:
-      gaxios: 6.7.1(encoding@0.1.13)
+      gaxios: 6.7.1(encoding@0.1.13)(supports-color@5.5.0)
       google-logging-utils: 0.0.2
       json-bigint: 1.0.0
     transitivePeerDependencies:
@@ -6760,7 +6722,7 @@ snapshots:
     dependencies:
       base64-js: 1.5.1
       ecdsa-sig-formatter: 1.0.11
-      gaxios: 6.7.1(encoding@0.1.13)
+      gaxios: 6.7.1(encoding@0.1.13)(supports-color@5.5.0)
       gcp-metadata: 6.1.1(encoding@0.1.13)
       gtoken: 7.1.0(encoding@0.1.13)
       jws: 4.0.1
@@ -6795,7 +6757,7 @@ snapshots:
 
   gtoken@7.1.0(encoding@0.1.13):
     dependencies:
-      gaxios: 6.7.1(encoding@0.1.13)
+      gaxios: 6.7.1(encoding@0.1.13)(supports-color@5.5.0)
       jws: 4.0.1
     transitivePeerDependencies:
       - encoding
@@ -6873,7 +6835,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  https-proxy-agent@7.0.6:
+  https-proxy-agent@7.0.6(supports-color@5.5.0):
     dependencies:
       agent-base: 7.1.4
       debug: 4.4.3(supports-color@5.5.0)
@@ -8027,7 +7989,7 @@ snapshots:
   teeny-request@10.1.3(supports-color@5.5.0):
     dependencies:
       http-proxy-agent: 7.0.2(supports-color@5.5.0)
-      https-proxy-agent: 7.0.6
+      https-proxy-agent: 7.0.6(supports-color@5.5.0)
       node-fetch: 3.3.2
       stream-events: 1.0.5
     transitivePeerDependencies:

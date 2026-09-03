@@ -116,12 +116,18 @@ nano .env
 | `FIREBASE_CLIENT_EMAIL` | Email de cuenta de servicio | Firebase → Cuentas de servicio |
 | `FIREBASE_PRIVATE_KEY` | Clave privada | Firebase → Cuentas de servicio → Generar clave |
 | `JWT_SECRET` | Secreto para tokens | Crear uno seguro (ej: `openssl rand -base64 32`) |
-| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Vertex AI (fallback: `FIREBASE_PROJECT_ID`) | Consola GCP → Vertex AI |
+| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Gemini vía Vertex AI con el SDK `@google/genai` (fallback: `FIREBASE_PROJECT_ID`) | Consola GCP → Vertex AI |
 | `VERTEX_AI_LOCATION` | Región de Vertex AI (default: `us-central1`) | Consola GCP → Vertex AI |
 | `VERTEX_AI_MODEL` | Modelo Gemini (default: `gemini-2.0-flash`) | https://cloud.google.com/vertex-ai |
 | `CORS_ORIGINS` | Dominios permitidos | Tu dominio de frontend |
 | `COOKIE_SAMESITE` | Política SameSite de las cookies de sesión (`lax`/`none`/`strict`) | Default en `deploy.sh`: `none` (ver sección siguiente) |
 | `COOKIE_SECURE` | Enviar las cookies solo por HTTPS (`true`/`false`) | Default en `deploy.sh`: `true` |
+
+> **IA (Gemini):** el backend consume Gemini con el SDK oficial **`@google/genai`**
+> (`vertexai: true`), que reemplaza a `@google-cloud/vertexai`. Las variables
+> `VERTEX_AI_*` **no cambian**. No se requiere API key: el SDK se autentica con ADC
+> usando la cuenta de servicio del Cloud Run, que debe tener el rol
+> `roles/aiplatform.user` en el proyecto.
 
 ### 🍪 Cookies de sesión (deploy cross-site)
 

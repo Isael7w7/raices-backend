@@ -50,7 +50,7 @@ Las variables de entorno se configuran en el archivo `.env` (nunca subir a Git).
 | `PORT` | Puerto del servidor | `7000` |
 | `NODE_ENV` | Entorno de ejecución | `development` |
 | `FIREBASE_API_KEY` | API Key de Firebase Auth | — |
-| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Vertex AI (fallback: `FIREBASE_PROJECT_ID`) | — |
+| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Gemini vía Vertex AI con el SDK `@google/genai` (fallback: `FIREBASE_PROJECT_ID`) | — |
 | `VERTEX_AI_LOCATION` | Región de Vertex AI | `us-central1` |
 | `VERTEX_AI_MODEL` | Modelo Gemini a usar | `gemini-2.0-flash` |
 | `CORS_ORIGINS` | Dominios permitidos (separados por coma) | — |
@@ -136,7 +136,7 @@ raices-backend/
 
 - **NUNCA** subir archivos `.env` ni archivos de cuenta de servicio (`*service-account*.json`, `*credentials.json`) a Git
 - Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`, `FIREBASE_API_KEY`) se consumen vía `ConfigService` (variables de entorno) y, en producción, se montan desde **GCP Secret Manager** en Cloud Run (`--set-secrets`) — nunca se inyectan en la imagen Docker
-- Vertex AI se autentica con **Application Default Credentials** (cuenta de servicio de Cloud Run); no requiere API key embebida
+- Gemini (Vertex AI) se consume con el SDK oficial **`@google/genai`** (`vertexai: true`) y se autentica con **Application Default Credentials** (cuenta de servicio de Cloud Run); no requiere API key embebida
 - Las credenciales de Firebase se validan al iniciar (JSON bien formado, `project_id` consistente)
 - Rate limiting habilitado (60 requests/minuto por IP, configurable con `THROTTLE_TTL`/`THROTTLE_LIMIT`; límites más estrictos en endpoints de escritura y IA)
 - ETag + caché en memoria (30s, configurable con `ETAG_CACHE_TTL_MS`) en todos los GET: responde `304 Not Modified` sin consultar Firestore cuando el cliente reenvía `If-None-Match`

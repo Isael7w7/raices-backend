@@ -273,8 +273,7 @@ src/
 │   │   └── storage-path.util.ts
 │   └── ai/
 │       ├── ai.module.ts
-│       ├── ai.service.ts
-│       ├── vertexai.provider.ts        # ← Vertex AI (Gemini)
+│       ├── ai.service.ts               # ← Gemini vía SDK @google/genai (Vertex AI)
 │       └── dto/
 └── config/
     ├── app.config.ts
