@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common'
+import { Injectable, Inject, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -6,6 +6,18 @@ import { parsearCampoJson, parsearTiposDiscapacidad } from '../../common/utils/f
 import { InstitucionDoc, InteraccionDoc, PerfilExtendidoDoc, PerfilDoc, EspecialistaDoc } from '../../common/interfaces/firestore-documents.interface'
 import { RegistrarInteraccionDto, TipoInteraccion } from './dto/registrar-interaccion.dto'
 import { InstitucionRecomendadaDto } from './dto/respuestas-recomendaciones.dto'
+
+/** Las 8 escalas de la evaluación "Cómo vives hoy" (Spec MVP Raíces). */
+const CLAVES_ESCALAS_VIDA = [
+  'autonomia',
+  'independencia',
+  'comunicacion',
+  'comprension',
+  'energia',
+  'movilidad',
+  'social',
+  'emocional',
+] as const
 
 /** Ventana de comportamiento para los pesos (días) */
 const VENTANA_DIAS = 30
@@ -31,6 +43,8 @@ type Recomendacion = InstitucionDoc & {
 
 @Injectable()
 export class RecommendationsService {
+  private readonly logger = new Logger('RecommendationsService')
+
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
@@ -54,14 +68,21 @@ export class RecommendationsService {
 
   // ─── FASE 2: pesos de comportamiento por categoría (30 días) ───────
   async pesos(usuarioId: string): Promise<Record<string, number>> {
-    const limite = new Date(Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000).toISOString()
+    try {
+      const limite = new Date(Date.now() - VENTANA_DIAS * 24 * 60 * 60 * 1000).toISOString()
 
-    const snap = await this.col(COLECCIONES.interacciones)
-      .where('usuarioId', '==', usuarioId)
-      .where('createdAt', '>=', limite)
-      .get()
+      const snap = await this.col(COLECCIONES.interacciones)
+        .where('usuarioId', '==', usuarioId)
+        .where('createdAt', '>=', limite)
+        .get()
 
-    return this.calcularPesos(snap.docs.map(d => d.data() as InteraccionDoc))
+      return this.calcularPesos(snap.docs.map(d => d.data() as InteraccionDoc))
+    } catch (err: any) {
+      // Colección inexistente, índice compuesto pendiente o error transitorio:
+      // la ausencia de interacciones nunca debe romper el endpoint → pesos vacíos.
+      this.logger.warn(`pesos falló para usuario ${usuarioId}: ${err?.message ?? err}`)
+      return {}
+    }
   }
 
   /** Agrupa en memoria los puntos por categoría. Privado: reutilizado por `recomendaciones`. */
@@ -77,55 +98,148 @@ export class RecommendationsService {
 
   // ─── FASE 2: recomendaciones personalizadas ────────────────────────
   async recomendaciones(usuarioId: string, pagina = 1, limite = 20) {
-    const [perfilSnap, pesos, instituciones] = await Promise.all([
-      this.col(COLECCIONES.perfilesExtendidos).where('usuarioId', '==', usuarioId).limit(1).get(),
-      this.pesos(usuarioId),
-      this.col(COLECCIONES.instituciones).where('activa', '==', true).get(),
-    ])
+    try {
+      // Cada fuente de datos se lee de forma defensiva (nunca lanza): un usuario
+      // recién registrado puede no tener perfil extendido ni interacciones, y las
+      // colecciones pueden estar vacías o fallar transitoriamente.
+      const [perfil, pesos, instituciones] = await Promise.all([
+        this.obtenerPerfilExtendido(usuarioId),
+        this.pesos(usuarioId),
+        this.obtenerInstitucionesActivas(),
+      ])
 
-    const perfil = (perfilSnap.empty ? {} : perfilSnap.docs[0].data()) as PerfilExtendidoDoc
-    const metas: string[] = parsearCampoJson(perfil.metasActuales) ?? []
-    const areasInteres: string[] = parsearCampoJson(perfil.areasInteres) ?? []
+      // Null-Safety sobre el perfil: el documento puede no existir, venir como
+      // objeto anidado `perfilNecesidades` (compatibilidad con getProfile) o
+      // traer campos null/undefined → se normaliza con fallbacks neutros.
+      const necesidades = this.leerObjeto((perfil as Record<string, any>).perfilNecesidades)
+      const metas = this.leerArregloDeTexto(perfil.metasActuales ?? necesidades.metasActuales)
+      const areasInteres = this.leerArregloDeTexto(perfil.areasInteres ?? necesidades.areasInteres)
+      // escalasVida: si no existe el documento o algún valor es null/undefined,
+      // se asignan valores neutros (0) en lugar de leer propiedades de undefined.
+      const escalasVida = this.normalizarEscalasVida(perfil.escalasVida ?? necesidades.escalasVida)
 
-    const maxPeso = Math.max(0, ...Object.values(pesos))
+      const maxPeso = Math.max(0, ...Object.values(pesos))
 
-    const puntuadas: Recomendacion[] = (instituciones.docs.map(d => ({ id: d.id, ...d.data() })) as (InstitucionDoc & { id: string })[])
-      .map(inst => {
-        const scoreIntereses = this.scoreDeIntereses(metas, areasInteres, inst)
-        const scoreComportamiento = maxPeso > 0 ? ((pesos[inst.categoria ?? ''] ?? 0)) / maxPeso : 0
-        return {
-          ...inst,
-          score_intereses: redondear(scoreIntereses),
-          score_comportamiento: redondear(scoreComportamiento),
-          final_score: redondear(scoreIntereses * PESO_INTERESES + scoreComportamiento * PESO_COMPORTAMIENTO),
-        }
-      })
+      const puntuadas: Recomendacion[] = instituciones
+        .map(inst => {
+          const scoreIntereses = this.scoreDeIntereses(metas, areasInteres, escalasVida, inst)
+          const scoreComportamiento = maxPeso > 0 ? ((pesos[inst.categoria ?? ''] ?? 0)) / maxPeso : 0
+          return {
+            ...inst,
+            score_intereses: redondear(scoreIntereses),
+            score_comportamiento: redondear(scoreComportamiento),
+            final_score: redondear(scoreIntereses * PESO_INTERESES + scoreComportamiento * PESO_COMPORTAMIENTO),
+          }
+        })
 
-    puntuadas.sort((a, b) => b.final_score - a.final_score)
+      puntuadas.sort((a, b) => b.final_score - a.final_score)
 
-    pagina = Math.max(1, Number(pagina) || 1)
-    limite = Math.min(50, Math.max(1, Number(limite) || 20))
-    const total = puntuadas.length
-    const inicio = (pagina - 1) * limite
+      pagina = Math.max(1, Number(pagina) || 1)
+      limite = Math.min(50, Math.max(1, Number(limite) || 20))
+      const total = puntuadas.length
+      const inicio = (pagina - 1) * limite
 
-    return {
-      datos: puntuadas.slice(inicio, inicio + limite),
-      paginacion: {
-        total,
-        pagina,
-        limite,
-        totalPaginas: Math.ceil(total / limite),
-      },
+      return {
+        datos: puntuadas.slice(inicio, inicio + limite),
+        paginacion: {
+          total,
+          pagina,
+          limite,
+          totalPaginas: Math.ceil(total / limite),
+        },
+      }
+    } catch (err: any) {
+      // Última red de seguridad: nunca responder 500 por datos faltantes o
+      // errores esperados; se devuelve una página vacía estructurada.
+      this.logger.error(`recomendaciones falló para usuario ${usuarioId}: ${err?.message ?? err}`, err?.stack)
+      pagina = Math.max(1, Number(pagina) || 1)
+      limite = Math.min(50, Math.max(1, Number(limite) || 20))
+      return {
+        datos: [],
+        paginacion: { total: 0, pagina, limite, totalPaginas: 0 },
+      }
     }
+  }
+
+  /** Perfil extendido del usuario; nunca lanza. Si no existe o falla, retorna {} (perfil vacío). */
+  private async obtenerPerfilExtendido(usuarioId: string): Promise<PerfilExtendidoDoc> {
+    try {
+      const snap = await this.col(COLECCIONES.perfilesExtendidos)
+        .where('usuarioId', '==', usuarioId).limit(1).get()
+      return (snap.empty ? {} : snap.docs[0].data()) as PerfilExtendidoDoc
+    } catch (err: any) {
+      this.logger.warn(`obtenerPerfilExtendido falló para usuario ${usuarioId}: ${err?.message ?? err}`)
+      return {}
+    }
+  }
+
+  /** Instituciones activas; nunca lanza. Si la consulta falla, retorna lista vacía. */
+  private async obtenerInstitucionesActivas(): Promise<(InstitucionDoc & { id: string })[]> {
+    try {
+      const snap = await this.col(COLECCIONES.instituciones).where('activa', '==', true).get()
+      return snap.docs.map(d => ({ id: d.id, ...d.data() })) as (InstitucionDoc & { id: string })[]
+    } catch (err: any) {
+      this.logger.warn(`obtenerInstitucionesActivas falló: ${err?.message ?? err}`)
+      return []
+    }
+  }
+
+  /**
+   * Parsea un campo a string[] de forma segura (Null-Safety):
+   * null/undefined → [], arrays → solo strings no vacíos, strings JSON válidos
+   * (arrays) se parsean; JSON inválido u otros tipos → [] (nunca rompe).
+   */
+  private leerArregloDeTexto(valor: any): string[] {
+    if (valor == null) return []
+    const arr = typeof valor === 'string' ? parsearCampoJson(valor) : valor
+    if (!Array.isArray(arr)) return []
+    return arr
+      .filter((t: any) => typeof t === 'string' && t.trim().length > 0)
+      .map((t: string) => t.trim())
+  }
+
+  /** Parsea un objeto que puede venir como JSON string, objeto nativo o null. Nunca lanza. */
+  private leerObjeto(valor: any): Record<string, any> {
+    if (valor == null) return {}
+    const obj = typeof valor === 'string'
+      ? (() => { try { return JSON.parse(valor) ?? {} } catch { return {} } })()
+      : valor
+    return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {}
+  }
+
+  /**
+   * Normaliza escalasVida (8 escalas) con valores por defecto neutros (0):
+   * si el documento no existe o los valores son null/undefined, se usa 0 en
+   * lugar de intentar leer propiedades de undefined. Acepta strings numéricos.
+   */
+  private normalizarEscalasVida(valor: any): Record<string, number> {
+    const base: Record<string, number> = {}
+    for (const clave of CLAVES_ESCALAS_VIDA) base[clave] = 0
+    const obj = this.leerObjeto(valor)
+    for (const clave of CLAVES_ESCALAS_VIDA) {
+      const v = obj[clave]
+      const num = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN)
+      if (Number.isFinite(num)) base[clave] = num
+    }
+    return base
   }
 
   /**
    * Score de coincidencia entre los intereses/metas del perfil y una institución.
    * Cada token de interés/meta presente en el texto de la institución suma;
    * se normaliza dividiendo entre el número de tokens.
+   *
+   * Cuando el usuario no definió metas/áreas pero sí completó escalasVida,
+   * las escalas con nivel ≤ 2 (mayor necesidad de apoyo) aportan tokens
+   * genéricos de interés; si todo son defaults neutros (0, usuario nuevo),
+   * no aportan nada y el score queda en 0 sin romper la ejecución.
    */
-  private scoreDeIntereses(metas: string[], areasInteres: string[], inst: InstitucionDoc): number {
-    const tokens = [...metas, ...areasInteres]
+  private scoreDeIntereses(metas: string[], areasInteres: string[], escalasVida: Record<string, number>, inst: InstitucionDoc): number {
+    const tokensEscalas = Object.entries(escalasVida)
+      .filter(([, nivel]) => nivel > 0 && nivel <= 2)
+      .map(([nombre]) => nombre)
+
+    const tokens = [...metas, ...areasInteres, ...tokensEscalas]
       .filter(t => typeof t === 'string' && t.trim().length > 0)
       .map(t => t.trim().toLowerCase())
 
@@ -135,7 +249,7 @@ export class RecommendationsService {
       inst.nombre,
       inst.descripcion,
       inst.categoria,
-      ...(Array.isArray(inst.servicios) ? inst.servicios : parsearCampoJson(inst.servicios as any) ?? []),
+      ...this.leerArregloDeTexto(inst.servicios),
     ]
       .filter(Boolean)
       .join(' ')

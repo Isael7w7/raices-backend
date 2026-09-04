@@ -104,6 +104,17 @@ describe('Recomendaciones e Interacciones (E2E)', () => {
       expect(res.status).toBe(200)
       expect(res.body.pesos).toEqual({ laboral: 12, social: 5 })
     })
+
+    it('200: pesos vacío para usuario recién registrado sin interacciones previas', async () => {
+      await sembrarPerfil({ id: 'uid-nuevo', email: 'nuevo@test.com', rol: 'pcd', activo: true })
+
+      const res = await request(http)
+        .get('/api/usuarios/interacciones/pesos')
+        .set('Authorization', token('uid-nuevo'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.pesos).toEqual({})
+    })
   })
 
   // ─── GET /api/usuarios/recomendaciones ─────────────────────────────
@@ -155,6 +166,43 @@ describe('Recomendaciones e Interacciones (E2E)', () => {
       expect(res.status).toBe(200)
       expect(res.body.datos).toHaveLength(1)
       expect(res.body.paginacion).toEqual({ total: 2, pagina: 1, limite: 1, totalPaginas: 2 })
+    })
+
+    it('200: lista base sin fallar para usuario recién registrado (sin escalasVida, sin perfil extendido, sin interacciones)', async () => {
+      await sembrarPerfil({ id: 'uid-nuevo', email: 'nuevo@test.com', rol: 'pcd', activo: true })
+
+      const res = await request(http)
+        .get('/api/usuarios/recomendaciones')
+        .set('Authorization', token('uid-nuevo'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(2)
+      expect(res.body.paginacion.total).toBe(2)
+      // Estructura por defecto: scores neutros (0), nunca un 500
+      for (const fila of res.body.datos) {
+        expect(fila.score_intereses).toBe(0)
+        expect(fila.score_comportamiento).toBe(0)
+        expect(fila.final_score).toBe(0)
+      }
+    })
+
+    it('200: usuario con escalasVida pero sin metas ni interacciones responde con estructura por defecto', async () => {
+      await (globalThis as any).__E2E__.db.collection('perfilesExtendidos').add({
+        usuarioId: 'uid-user',
+        escalasVida: { autonomia: 3, independencia: 2, comunicacion: 1, comprension: 2, energia: 3, movilidad: 4, social: 3, emocional: 4 },
+      })
+
+      const res = await request(http)
+        .get('/api/usuarios/recomendaciones')
+        .set('Authorization', token('uid-user'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(2)
+      for (const fila of res.body.datos) {
+        expect(fila.score_intereses).toBeGreaterThanOrEqual(0)
+        expect(fila.score_comportamiento).toBe(0)
+        expect(fila.final_score).toBeGreaterThanOrEqual(0)
+      }
     })
   })
 

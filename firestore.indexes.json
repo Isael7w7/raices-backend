@@ -171,6 +171,14 @@
         { "fieldPath": "usuarioId", "order": "ASCENDING" },
         { "fieldPath": "publicacionId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "interacciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "usuarioId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

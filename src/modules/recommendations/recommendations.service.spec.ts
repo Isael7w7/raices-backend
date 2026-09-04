@@ -110,6 +110,17 @@ describe('RecommendationsService', () => {
 
       expect(pesos).toEqual({})
     })
+
+    it('debe retornar {} si la consulta falla (colección inexistente o índice pendiente), sin lanzar 500', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockRejectedValue(new Error('The query requires an index')),
+      })
+
+      const pesos = await service.pesos('u1')
+
+      expect(pesos).toEqual({})
+    })
   })
 
   // ── recomendaciones ─────────────────────────────────────────────────
@@ -202,6 +213,115 @@ describe('RecommendationsService', () => {
 
     expect(pagina2.datos).toHaveLength(5)
     expect(pagina2.paginacion).toEqual({ total: 25, pagina: 2, limite: 20, totalPaginas: 2 })
+  })
+
+  it('debe retornar lista base con scores 0 para usuario recién registrado (sin perfil extendido, sin escalasVida, sin interacciones)', async () => {
+    mockearFuentes(
+      null,
+      [
+        { id: 'inst-1', nombre: 'Centro A', categoria: 'social', activa: true },
+        { id: 'inst-2', nombre: 'Centro B', categoria: 'laboral', activa: true },
+      ],
+      [],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toHaveLength(2)
+    expect(resultado.paginacion).toEqual({ total: 2, pagina: 1, limite: 20, totalPaginas: 1 })
+    for (const fila of resultado.datos) {
+      expect(fila.score_intereses).toBe(0)
+      expect(fila.score_comportamiento).toBe(0)
+      expect(fila.final_score).toBe(0)
+    }
+  })
+
+  it('no debe romper con campos del perfil en tipos inesperados (metas/areas no-array, escalasVida null)', async () => {
+    mockearFuentes(
+      { metasActuales: 42, areasInteres: { a: 1 }, escalasVida: null },
+      [{ id: 'inst-1', nombre: 'Centro A', categoria: 'social', activa: true }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos[0].score_intereses).toBe(0)
+    expect(resultado.datos[0].final_score).toBe(0)
+  })
+
+  it('debe tratar metasActuales con JSON inválido como arreglo vacío en lugar de fallar', async () => {
+    mockearFuentes(
+      { metasActuales: 'empleo', areasInteres: '["tecnologia"]' }, // 'empleo' no es JSON válido
+      [{ id: 'inst-1', nombre: 'Centro de empleo', categoria: 'laboral', activa: true, descripcion: 'empleo' }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    // Solo 'tecnologia' es un token válido; no coincide con el texto → 0
+    expect(resultado.datos[0].score_intereses).toBe(0)
+  })
+
+  it('debe leer metasActuales anidadas en perfilNecesidades (compatibilidad con getProfile)', async () => {
+    mockearFuentes(
+      { perfilNecesidades: { metasActuales: '["empleo"]' } },
+      [{ id: 'inst-1', nombre: 'Centro de empleo', categoria: 'laboral', activa: true, descripcion: 'empleo' }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos[0].score_intereses).toBeGreaterThan(0)
+  })
+
+  it('debe normalizar escalasVida parciales con defaults neutros (0) sin romper', async () => {
+    mockearFuentes(
+      { escalasVida: { movilidad: 2 } }, // solo 1 de 8 escalas
+      [{ id: 'inst-1', nombre: 'Centro de movilidad', categoria: 'funcional', activa: true, descripcion: 'movilidad' }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toHaveLength(1)
+    expect(resultado.datos[0].score_intereses).toBeGreaterThan(0)
+    expect(resultado.datos[0].final_score).toBeGreaterThan(0)
+  })
+
+  it('debe usar escalasVida con nivel ≤ 2 como tokens de interés cuando no hay metas/áreas', async () => {
+    mockearFuentes(
+      {
+        escalasVida: { autonomia: 3, independencia: 2, comunicacion: 1, comprension: 2, energia: 3, movilidad: 4, social: 3, emocional: 4 },
+      },
+      [
+        { id: 'inst-comunicacion', nombre: 'Centro de comunicacion', categoria: 'funcional', activa: true, descripcion: 'terapia de comunicacion' },
+        { id: 'inst-social', nombre: 'Centro social', categoria: 'social', activa: true, descripcion: '' },
+      ],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    // Tokens por escalas: independencia, comunicacion, comprension (nivel ≤ 2)
+    expect(resultado.datos).toHaveLength(2)
+    expect(resultado.datos[0].id).toBe('inst-comunicacion')
+    expect(resultado.datos[0].score_intereses).toBeCloseTo(1 / 3)
+  })
+
+  it('debe retornar paginación vacía estructurada si la consulta de instituciones falla, sin 500', async () => {
+    firestoreMock.collection.mockImplementation((nombre: string) => {
+      if (nombre === 'perfilesExtendidos') {
+        return {
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+        }
+      }
+      if (nombre === 'interacciones') {
+        return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] }) }
+      }
+      return { where: jest.fn().mockReturnThis(), get: jest.fn().mockRejectedValue(new Error('FALLO_QUERY_INSTITUCIONES')) }
+    })
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toEqual([])
+    expect(resultado.paginacion).toEqual({ total: 0, pagina: 1, limite: 20, totalPaginas: 0 })
   })
 
   // ── verificarOnboarding ──────────────────────────────────────────────

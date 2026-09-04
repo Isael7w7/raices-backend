@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, HttpCode, HttpStatus, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Body, Query, HttpCode, HttpStatus, UseGuards, Logger } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiOkResponse, ApiCreatedResponse, ApiResponse } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { RecommendationsService } from './recommendations.service'
@@ -14,6 +14,8 @@ import { CurrentUserPayload } from '../../common/interfaces/current-user.interfa
 @UseGuards(JwtAuthGuard)
 @Controller('usuarios')
 export class RecommendationsController {
+  private readonly logger = new Logger('RecommendationsController')
+
   constructor(private readonly svc: RecommendationsService) {}
 
   // ─── POST /usuarios/interacciones ──────────────────────────────────
@@ -41,7 +43,14 @@ export class RecommendationsController {
   @ApiOkResponse({ type: PesosInteraccionDto, description: 'Pesos agrupados por categoría' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   async pesos(@CurrentUser() user: CurrentUserPayload) {
-    return { pesos: await this.svc.pesos(user.id) }
+    try {
+      return { pesos: await this.svc.pesos(user.id) }
+    } catch (err: any) {
+      // Sin registros de interacción (o consulta fallida) nunca debe ser un 500:
+      // se responde 200 con un mapa de pesos vacío.
+      this.logger.error(`GET /usuarios/interacciones/pesos falló para ${user.id}: ${err?.message ?? err}`, err?.stack)
+      return { pesos: {} }
+    }
   }
 
   // ─── GET /usuarios/recomendaciones ─────────────────────────────────
@@ -52,8 +61,18 @@ export class RecommendationsController {
   })
   @ApiOkResponse({ type: PaginaRecomendacionesDto, description: 'Listado paginado ordenado por final_score descendente' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  recomendaciones(@CurrentUser() user: CurrentUserPayload, @Query() q: RecomendacionesQueryDto) {
-    return this.svc.recomendaciones(user.id, q.pagina, q.limite)
+  async recomendaciones(@CurrentUser() user: CurrentUserPayload, @Query() q: RecomendacionesQueryDto) {
+    try {
+      return await this.svc.recomendaciones(user.id, q.pagina, q.limite)
+    } catch (err: any) {
+      // Red de seguridad final: perfil vacío o datos faltantes nunca deben
+      // producir un 500; se devuelve una página vacía estructurada.
+      this.logger.error(`GET /usuarios/recomendaciones falló para ${user.id}: ${err?.message ?? err}`, err?.stack)
+      return {
+        datos: [],
+        paginacion: { total: 0, pagina: q.pagina ?? 1, limite: q.limite ?? 20, totalPaginas: 0 },
+      }
+    }
   }
 
   // ─── GET /usuarios/onboarding ──────────────────────────────────────
