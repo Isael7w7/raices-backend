@@ -4,23 +4,45 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
+/** Reseña de la colección `resenas` (campos usados por este servicio). */
+interface ResenaDoc {
+  id: string
+  usuarioId: string
+  institucionId: string
+  calificacion: number
+  comentario?: string
+  fechaCreacion?: string
+}
+
+/** Campos de perfil usados para enriquecer las reseñas. */
+interface PerfilBasico {
+  nombreCompleto?: string
+  urlAvatar?: string
+}
+
+/** Campos de institución usados para enriquecer las reseñas. */
+interface InstitucionBasica {
+  nombre?: string
+  categoria?: string
+}
+
 @Injectable()
 export class ReviewsService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async findByInstitution(institucionId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async findByInstitution(institucionId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<Record<string, unknown>>> {
     const revSnap = await this.db.collection(COLECCIONES.resenas)
       .where('institucionId', '==', institucionId).get()
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResenaDoc))
     resenas.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     const usuariosIds = [...new Set(resenas.map(r => r.usuarioId))]
-    const mapaUsuarios = new Map<string, any>()
+    const mapaUsuarios = new Map<string, PerfilBasico>()
     for (const uid of usuariosIds) {
       const doc = await this.db.collection(COLECCIONES.perfiles).doc(uid).get()
-      if (doc.exists) mapaUsuarios.set(uid, doc.data())
+      if (doc.exists) mapaUsuarios.set(uid, doc.data() as PerfilBasico)
     }
 
     let todos = resenas.map(r => ({
@@ -86,19 +108,19 @@ export class ReviewsService {
     return { id: refResena.id, usuarioId, institucionId, calificacion, comentario, fechaCreacion: new Date().toISOString() }
   }
 
-  async myReviews(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async myReviews(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<Record<string, unknown>>> {
     const revSnap = await this.db.collection(COLECCIONES.resenas)
       .where('usuarioId', '==', usuarioId).get()
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResenaDoc))
     resenas.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     const instIds = [...new Set(resenas.map(r => r.institucionId))]
-    const mapaInst = new Map<string, any>()
+    const mapaInst = new Map<string, InstitucionBasica>()
     for (const iid of instIds) {
       const doc = await this.db.collection(COLECCIONES.instituciones).doc(iid).get()
-      if (doc.exists) mapaInst.set(iid, doc.data())
+      if (doc.exists) mapaInst.set(iid, doc.data() as InstitucionBasica)
     }
 
     let todos = resenas.map(r => ({
@@ -124,10 +146,10 @@ export class ReviewsService {
   async update(id: string, usuarioId: string, dto: { calificacion?: number; comentario?: string }) {
     const doc = await this.db.collection(COLECCIONES.resenas).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Reseña no encontrada')
-    const resena = doc.data() as any
+    const resena = doc.data() as Omit<ResenaDoc, 'id'>
     if (resena.usuarioId !== usuarioId) throw new ForbiddenException('No tienes permiso para editar esta reseña')
 
-    const campos: Record<string, any> = {}
+    const campos: Record<string, unknown> = {}
     if (dto.calificacion !== undefined) campos.calificacion = dto.calificacion
     if (dto.comentario !== undefined) campos.comentario = dto.comentario
     if (Object.keys(campos).length === 0) return { id, ...resena }
@@ -140,7 +162,7 @@ export class ReviewsService {
   async remove(id: string, usuarioId: string) {
     const doc = await this.db.collection(COLECCIONES.resenas).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Reseña no encontrada')
-    const resena = doc.data() as any
+    const resena = doc.data() as Omit<ResenaDoc, 'id'>
     if (resena.usuarioId !== usuarioId) throw new ForbiddenException('No tienes permiso para eliminar esta reseña')
 
     const institucionId = resena.institucionId

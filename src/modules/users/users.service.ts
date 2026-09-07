@@ -29,13 +29,13 @@ export class UsersService {
   async getProfile(usuarioId: string) {
     const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
-    const perfil: Record<string, any> = { id: doc.id, ...doc.data()! }
+    const perfil: Record<string, unknown> = { id: doc.id, ...doc.data()! }
 
     const perfilExtendidoSnap = await this.col(COLECCIONES.perfilesExtendidos)
       .where('usuarioId', '==', usuarioId).limit(1).get()
     const perfilExtendido = perfilExtendidoSnap.empty ? null : perfilExtendidoSnap.docs[0].data()
 
-    const resultado: Record<string, any> = {
+    const resultado: Record<string, unknown> = {
       ...perfil,
       perfilNecesidades: perfilExtendido ? {
         tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
@@ -119,8 +119,8 @@ export class UsersService {
     }
     try {
       await this.storage.delete(filePath)
-    } catch (err: any) {
-      this.logger.warn(`No se pudo eliminar archivo de Storage: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      this.logger.warn(`No se pudo eliminar archivo de Storage: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
@@ -135,8 +135,8 @@ export class UsersService {
     // para no dejar objetos huérfanos en Storage.
     try {
       await this.col(COLECCIONES.perfiles).doc(usuarioId).update({ urlAvatar })
-    } catch (dbError: any) {
-      this.logger.error(`Error al guardar avatarUrl en Firestore: ${dbError?.message ?? dbError}`)
+    } catch (dbError: unknown) {
+      this.logger.error(`Error al guardar avatarUrl en Firestore: ${dbError instanceof Error ? dbError.message : String(dbError)}`)
       await this.eliminarArchivoDeUrl(urlAvatar)
       throw new ServiceUnavailableException('No se pudo guardar el avatar en la base de datos')
     }
@@ -200,7 +200,7 @@ export class UsersService {
   async saveProfilingData(usuarioId: string, datos: GuardarPerfilNecesidadesDto) {
     const existe = await this.col(COLECCIONES.perfilesExtendidos)
       .where('usuarioId', '==', usuarioId).limit(1).get()
-    const carga: Record<string, any> = {
+    const carga: Record<string, unknown> = {
       tiposDiscapacidad: JSON.stringify(datos.tiposDiscapacidad ?? []),
       severidadDiscapacidad: datos.severidadDiscapacidad ?? null,
       modosComunicacion: JSON.stringify(datos.modosComunicacion ?? []),
@@ -254,7 +254,7 @@ export class UsersService {
    * con la red de especialistas.
    */
   async saveEscalasVida(usuarioId: string, dto: import('./dto/guardar-escalas-vida.dto').GuardarEscalasVidaDto) {
-    const carga: Record<string, any> = {
+    const carga: Record<string, unknown> = {
       escalasVida: {
         autonomia: dto.nivelAutonomia,
         independencia: dto.nivelIndependencia,
@@ -490,7 +490,7 @@ export class UsersService {
     const perfilExtendido = extSnap.empty ? null : extSnap.docs[0].data()
 
     // Construir respuesta con datos del perfil de la PCD
-    const resultado: Record<string, any> = {
+    const resultado: Record<string, unknown> = {
       id: perfilDoc.id,
       nombreCompleto: perfil.nombreCompleto,
       email: perfil.email,
@@ -727,9 +727,9 @@ export class UsersService {
       nombreCompleto: d.nombreCompleto,
       parentesco: d.parentesco ?? null,
       tiposDiscapacidad: Array.isArray(p.tiposDiscapacidad) ? p.tiposDiscapacidad : [],
-      rangoEdad: p.rangoEdad ?? null,
-      etapaVida: p.etapaVida ?? null,
-      notas: p.notas ?? '',
+      rangoEdad: typeof p.rangoEdad === 'string' ? p.rangoEdad : null,
+      etapaVida: typeof p.etapaVida === 'string' ? p.etapaVida : null,
+      notas: typeof p.notas === 'string' ? p.notas : '',
       discapacidad: null,
       esCuentaVinculada: d.esCuentaVinculada === true || !!d.pcdUserId,
       pcdUserId: d.pcdUserId ?? null,
@@ -746,7 +746,7 @@ export class UsersService {
     return valor
   }
 
-  private parsearObjeto(valor: string | undefined): Record<string, any> {
+  private parsearObjeto(valor: string | undefined): Record<string, unknown> {
     if (!valor) return {}
     try { const p = JSON.parse(valor); return p && typeof p === 'object' ? p : {} } catch { return {} }
   }
