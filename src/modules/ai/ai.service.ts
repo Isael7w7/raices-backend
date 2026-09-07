@@ -5,14 +5,76 @@ import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
+import type { PerfilDoc, PerfilExtendidoDoc, InstitucionDoc, DependienteDoc } from '../../common/interfaces/firestore-documents.interface'
 
 const RESPUESTAS_MOCK = [
   'Entiendo tu consulta. Basándome en tu perfil, te recomiendo explorar las instituciones de la categoría funcional en tu ciudad. ¿Quieres que te muestre opciones específicas?',
   'Hay varias opciones que podrían ayudarte. En Raíces tenemos instituciones verificadas con experiencia en tu situación. ¿Te gustaría explorar el mapa?',
   'Gracias por compartir eso. Es un paso importante. Muchas familias en situaciones similares han encontrado apoyo en los grupos de comunidad. ¿Quieres unirte a alguno?',
   'Entiendo la preocupación. Lo más importante es dar el primer paso. ¿Has revisado ya las instituciones disponibles en tu zona?',
-  'Eso es muy valioso saberlo. Basándome en tu etapa de vida, el siguiente paso recomendado sería conectar con un especialista. ¿Quieres ver opciones?',
+  'Eso es muy valioso saberlo. Basándote en tu etapa de vida, el siguiente paso recomendado sería conectar con un especialista. ¿Quieres ver opciones?',
 ]
+
+// ─── Tipos del contrato interno del servicio ────────────────────────────
+
+/** Mensaje del historial de conversación (mismo formato que ChatIaDto.historial). */
+interface MensajeChat {
+  role: string
+  content: string
+}
+
+interface RespuestaChatIa {
+  respuesta: string
+  simulado: boolean
+}
+
+/** Sugerencia de institución que acompaña a las recomendaciones. */
+interface SugerenciaInstitucion {
+  categoria: string
+  razon: string
+}
+
+interface RespuestaRecomendacionesIa {
+  proximosPasos: string[]
+  razonamiento: string
+  sugerenciasInstitucion: SugerenciaInstitucion[]
+  simulado: boolean
+}
+
+interface RespuestaRecomendacionDependienteIa {
+  proximosPasos: string[]
+  razonamiento: string
+  simulado: boolean
+}
+
+interface RespuestaResumenIa {
+  resumenUnParrafo: string
+  resumenTresParrafos: { quienEres: string; contexto: string; intereses: string }
+  simulado: boolean
+}
+
+/** Favorito resumido del usuario (solo los campos usados en los prompts). */
+interface FavoritoResumido {
+  nombre?: string
+  categoria?: string
+  ciudad?: string
+}
+
+/** Historial de actividad del usuario usado para contextualizar los prompts. */
+interface HistorialUsuario {
+  favoritos: FavoritoResumido[]
+  cantidadPublicaciones: number
+  cantidadPostulaciones: number
+}
+
+/** Estructura esperada del JSON de Gemini. Campos opcionales: el modelo puede omitirlos. */
+interface RespuestaGemini {
+  proximosPasos?: unknown
+  razonamiento?: unknown
+  sugerenciasInstitucion?: unknown
+  resumenUnParrafo?: unknown
+  resumenTresParrafos?: unknown
+}
 
 /**
  * Configuración de Gemini via Google Gen AI SDK (reemplaza @google-cloud/vertexai).
@@ -50,37 +112,107 @@ export class AiService {
     try {
       this.ai = new GoogleGenAI({ vertexai: true, project, location })
       this.logger.log(`✅ Vertex AI inicializado: project=${project}, location=${location}, model=${this.modelName}`)
-    } catch (e: any) {
-      this.logger.warn(`⚠️  Vertex AI no disponible (${e?.message ?? e}) — usando respuestas mock`)
+    } catch (e: unknown) {
+      this.logger.warn(`⚠️  Vertex AI no disponible (${mensajeError(e)}) — usando respuestas mock`)
       this.ai = null
     }
   }
 
+  // ─── Utilidades de tipado/narrowing ────────────────────────────────────
+
+  private esObjeto(v: unknown): v is Record<string, unknown> {
+    return typeof v === 'object' && v !== null && !Array.isArray(v)
+  }
+
+  private esTexto(v: unknown): v is string {
+    return typeof v === 'string'
+  }
+
+  private esArrayDeTextos(v: unknown): v is string[] {
+    return Array.isArray(v) && v.every(x => typeof x === 'string')
+  }
+
+  /** Mensaje de error legible a partir de un valor desconocido (catch). */
+  private mensajeError(e: unknown): string {
+    return e instanceof Error ? e.message : String(e)
+  }
+
+  /**
+   * Parsea un campo JSON que contiene un array de textos (metas, áreas,
+   * historiales...). Siempre retorna un string[] válido, sin propagar `any`.
+   */
+  private listarValoresJson(valor: string | undefined | null): string[] {
+    if (!valor) return []
+    const parsed: unknown = parsearCampoJson(valor)
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  }
+
+  /** Normaliza la respuesta libre de Gemini a las recomendaciones tipadas. */
+  private normalizarRecomendaciones(parsed: unknown): { proximosPasos: string[]; razonamiento: string; sugerenciasInstitucion: SugerenciaInstitucion[] } {
+    const r = this.esObjeto(parsed) ? parsed : {}
+    const sugerencias = Array.isArray(r.sugerenciasInstitucion)
+      ? r.sugerenciasInstitucion
+          .filter((s): s is { categoria: string; razon: string } =>
+            this.esObjeto(s) && this.esTexto(s.categoria) && this.esTexto(s.razon))
+          .map(s => ({ categoria: s.categoria, razon: s.razon }))
+      : []
+    return {
+      proximosPasos: this.esArrayDeTextos(r.proximosPasos) ? r.proximosPasos : [],
+      razonamiento: this.esTexto(r.razonamiento) ? r.razonamiento : '',
+      sugerenciasInstitucion: sugerencias,
+    }
+  }
+
+  /** Normaliza la respuesta libre de Gemini al resumen narrativo tipado. */
+  private normalizarResumen(parsed: unknown): Omit<RespuestaResumenIa, 'simulado'> {
+    const r = this.esObjeto(parsed) ? parsed : {}
+    const tres = this.esObjeto(r.resumenTresParrafos) ? r.resumenTresParrafos : {}
+    const texto = (v: unknown): string => (this.esTexto(v) ? v : '')
+    return {
+      resumenUnParrafo: texto(r.resumenUnParrafo),
+      resumenTresParrafos: {
+        quienEres: texto(tres.quienEres),
+        contexto: texto(tres.contexto),
+        intereses: texto(tres.intereses),
+      },
+    }
+  }
+
   /** Extrae el texto de la respuesta de Gemini de forma segura. */
-  private extractText(result: any): string {
+  private extractText(result: unknown): string {
     // New SDK: result.candidates[0].content.parts
     // Legacy SDK fallback: result.response.candidates[0].content.parts
-    const candidates = result?.candidates ?? result?.response?.candidates
-    const parts = candidates?.[0]?.content?.parts
-    if (!Array.isArray(parts)) return ''
-    return parts.map((p: any) => (typeof p?.text === 'string' ? p.text : '')).join('')
+    const r = this.esObjeto(result) ? result : {}
+    const legacy = this.esObjeto(r.response) ? r.response : {}
+    const candidates = r.candidates ?? legacy.candidates
+    if (!Array.isArray(candidates) || candidates.length === 0) return ''
+
+    const first = candidates[0]
+    if (!this.esObjeto(first)) return ''
+    const content = this.esObjeto(first.content) ? first.content : {}
+    if (!Array.isArray(content.parts)) return ''
+
+    return content.parts
+      .filter((p): p is { text: string } => this.esObjeto(p) && this.esTexto(p.text))
+      .map(p => p.text)
+      .join('')
   }
 
   /** Parsea JSON de la respuesta de Gemini tolerando bloques ```json. */
-  private parseJsonResponse(text: string): any {
+  private parseJsonResponse(text: string): unknown {
     let cleaned = text.trim()
     const fence = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
     if (fence) cleaned = fence[1].trim()
-    return JSON.parse(cleaned)
+    return JSON.parse(cleaned) as unknown
   }
 
-  private async getUserProfile(usuarioId: string) {
+  private async getUserProfile(usuarioId: string): Promise<PerfilExtendidoDoc | null> {
     const snap = await this.db.collection(COLECCIONES.perfilesExtendidos)
       .where('usuarioId', '==', usuarioId).limit(1).get()
-    return snap.empty ? null : snap.docs[0].data()
+    return snap.empty ? null : (snap.docs[0].data() as PerfilExtendidoDoc)
   }
 
-  async chat(usuarioId: string, mensaje: string, historial: any[] = []) {
+  async chat(usuarioId: string, mensaje: string, historial: MensajeChat[] = []): Promise<RespuestaChatIa> {
     const perfil = await this.getUserProfile(usuarioId)
 
     if (!this.ai) {
@@ -113,34 +245,37 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
       const respuesta = this.extractText(result)
       if (!respuesta) throw new Error('Respuesta vacía de Vertex AI')
       return { respuesta, simulado: false }
-    } catch (e: any) {
-      this.logger.warn(`Vertex AI chat falló (${e?.message ?? e}) — usando respuestas mock`)
+    } catch (e: unknown) {
+      this.logger.warn(`Vertex AI chat falló (${this.mensajeError(e)}) — usando respuestas mock`)
       await new Promise((r) => setTimeout(r, 600))
       const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
       return { respuesta, simulado: true }
     }
   }
 
-  private async getUserHistory(usuarioId: string) {
+  private async getUserHistory(usuarioId: string): Promise<HistorialUsuario> {
     const [favSnap, postsSnap, appsSnap] = await Promise.all([
       this.db.collection(COLECCIONES.favoritos).where('usuarioId', '==', usuarioId).limit(10).get(),
       this.db.collection(COLECCIONES.publicaciones).where('autorId', '==', usuarioId).get(),
-      this.db.collection(COLECCIONES.postulaciones).where('usuarioId', '==', usuarioId).get().catch(() => ({ size: 0 } as any)),
+      this.db.collection(COLECCIONES.postulaciones).where('usuarioId', '==', usuarioId).get()
+        .catch((): { size: number } => ({ size: 0 })),
     ])
 
-    const favoritos: any[] = []
+    const favoritos: FavoritoResumido[] = []
     for (const fdoc of favSnap.docs) {
-      const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(fdoc.data().institucionId).get()
+      const fav = fdoc.data() as { institucionId?: string }
+      if (!fav.institucionId) continue
+      const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(fav.institucionId).get()
       if (instDoc.exists) {
-        const inst = instDoc.data()!
+        const inst = instDoc.data() as InstitucionDoc
         favoritos.push({ nombre: inst.nombre, categoria: inst.categoria, ciudad: inst.ciudad })
       }
     }
 
-    return { favoritos, cantidadPublicaciones: postsSnap.size, cantidadPostulaciones: appsSnap.size ?? 0 }
+    return { favoritos, cantidadPublicaciones: postsSnap.size, cantidadPostulaciones: appsSnap.size }
   }
 
-  async recommend(usuarioId: string) {
+  async recommend(usuarioId: string): Promise<RespuestaRecomendacionesIa> {
     const [perfil, registroUsuario, historial] = await Promise.all([
       this.getUserProfile(usuarioId),
       this.db.collection(COLECCIONES.perfiles).doc(usuarioId).get(),
@@ -151,7 +286,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
       ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
       : []
     const sinDiagnostico = tiposDiscapacidad.length === 0
-    const datosUsuario = registroUsuario.data()
+    const datosUsuario = registroUsuario.data() as PerfilDoc | undefined
 
     if (!this.ai || !perfil) {
       const pasos = sinDiagnostico ? [
@@ -182,11 +317,11 @@ PERFIL DEL USUARIO:
 - Discapacidades: ${tiposDiscapacidad.length > 0 ? tiposDiscapacidad.join(', ') : 'sin diagnóstico registrado'}
 - Ciudad: ${datosUsuario?.ciudad ?? 'no especificada'}, ${datosUsuario?.estado ?? ''}
 - Nivel de soporte: ${perfil.nivelApoyo ?? 'no especificado'}
-- Metas actuales: ${perfil.metasActuales ? (parsearCampoJson(perfil.metasActuales) as string[]).join(', ') : 'no especificadas'}
-- Áreas de soporte: ${perfil.areasApoyo ? (parsearCampoJson(perfil.areasApoyo) as string[]).join(', ') : 'no especificadas'}
+- Metas actuales: ${this.listarValoresJson(perfil.metasActuales).join(', ') || 'no especificadas'}
+- Áreas de soporte: ${this.listarValoresJson(perfil.areasApoyo).join(', ') || 'no especificadas'}
 - Preocupaciones actuales: ${perfil.preocupacionesActuales ?? 'ninguna'}
 - Escalas de vida: ${perfil.escalasVida ? `Autonomía=${perfil.escalasVida.autonomia}, Independencia=${perfil.escalasVida.independencia}, Comunicación=${perfil.escalasVida.comunicacion}, Comprensión=${perfil.escalasVida.comprension}, Energía=${perfil.escalasVida.energia}, Movilidad=${perfil.escalasVida.movilidad}, Social=${perfil.escalasVida.social}, Emocional=${perfil.escalasVida.emocional}` : 'no completadas'}
-- Áreas de interés: ${perfil.areasInteres ? (parsearCampoJson(perfil.areasInteres) as string[]).join(', ') : 'no especificadas'}
+- Áreas de interés: ${this.listarValoresJson(perfil.areasInteres).join(', ') || 'no especificadas'}
 - Formato preferido: ${perfil.preferenciaFormato ?? 'no especificado'}
 - Viabilidad económica: ${perfil.viabilidadEconomica ?? 'no especificada'}
 
@@ -208,9 +343,9 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
         config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
-      return { ...this.parseJsonResponse(text), simulado: false }
-    } catch (e: any) {
-      this.logger.warn(`Vertex AI recommend falló (${e?.message ?? e}) — mostrando sugerencias generales`)
+      return { ...this.normalizarRecomendaciones(this.parseJsonResponse(text)), simulado: false }
+    } catch (e: unknown) {
+      this.logger.warn(`Vertex AI recommend falló (${this.mensajeError(e)}) — mostrando sugerencias generales`)
       return {
         proximosPasos: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
         razonamiento: 'Error al procesar — mostrando sugerencias generales', sugerenciasInstitucion: [], simulado: true,
@@ -218,23 +353,33 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
     }
   }
 
-  async recommendForDependent(usuarioId: string, dependienteId: string, dependienteDoc?: Record<string, any>) {
+  async recommendForDependent(usuarioId: string, dependienteId: string, dependienteDoc?: DependienteDoc): Promise<RespuestaRecomendacionDependienteIa> {
     // Si vino de DependientePropietarioGuard, ya viene validado y cargado (evita una lectura extra).
-    let dep: Record<string, any> | undefined = dependienteDoc
+    let dep: DependienteDoc | undefined = dependienteDoc
     if (!dep) {
       const depDoc = await this.db.collection(COLECCIONES.dependientes).doc(dependienteId).get()
       if (!depDoc.exists || depDoc.data()?.tutorId !== usuarioId) {
         throw new NotFoundException('Dependiente no encontrado')
       }
-      dep = depDoc.data()!
+      dep = depDoc.data() as DependienteDoc
     }
 
-    let datosPerfil: any = {}
-    try { datosPerfil = dep.datosPerfil ? JSON.parse(dep.datosPerfil) : {} } catch {}
+    // datosPerfil llega como string JSON: se parsea de forma segura.
+    let datosPerfil: Record<string, unknown> = {}
+    if (dep.datosPerfil) {
+      try {
+        const parsed: unknown = JSON.parse(dep.datosPerfil)
+        if (this.esObjeto(parsed)) datosPerfil = parsed
+      } catch {
+        datosPerfil = {}
+      }
+    }
 
-    const discapacidades = (datosPerfil.tiposDiscapacidad ?? []).join(', ') || 'no especificadas'
-    const etapaVida = datosPerfil.etapaVida ?? 'no especificada'
-    const notas = datosPerfil.notas ?? ''
+    const discapacidades = Array.isArray(datosPerfil.tiposDiscapacidad)
+      ? datosPerfil.tiposDiscapacidad.filter((t): t is string => this.esTexto(t)).join(', ') || 'no especificadas'
+      : 'no especificadas'
+    const etapaVida = this.esTexto(datosPerfil.etapaVida) ? datosPerfil.etapaVida : 'no especificada'
+    const notas = this.esTexto(datosPerfil.notas) ? datosPerfil.notas : ''
 
     if (!this.ai) {
       return {
@@ -260,9 +405,15 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
         config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
-      return { ...this.parseJsonResponse(text), simulado: false }
-    } catch (e: any) {
-      this.logger.warn(`Vertex AI recommendForDependent falló (${e?.message ?? e}) — mostrando sugerencias generales`)
+      const parsed: unknown = this.parseJsonResponse(text)
+      const r = this.esObjeto(parsed) ? parsed : {}
+      return {
+        proximosPasos: this.esArrayDeTextos(r.proximosPasos) ? r.proximosPasos : [],
+        razonamiento: this.esTexto(r.razonamiento) ? r.razonamiento : '',
+        simulado: false,
+      }
+    } catch (e: unknown) {
+      this.logger.warn(`Vertex AI recommendForDependent falló (${this.mensajeError(e)}) — mostrando sugerencias generales`)
       return {
         proximosPasos: [
           `Busca instituciones de ${discapacidades} cerca de ti`,
@@ -286,29 +437,23 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
    * RESTRICCIÓN: El prompt instruye al LLM usar SOLO los datos proporcionados.
    * Si falta un dato, se indica "no especificado". No se permite inventar información.
    */
-  async generarResumen(usuarioId: string) {
+  async generarResumen(usuarioId: string): Promise<RespuestaResumenIa> {
     const [perfil, registro, historial] = await Promise.all([
       this.getUserProfile(usuarioId),
       this.db.collection(COLECCIONES.perfiles).doc(usuarioId).get(),
       this.getUserHistory(usuarioId),
     ])
 
-    const datosUsuario = registro.data()
+    const datosUsuario = registro.data() as PerfilDoc | undefined
 
     // Construir datos para el prompt (solo campos necesarios, sin datos sensibles)
     const tiposDiscapacidad = perfil?.tiposDiscapacidad
       ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
       : []
     const escalasVida = perfil?.escalasVida ?? null
-    const metasActuales = perfil?.metasActuales
-      ? (parsearCampoJson(perfil.metasActuales) as string[])
-      : []
-    const areasApoyo = perfil?.areasApoyo
-      ? (parsearCampoJson(perfil.areasApoyo) as string[])
-      : []
-    const areasInteres = perfil?.areasInteres
-      ? (parsearCampoJson(perfil.areasInteres) as string[])
-      : []
+    const metasActuales = this.listarValoresJson(perfil?.metasActuales)
+    const areasApoyo = this.listarValoresJson(perfil?.areasApoyo)
+    const areasInteres = this.listarValoresJson(perfil?.areasInteres)
     const viabilidadEconomica = perfil?.viabilidadEconomica ?? 'no especificada'
     const preferenciaFormato = perfil?.preferenciaFormato ?? 'no especificada'
     const tieneDiagnostico = perfil?.tieneDiagnostico ?? false
@@ -334,8 +479,8 @@ DATOS DEL USUARIO (usar EXCLUSIVAMENTE estos datos, NO inventar información):
 - Publicaciones en comunidad: ${historial.cantidadPublicaciones}
 - Solicitudes de empleo: ${historial.cantidadPostulaciones}
 - Favoritos guardados: ${historial.favoritos.length}
-- Historial educativo: ${perfil?.historialEducacion ? (parsearCampoJson(perfil.historialEducacion) as string[]).join(', ') : 'no especificado'}
-- Historial de terapia: ${perfil?.historialTerapia ? (parsearCampoJson(perfil.historialTerapia) as string[]).join(', ') : 'no especificado'}
+- Historial educativo: ${this.listarValoresJson(perfil?.historialEducacion).join(', ') || 'no especificado'}
+- Historial de terapia: ${this.listarValoresJson(perfil?.historialTerapia).join(', ') || 'no especificado'}
 `
 
     if (!this.ai || !perfil) {
@@ -380,9 +525,9 @@ Responde SOLO con JSON válido:
         config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
-      return { ...this.parseJsonResponse(text), simulado: false }
-    } catch (e: any) {
-      this.logger.warn(`generarResumen falló (${e?.message ?? e}) — usando respuesta genérica`)
+      return { ...this.normalizarResumen(this.parseJsonResponse(text)), simulado: false }
+    } catch (e: unknown) {
+      this.logger.warn(`generarResumen falló (${this.mensajeError(e)}) — usando respuesta genérica`)
       return {
         resumenUnParrafo: 'No se pudo generar el resumen en este momento. Intenta de nuevo más tarde.',
         resumenTresParrafos: {
@@ -394,4 +539,9 @@ Responde SOLO con JSON válido:
       }
     }
   }
+}
+
+/** Mensaje de error legible a partir de un valor desconocido (uso libre del módulo). */
+function mensajeError(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
 }

@@ -10,11 +10,11 @@ jest.mock('@google/genai')
 
 // ─── Mock helpers ────────────────────────────────────────────────────────
 
-function mockDoc(data: Record<string, any> | null, exists = true) {
+function mockDoc(data: object | null, exists = true) {
   return { exists, id: 'mock-doc-id', data: () => data }
 }
 
-function mockCollection(docResult: any, empty = false, docs: any[] = []) {
+function mockCollection(docResult: object | null, empty = false, docs: Array<{ data: () => unknown }> = []) {
   return {
     doc: jest.fn().mockReturnValue({
       get: jest.fn().mockResolvedValue(docResult),
@@ -47,14 +47,14 @@ function emptyGeminiResponse() {
 
 describe('AiService', () => {
   let svc: AiService
-  let firestoreMock: Record<string, any>
-  let configMock: Record<string, any>
+  let firestoreMock: { collection: jest.Mock }
+  let configMock: { get: jest.Mock }
 
   // Shared mocks para Google Gen AI — se reinician en cada test
   let mockSendMessage: jest.Mock
   let mockChatsCreate: jest.Mock
   let mockGenerateContent: jest.Mock
-  let mockGoogleGenAIInstance: any
+  let mockGoogleGenAIInstance: { chats: { create: jest.Mock }; models: { generateContent: jest.Mock } }
 
   beforeEach(async () => {
     jest.clearAllMocks()
@@ -109,7 +109,7 @@ describe('AiService', () => {
     })
 
     it('debe usar FIREBASE_PROJECT_ID como fallback cuando VERTEX_AI_PROJECT_ID no existe', async () => {
-      const configNoVertex: Record<string, any> = {
+      const configNoVertex = {
         get: jest.fn((key: string) => {
           if (key === 'VERTEX_AI_PROJECT_ID') return undefined
           if (key === 'FIREBASE_PROJECT_ID') return 'fallback-project'
@@ -133,7 +133,7 @@ describe('AiService', () => {
     })
 
     it('debe caer en modo mock cuando no hay project configurado', async () => {
-      const configSinProject: Record<string, any> = {
+      const configSinProject = {
         get: jest.fn(() => undefined),
       }
 
@@ -153,7 +153,7 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValue(
         mockCollection(null, true),
       )
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
     })
 
@@ -174,12 +174,12 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValue(
         mockCollection(null, true),
       )
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
     })
 
     it('debe usar gemini-2.0-flash como default cuando VERTEX_AI_MODEL no está definido', async () => {
-      const configSinModel: Record<string, any> = {
+      const configSinModel = {
         get: jest.fn((key: string) => {
           if (key === 'VERTEX_AI_PROJECT_ID') return 'test-project'
           if (key === 'VERTEX_AI_LOCATION') return 'us-central1'
@@ -204,7 +204,7 @@ describe('AiService', () => {
     })
 
     it('debe usar us-central1 como default cuando VERTEX_AI_LOCATION no está definido', async () => {
-      const configSinLocation: Record<string, any> = {
+      const configSinLocation = {
         get: jest.fn((key: string) => {
           if (key === 'VERTEX_AI_PROJECT_ID') return 'test-project'
           if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
@@ -230,7 +230,7 @@ describe('AiService', () => {
 
   describe('chat', () => {
     it('debe devolver mock cuando el cliente AI no está disponible', async () => {
-      const configNoVertex: Record<string, any> = {
+      const configNoVertex = {
         get: jest.fn(() => undefined),
       }
       const module: TestingModule = await Test.createTestingModule({
@@ -244,7 +244,7 @@ describe('AiService', () => {
 
       firestoreMock.collection.mockReturnValue(mockCollection(null, true))
 
-      const result: any = await svc.chat('user1', 'Hola, ¿qué servicios ofrecen?')
+      const result = await svc.chat('user1', 'Hola, ¿qué servicios ofrecen?')
       expect(result.simulado).toBe(true)
       expect(typeof result.respuesta).toBe('string')
       expect(result.respuesta.length).toBeGreaterThan(0)
@@ -264,7 +264,7 @@ describe('AiService', () => {
         geminiResponse('Hola, puedo ayudarte con eso.'),
       )
 
-      const result: any = await svc.chat('user1', '¿Qué es Raíces?')
+      const result = await svc.chat('user1', '¿Qué es Raíces?')
 
       expect(result.respuesta).toBe('Hola, puedo ayudarte con eso.')
       expect(result.simulado).toBe(false)
@@ -321,7 +321,7 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
       mockSendMessage.mockRejectedValue(new Error('Quota exceeded'))
 
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
     })
 
@@ -329,7 +329,7 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
       mockSendMessage.mockResolvedValue(emptyGeminiResponse())
 
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
     })
 
@@ -370,9 +370,9 @@ describe('AiService', () => {
 
   // Helper compartido entre describe('recommend') y describe('parseJsonResponse')
   function setupRecommendMocks(opts: {
-    perfil?: Record<string, any> | null
-    registroUsuario?: Record<string, any>
-    favoritos?: any[]
+    perfil?: Record<string, unknown> | null
+    registroUsuario?: Record<string, unknown>
+    favoritos?: Array<{ id: string; nombre: string; categoria: string; ciudad: string }>
     publicaciones?: number
     postulaciones?: number
   } = {}) {
@@ -446,7 +446,7 @@ describe('AiService', () => {
 
   describe('recommend', () => {
     it('debe devolver mock cuando el cliente AI no está disponible', async () => {
-      const configNoVertex: Record<string, any> = {
+      const configNoVertex = {
         get: jest.fn(() => undefined),
       }
       const module: TestingModule = await Test.createTestingModule({
@@ -477,7 +477,7 @@ describe('AiService', () => {
           get: jest.fn().mockResolvedValue({ size: 0 }),
         })
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.simulado).toBe(true)
       expect(result.proximosPasos).toBeDefined()
       expect(result.proximosPasos.length).toBe(3)
@@ -503,7 +503,7 @@ describe('AiService', () => {
           get: jest.fn().mockResolvedValue({ size: 0 }),
         })
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.simulado).toBe(true)
     })
 
@@ -518,7 +518,7 @@ describe('AiService', () => {
         geminiResponse(JSON.stringify(geminiResult)),
       )
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.simulado).toBe(false)
       expect(result.proximosPasos).toEqual(['Paso 1', 'Paso 2', 'Paso 3'])
       expect(result.razonamiento).toBe('Basándome en tu perfil...')
@@ -548,7 +548,7 @@ describe('AiService', () => {
         })),
       )
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.simulado).toBe(false)
       expect(result.proximosPasos).toEqual(['Agenda evaluación', 'Completa perfil', 'Explora comunidad'])
     })
@@ -577,7 +577,7 @@ describe('AiService', () => {
       setupRecommendMocks()
       mockGenerateContent.mockRejectedValue(new Error('Rate limit'))
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.simulado).toBe(true)
       expect(result.proximosPasos.length).toBe(3)
     })
@@ -613,7 +613,7 @@ describe('AiService', () => {
     })
 
     it('debe devolver mock cuando el cliente AI no está disponible', async () => {
-      const configNoVertex: Record<string, any> = {
+      const configNoVertex = {
         get: jest.fn(() => undefined),
       }
       const module: TestingModule = await Test.createTestingModule({
@@ -640,7 +640,7 @@ describe('AiService', () => {
         }),
       })
 
-      const result: any = await svc.recommendForDependent('user1', 'dep1')
+      const result = await svc.recommendForDependent('user1', 'dep1')
       expect(result.simulado).toBe(true)
       expect(result.proximosPasos).toHaveLength(3)
     })
@@ -670,13 +670,14 @@ describe('AiService', () => {
         })),
       )
 
-      const result: any = await svc.recommendForDependent('user1', 'dep1')
+      const result = await svc.recommendForDependent('user1', 'dep1')
       expect(result.simulado).toBe(false)
       expect(result.proximosPasos).toEqual(['Buscar terapia', 'Unirse a grupo', 'Explorar escuelas'])
     })
 
     it('debe aceptar dependienteDoc pre-cargado (guard)', async () => {
       const dependienteDoc = {
+        id: 'dep1', // el guard siempre adjunta { id: doc.id, ...data }
         tutorId: 'user1',
         nombreCompleto: 'Ana',
         parentesco: 'hija',
@@ -694,7 +695,7 @@ describe('AiService', () => {
         })),
       )
 
-      const result: any = await svc.recommendForDependent('user1', 'dep1', dependienteDoc)
+      const result = await svc.recommendForDependent('user1', 'dep1', dependienteDoc)
       expect(result.simulado).toBe(false)
       expect(firestoreMock.collection).not.toHaveBeenCalled()
     })
@@ -720,7 +721,7 @@ describe('AiService', () => {
         })),
       )
 
-      const result: any = await svc.recommendForDependent('user1', 'dep1')
+      const result = await svc.recommendForDependent('user1', 'dep1')
       expect(result.simulado).toBe(false)
     })
 
@@ -739,7 +740,7 @@ describe('AiService', () => {
 
       mockGenerateContent.mockRejectedValue(new Error('Service unavailable'))
 
-      const result: any = await svc.recommendForDependent('user1', 'dep1')
+      const result = await svc.recommendForDependent('user1', 'dep1')
       expect(result.simulado).toBe(true)
       expect(result.proximosPasos).toHaveLength(3)
     })
@@ -748,7 +749,7 @@ describe('AiService', () => {
   // ── generarResumen() ─────────────────────────────────────────────────────
 
   describe('generarResumen', () => {
-    function setupResumenMocks(perfil: Record<string, any> | null, registro: Record<string, any> | null) {
+    function setupResumenMocks(perfil: Record<string, unknown> | null, registro: Record<string, unknown> | null) {
       const perfilSnap = perfil
         ? mockCollection(null, false, [{ data: () => perfil }])
         : mockCollection(null, true)
@@ -776,7 +777,7 @@ describe('AiService', () => {
     }
 
     it('debe devolver mock cuando el cliente AI no está disponible', async () => {
-      const configNoVertex: Record<string, any> = {
+      const configNoVertex = {
         get: jest.fn(() => undefined),
       }
       const module: TestingModule = await Test.createTestingModule({
@@ -790,7 +791,7 @@ describe('AiService', () => {
 
       setupResumenMocks(null, null)
 
-      const result: any = await svc.generarResumen('user1')
+      const result = await svc.generarResumen('user1')
       expect(result.simulado).toBe(true)
       expect(result.resumenUnParrafo).toBeDefined()
       expect(result.resumenTresParrafos).toBeDefined()
@@ -799,7 +800,7 @@ describe('AiService', () => {
     it('debe devolver mock cuando no hay perfil', async () => {
       setupResumenMocks(null, null)
 
-      const result: any = await svc.generarResumen('user1')
+      const result = await svc.generarResumen('user1')
       expect(result.simulado).toBe(true)
     })
 
@@ -838,7 +839,7 @@ describe('AiService', () => {
         })),
       )
 
-      const result: any = await svc.generarResumen('user1')
+      const result = await svc.generarResumen('user1')
       expect(result.simulado).toBe(false)
       expect(result.resumenUnParrafo).toBe('Ana es una mujer de 28 años con diagnóstico de tea...')
       expect(result.resumenTresParrafos.quienEres).toBe('Ana es una persona...')
@@ -883,7 +884,7 @@ describe('AiService', () => {
 
       mockGenerateContent.mockRejectedValue(new Error('Timeout'))
 
-      const result: any = await svc.generarResumen('user1')
+      const result = await svc.generarResumen('user1')
       expect(result.simulado).toBe(true)
       expect(result.resumenUnParrafo).toContain('No se pudo generar')
     })
@@ -898,7 +899,7 @@ describe('AiService', () => {
         geminiResponse('esto no es json{{{'),
       )
 
-      const result: any = await svc.generarResumen('user1')
+      const result = await svc.generarResumen('user1')
       expect(result.simulado).toBe(true)
     })
   })
@@ -912,7 +913,7 @@ describe('AiService', () => {
         geminiResponse('Texto de prueba'),
       )
 
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.respuesta).toBe('Texto de prueba')
     })
 
@@ -920,7 +921,7 @@ describe('AiService', () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
       mockSendMessage.mockResolvedValue({ })
 
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
     })
 
@@ -936,7 +937,7 @@ describe('AiService', () => {
       }
       mockSendMessage.mockResolvedValue(multiPartResponse)
 
-      const result: any = await svc.chat('user1', 'Hola')
+      const result = await svc.chat('user1', 'Hola')
       expect(result.respuesta).toBe('Hola mundo')
     })
   })
@@ -951,7 +952,7 @@ describe('AiService', () => {
         geminiResponse(JSON.stringify(data)),
       )
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.proximosPasos).toEqual(['P1', 'P2', 'P3'])
     })
 
@@ -962,7 +963,7 @@ describe('AiService', () => {
         geminiResponse('```json\n' + JSON.stringify(data) + '\n```'),
       )
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.proximosPasos).toEqual(['P1', 'P2', 'P3'])
     })
 
@@ -973,7 +974,7 @@ describe('AiService', () => {
         geminiResponse('```\n' + JSON.stringify(data) + '\n```'),
       )
 
-      const result: any = await svc.recommend('user1')
+      const result = await svc.recommend('user1')
       expect(result.proximosPasos).toEqual(['P1', 'P2', 'P3'])
     })
   })
