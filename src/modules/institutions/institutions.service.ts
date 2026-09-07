@@ -5,6 +5,10 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
+import { InstitucionDoc } from '../../common/interfaces/firestore-documents.interface'
+
+/** Institución con ID resuelto, tal como se devuelve al cliente. */
+type InstitucionConId = InstitucionDoc & { id: string }
 
 @Injectable()
 export class InstitutionsService {
@@ -25,17 +29,17 @@ export class InstitutionsService {
     if (filtros.categoria) q = q.where('categoria', '==', filtros.categoria)
 
     const snap = await q.get()
-    let filas = snap.docs.map(d => this.parsear({ id: d.id, ...d.data() }))
+    let filas = snap.docs.map(d => this.parsear({ id: d.id, ...d.data() } as InstitucionConId))
 
     // Filtrar en memoria para campos que Firestore no indexa bien
     if (filtros.ciudad) {
       const termino = filtros.ciudad.toLowerCase()
-      filas = filas.filter((f: any) => (f.ciudad ?? '').toLowerCase().includes(termino))
+      filas = filas.filter(f => (f.ciudad ?? '').toLowerCase().includes(termino))
     }
 
     if (filtros.busqueda) {
       const termino = filtros.busqueda.toLowerCase()
-      filas = filas.filter((f: any) =>
+      filas = filas.filter(f =>
         (f.nombre ?? '').toLowerCase().includes(termino) ||
         (f.descripcion ?? '').toLowerCase().includes(termino) ||
         (f.ciudad ?? '').toLowerCase().includes(termino)
@@ -43,7 +47,7 @@ export class InstitutionsService {
     }
 
     // Ordenar por calificación promedio descendente
-    filas.sort((a: any, b: any) => (b.calificacionPromedio ?? 0) - (a.calificacionPromedio ?? 0))
+    filas.sort((a, b) => (b.calificacionPromedio ?? 0) - (a.calificacionPromedio ?? 0))
 
     const total = filas.length
     const inicio = (page - 1) * limit
@@ -111,14 +115,15 @@ export class InstitutionsService {
       if (snap.empty) throw new NotFoundException('No tienes una institución registrada')
       const doc = snap.docs[0]
       return this.parsear({ id: doc.id, ...doc.data() })
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Fallback: si el índice compuesto de Firebase aún no está listo,
       // se obtienen todas las instituciones activas del usuario
       // y se ordenan en memoria por fechaCreacion descendente.
+      const err = error as { message?: string; code?: string | number }
       const esErrorDeIndice =
-        error?.message?.toLowerCase().includes('requires an index') ||
-        error?.code === 'failed-precondition' ||
-        error?.code === 9
+        err?.message?.toLowerCase().includes('requires an index') ||
+        err?.code === 'failed-precondition' ||
+        err?.code === 9
 
       if (!esErrorDeIndice) throw error
 
@@ -134,8 +139,8 @@ export class InstitutionsService {
       if (fallbackSnap.empty) throw new NotFoundException('No tienes una institución registrada')
 
       const docs = fallbackSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a: any, b: any) => {
+        .map(d => ({ id: d.id, ...d.data() } as InstitucionConId))
+        .sort((a, b) => {
           const tsA = new Date(a.fechaCreacion || 0).getTime()
           const tsB = new Date(b.fechaCreacion || 0).getTime()
           return tsB - tsA
@@ -284,7 +289,7 @@ export class InstitutionsService {
   }
 
   // ─── Helpers privados ──────────────────────────────────────────────
-  private buildUpdatePayload(dto: UpdateInstitucionDto): Record<string, any> {
+  private buildUpdatePayload(dto: UpdateInstitucionDto): Record<string, unknown> {
     const camposPermitidos = [
       'nombre', 'descripcion', 'categoria', 'subcategoria', 'direccion',
       'ciudad', 'estado', 'lat', 'lng', 'telefono', 'whatsapp', 'email',
@@ -292,9 +297,9 @@ export class InstitutionsService {
       'edadMaxima', 'horarioAtencion', 'tipoPlan', 'servicios', 'fotos',
     ]
 
-    const carga: Record<string, any> = {}
+    const carga: Record<string, unknown> = {}
     for (const campo of camposPermitidos) {
-      const valor = (dto as any)[campo]
+      const valor = (dto as unknown as Record<string, unknown>)[campo]
       if (valor !== undefined) {
         carga[campo] = valor
       }
@@ -308,7 +313,7 @@ export class InstitutionsService {
     return carga
   }
 
-  private parsear(fila: any) {
+  private parsear(fila: InstitucionConId) {
     if (!fila) return fila
     return {
       ...fila,
