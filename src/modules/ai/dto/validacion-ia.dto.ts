@@ -65,6 +65,22 @@ export class ResultadoValidacionIaDto {
   fechaValidacion!: string
 }
 
+/** Registro persistido en la colección `validacionesIA` (lo que devuelve el historial). */
+export class RegistroValidacionIaDto extends ResultadoValidacionIaDto {
+  @ApiProperty({ description: 'ID del registro de validación', example: 'val-xyz789' })
+  id!: string
+
+  @ApiProperty({
+    enum: ['automatica', 'fallback', 'override'],
+    description: 'Origen del registro: automatica = registro o subida de documento, fallback = reglas de código por caída de la IA, override = decisión manual del admin',
+    example: 'automatica',
+  })
+  tipo!: 'automatica' | 'fallback' | 'override'
+
+  @ApiProperty({ description: 'ID del administrador que aplicó el override (null en validaciones automáticas)', nullable: true, example: null })
+  adminId!: string | null
+}
+
 /** Cuerpo del override manual de validación por parte de un administrador. */
 export class OverrideValidacionDto {
   @ApiProperty({ description: 'Decisión del administrador: true = aprobar y verificar la cuenta, false = rechazar', example: true })

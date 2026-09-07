@@ -98,7 +98,7 @@ async function bootstrap() {
     .addTag("Comunidad", "Grupos, posts y comentarios")
     .addTag("Notificaciones", "Notificaciones in-app")
     .addTag("Administración", "Panel administrativo")
-    .addTag("Inteligencia Artificial", "Chat y recomendaciones con IA")
+    .addTag("Inteligencia Artificial", "Chat, recomendaciones y validación automática de usuarios con IA")
     .addTag("Empleo", "Bolsa de trabajo inclusiva")
     .addTag("Catálogos", "Catálogos de referencia (parentescos, discapacidades, etc.)")
     .addTag("Mensajes", "Mensajería directa entre usuarios")

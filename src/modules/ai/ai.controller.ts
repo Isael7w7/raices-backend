@@ -8,7 +8,7 @@ import { ChatIaDto } from './dto/chat-ia.dto'
 import { RecomendacionIaDto } from './dto/recomendacion-ia.dto'
 import { RespuestaResumenDto } from './dto/resumen-ia.dto'
 import { RespuestaChatDto, RespuestaRecomendacionDto } from './dto/respuestas-ia.dto'
-import { ResultadoValidacionIaDto, OverrideValidacionDto } from './dto/validacion-ia.dto'
+import { ResultadoValidacionIaDto, RegistroValidacionIaDto, OverrideValidacionDto } from './dto/validacion-ia.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -119,7 +119,7 @@ export class AiController {
     description: 'Devuelve todas las validaciones (automáticas, fallback por reglas y overrides de admin) del usuario, ordenadas de la más reciente a la más antigua.',
   })
   @ApiParam({ name: 'id', description: 'ID del usuario' })
-  @ApiOkResponse({ type: [ResultadoValidacionIaDto], description: 'Historial de validaciones' })
+  @ApiOkResponse({ type: [RegistroValidacionIaDto], description: 'Historial de validaciones' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   @ApiResponse({ status: 403, description: 'Solo administradores' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
