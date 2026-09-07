@@ -3,6 +3,7 @@ import { Firestore, FieldValue, Query, DocumentData } from 'firebase-admin/fires
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
+import type { PerfilDoc, InstitucionDoc } from '../../common/interfaces/firestore-documents.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
@@ -91,7 +92,7 @@ export class CommunityService {
         try {
           const termino = buscar.toLowerCase()
           const autoresIdsBusqueda = idsValidos(publicaciones.map(p => p.autorId))
-          const mapaAutoresBusqueda = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
+          const mapaAutoresBusqueda = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, autoresIdsBusqueda)
           publicaciones = publicaciones.filter(p =>
             (p.contenido ?? '').toLowerCase().includes(termino) ||
             (mapaAutoresBusqueda.get(p.autorId)?.nombreCompleto ?? '').toLowerCase().includes(termino)
@@ -104,10 +105,10 @@ export class CommunityService {
       publicaciones = ordenar(publicaciones, ordenarPor ?? 'fechaCreacion', direccion ?? 'desc')
 
       // Batch lookup de autores con IDs válidos únicamente
-      let mapaAutores = new Map<string, any>()
+      let mapaAutores = new Map<string, PerfilDoc>()
       try {
         const autoresIds = idsValidos([...new Set(publicaciones.map(p => p.autorId))])
-        mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+        mapaAutores = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, autoresIds)
       } catch (authorsErr) {
         this.logger.error(`Error al obtener autores de publicaciones: ${(authorsErr as Error).message}`, (authorsErr as Error).stack)
       }
@@ -152,12 +153,12 @@ export class CommunityService {
       const snap = await this.db.collection(COLECCIONES.comentarios)
         .where('publicacionId', '==', publicacionId).get()
 
-      let comentarios = snap.docs.map(d => extraerDoc(d))
+      const comentarios = snap.docs.map(d => extraerDoc(d))
       comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
 
       // Batch lookup de autores con IDs válidos únicamente
       const autoresIds = idsValidos([...new Set(comentarios.map(c => c.autorId))])
-      const mapaAutores = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
+      const mapaAutores = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, autoresIds)
 
       const todos = comentarios.map(c => {
         const autor = mapaAutores.get(c.autorId) ?? AUTOR_NO_DISPONIBLE
@@ -451,8 +452,8 @@ export class CommunityService {
     // Enriquecer con nombre de institución
     const instIds = [...new Set(foros.map(f => f.institucionId).filter(Boolean))] as string[]
     const mapaInst = instIds.length > 0
-      ? await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds)
-      : new Map()
+      ? await obtenerDocumentosPorIds<InstitucionDoc>(this.db, COLECCIONES.instituciones, instIds)
+      : new Map<string, InstitucionDoc>()
 
     foros = foros.map(f => ({
       ...f,
@@ -478,8 +479,8 @@ export class CommunityService {
     // Enriquecer respuestas con datos de autor
     const autorIds = [...new Set(respuestas.map(r => r.autorId).filter(Boolean))] as string[]
     const mapaAutores = autorIds.length > 0
-      ? await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autorIds)
-      : new Map()
+      ? await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, autorIds)
+      : new Map<string, PerfilDoc>()
 
     const respuestasEnriquecidas = respuestas.map(r => {
       const autor = mapaAutores.get(r.autorId) ?? AUTOR_NO_DISPONIBLE
@@ -560,7 +561,7 @@ export class CommunityService {
   // ═══════════════════════════════════════════════════════════════════
 
   async getConectemosPosts(pagina = 1, limite = 20, categoriaCreativa?: string, buscar?: string): Promise<RespuestaPaginada<any>> {
-    let q: Query = this.db.collection(COLECCIONES.publicaciones)
+    const q: Query = this.db.collection(COLECCIONES.publicaciones)
       .where('categoriaCreativa', '!=', null)
 
     const snap = await q.get()
@@ -581,8 +582,8 @@ export class CommunityService {
     // Enriquecer con datos de autor
     const autoresIds = [...new Set(publicaciones.map(p => p.autorId).filter(Boolean))] as string[]
     const mapaAutores = autoresIds.length > 0
-      ? await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, autoresIds)
-      : new Map()
+      ? await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, autoresIds)
+      : new Map<string, PerfilDoc>()
 
     const enriquecidas = publicaciones.map(p => {
       const autor = mapaAutores.get(p.autorId) ?? AUTOR_NO_DISPONIBLE

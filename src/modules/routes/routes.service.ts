@@ -46,7 +46,7 @@ export class RoutesService {
    * Lista todas las rutas de desarrollo del usuario.
    */
   async listarRutas(usuarioId: string, filtros?: { estado?: string; areaInteres?: string }) {
-    let q = this.col(COLECCIONES.rutasDesarrollo)
+    const q = this.col(COLECCIONES.rutasDesarrollo)
       .where('usuarioId', '==', usuarioId)
 
     const snap = await q.get()

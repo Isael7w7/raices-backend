@@ -4,7 +4,7 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
-import { VacanteDoc, PostulacionDoc } from '../../common/interfaces/firestore-documents.interface'
+import { VacanteDoc, PostulacionDoc, InstitucionDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
@@ -34,8 +34,8 @@ export class JobsService {
 
     // Batch lookup de instituciones en lugar de N+1 queries
     const instIds = [...new Set(vacantes.map(v => v.institucionId))]
-    const mapaInstRaw = await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds)
-    const mapaInst = new Map<string, any>()
+    const mapaInstRaw = await obtenerDocumentosPorIds<InstitucionDoc>(this.db, COLECCIONES.instituciones, instIds)
+    const mapaInst = new Map<string, InstitucionDoc & { id: string }>()
     mapaInstRaw.forEach((data, id) => mapaInst.set(id, { id, ...data }))
 
     if (filtros.ciudad) {
@@ -44,7 +44,7 @@ export class JobsService {
     }
 
     const todos = vacantes.map(v => {
-      const inst = mapaInst.get(v.institucionId) ?? {}
+      const inst = mapaInst.get(v.institucionId) ?? ({} as InstitucionDoc)
       return {
         ...v,
         tiposDiscapacidad: parsearTiposDiscapacidad(v.tiposDiscapacidad),
@@ -170,14 +170,14 @@ export class JobsService {
 
     // Batch lookups de vacantes e instituciones en lugar de N+1 queries
     const vacanteIds = [...new Set(postulaciones.map(p => p.vacanteId))]
-    const mapaVacantes = await obtenerDocumentosPorIds(this.db, COLECCIONES.vacantes, vacanteIds)
+    const mapaVacantes = await obtenerDocumentosPorIds<VacanteDoc>(this.db, COLECCIONES.vacantes, vacanteIds)
 
     const instIdsFromVacantes = [...new Set([...mapaVacantes.values()].map(v => v?.institucionId).filter(Boolean))] as string[]
-    const mapaInst = await obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIdsFromVacantes)
+    const mapaInst = await obtenerDocumentosPorIds<InstitucionDoc>(this.db, COLECCIONES.instituciones, instIdsFromVacantes)
 
     const todos = postulaciones.map(p => {
-      const vacante = mapaVacantes.get(p.vacanteId) ?? {}
-      const inst = mapaInst.get(vacante.institucionId) ?? {}
+      const vacante = mapaVacantes.get(p.vacanteId) ?? ({} as VacanteDoc)
+      const inst = mapaInst.get(vacante.institucionId ?? '') ?? ({} as InstitucionDoc)
       return { ...p, titulo: vacante.titulo, modalidad: vacante.modalidad, nombreInstitucion: inst.nombre ?? null, institucionId: vacante.institucionId ?? null, institucionOwnerId: inst.creadoPor ?? null }
     })
 
@@ -252,11 +252,11 @@ export class JobsService {
 
     // Enriquecer con datos del postulante (perfiles) en batch
     const usuarioIds = [...new Set(postulaciones.map(p => p.usuarioId).filter(Boolean))] as string[]
-    const mapaUsuarios = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+    const mapaUsuarios = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
     let todos = postulaciones.map(p => {
-      const vacante = mapaVacantes.get(p.vacanteId) ?? {}
-      const perfil = mapaUsuarios.get(p.usuarioId) ?? {}
+      const vacante = mapaVacantes.get(p.vacanteId) ?? ({} as VacanteDoc)
+      const perfil = mapaUsuarios.get(p.usuarioId) ?? ({} as PerfilDoc)
       return {
         id: p.id,
         vacanteId: p.vacanteId,
@@ -330,10 +330,10 @@ export class JobsService {
 
     // Enriquecer con datos del postulante
     const usuarioIds = [...new Set(postulaciones.map(p => p.usuarioId).filter(Boolean))] as string[]
-    const mapaUsuarios = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+    const mapaUsuarios = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
     let todos = postulaciones.map(p => {
-      const perfil = mapaUsuarios.get(p.usuarioId) ?? {}
+      const perfil = mapaUsuarios.get(p.usuarioId) ?? ({} as PerfilDoc)
       return {
         id: p.id,
         vacanteId: p.vacanteId,
