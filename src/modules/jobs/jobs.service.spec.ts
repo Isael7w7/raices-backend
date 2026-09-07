@@ -17,28 +17,6 @@ function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-
   }
 }
 
-function mockCollection(opts: {
-  docResult?: any
-  empty?: boolean
-  docs?: any[]
-  docId?: string
-  docData?: Record<string, any> | null
-} = {}) {
-  const { docResult, empty = false, docs = [], docId = 'mock-doc-id', docData } = opts
-  return {
-    doc: jest.fn().mockReturnValue({
-      get: jest.fn().mockResolvedValue(docResult ?? mockDoc(docData ?? null, docData !== null, docId)),
-      set: jest.fn().mockResolvedValue(undefined),
-      update: jest.fn().mockResolvedValue(undefined),
-      delete: jest.fn().mockResolvedValue(undefined),
-    }),
-    where: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    orderBy: jest.fn().mockReturnThis(),
-    get: jest.fn().mockResolvedValue({ empty, docs, size: docs.length }),
-  }
-}
-
 // ─── Mock CurrentUserPayload helper ────────────────────────────────────
 
 function mockUser(overrides: Partial<CurrentUserPayload> = {}): CurrentUserPayload {
@@ -87,7 +65,6 @@ describe('JobsService', () => {
       const instData = { id: 'inst1', nombre: 'Centro Test', activa: true, verificada: true }
 
       const vacantesSnap = { docs: vacantes.map(v => ({ id: v.id, data: () => v })), size: vacantes.length }
-      const instSnap = { docs: [{ id: 'inst1', data: () => instData }], empty: false, size: 1 }
 
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(vacantesSnap) })

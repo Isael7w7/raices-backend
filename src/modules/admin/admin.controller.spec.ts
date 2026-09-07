@@ -9,8 +9,6 @@ import { AuditService } from '../../common/audit/audit.service'
 
 describe('AdminController', () => {
   let controller: AdminController
-  let service: AdminService
-
   const mockService = {
     getStats: jest.fn(),
     getAnalytics: jest.fn(),
@@ -54,7 +52,6 @@ describe('AdminController', () => {
     }).compile()
 
     controller = module.get<AdminController>(AdminController)
-    service = module.get<AdminService>(AdminService)
   })
 
   afterEach(() => {

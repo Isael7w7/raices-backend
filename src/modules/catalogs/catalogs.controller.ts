@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger'
 import { CatalogsService } from './catalogs.service'
 import { CatalogoCompletoDto, EtapaVidaCatalogoDto, FeatureCatalogoDto, CategoriaCatalogoDto } from './dto/respuestas-catalogo.dto'
 import { UseETag } from '../../common/decorators/use-etag.decorator'

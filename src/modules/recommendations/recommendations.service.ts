@@ -5,7 +5,6 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearCampoJson, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { InstitucionDoc, InteraccionDoc, PerfilExtendidoDoc, PerfilDoc, EspecialistaDoc } from '../../common/interfaces/firestore-documents.interface'
 import { RegistrarInteraccionDto, TipoInteraccion } from './dto/registrar-interaccion.dto'
-import { InstitucionRecomendadaDto } from './dto/respuestas-recomendaciones.dto'
 
 /** Las 8 escalas de la evaluación "Cómo vives hoy" (Spec MVP Raíces). */
 const CLAVES_ESCALAS_VIDA = [

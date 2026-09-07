@@ -1,11 +1,11 @@
-import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, UseInterceptors } from '@nestjs/common'
+import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode, UseInterceptors, BadRequestException } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
 import {
   EstadisticasDto, AnaliticasDto, NecesidadesInteligenciaDto, VisitantesActivosDto,
-  InstitucionAdminDto, PaginaInstitucionesAdminDto, UsuarioAdminDto, PaginaUsuariosAdminDto,
-  ResenaAdminDto, PaginaResenasAdminDto, RespuestaToggleUsuarioDto, RespuestaToggleVerificacionDto,
+  PaginaInstitucionesAdminDto, PaginaUsuariosAdminDto,
+  PaginaResenasAdminDto, RespuestaToggleUsuarioDto, RespuestaToggleVerificacionDto,
   RespuestaRolDto, AlertaDto, ConfiguracionDto, VerificacionIdentidadInstitucionDto,
 } from './dto/respuestas-admin.dto'
 import { InstitucionDto } from '../institutions/dto/respuestas-institucion.dto'
@@ -326,7 +326,6 @@ export class AdminController {
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   rechazarDocumentoIdentidad(@Param('id') id: string, @Body('motivo') motivo: string) {
     if (!motivo || motivo.trim().length === 0) {
-      const { BadRequestException } = require('@nestjs/common')
       throw new BadRequestException('El motivo de rechazo es obligatorio')
     }
     return this.svc.rechazarDocumentoIdentidad(id, motivo)

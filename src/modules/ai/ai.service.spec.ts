@@ -187,7 +187,7 @@ describe('AiService', () => {
         }),
       }
 
-      const module: TestingModule = await Test.createTestingModule({
+      await Test.createTestingModule({
         providers: [
           AiService,
           { provide: FIRESTORE, useValue: firestoreMock },

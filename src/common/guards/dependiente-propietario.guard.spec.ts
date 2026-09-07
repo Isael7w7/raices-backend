@@ -1,6 +1,5 @@
 import { ExecutionContext, NotFoundException, BadRequestException } from '@nestjs/common'
 import { DependientePropietarioGuard } from './dependiente-propietario.guard'
-import { FIRESTORE } from '../../database/firebase.provider'
 
 // ─── Mock helpers ────────────────────────────────────────────────────────
 

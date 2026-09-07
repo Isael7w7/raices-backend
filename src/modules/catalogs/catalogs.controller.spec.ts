@@ -4,7 +4,6 @@ import { CatalogsService } from './catalogs.service'
 
 describe('CatalogsController', () => {
   let controller: CatalogsController
-  let service: CatalogsService
 
   const mockService = {
     getParentescos: jest.fn(),
@@ -21,7 +20,6 @@ describe('CatalogsController', () => {
     }).compile()
 
     controller = module.get<CatalogsController>(CatalogsController)
-    service = module.get<CatalogsService>(CatalogsService)
   })
 
   afterEach(() => {

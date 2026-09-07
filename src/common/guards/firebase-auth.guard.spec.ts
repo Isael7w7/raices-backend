@@ -4,7 +4,6 @@ import { ExecutionContext } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { FirebaseAuthGuard } from './firebase-auth.guard'
 import { FIRESTORE } from '../../database/firebase.provider'
-import { COLECCIONES } from '../../database/firestore.constants'
 
 // ─── Mock firebase-admin/auth at module level ────────────────────────────
 

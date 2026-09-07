@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common'
+import sharpMock from 'sharp'
 import { CsfQrService } from './csf-qr.service'
 
 // Mock de las dependencias pesadas
@@ -38,7 +39,7 @@ describe('CsfQrService', () => {
     jest.clearAllMocks()
 
     // Restaurar el mock de sharp a su comportamiento por defecto
-    const sharp = require('sharp')
+    const sharp = sharpMock as unknown as jest.Mock
     sharp.mockImplementation(() => ({
       ensureAlpha: jest.fn().mockReturnThis(),
       raw: jest.fn().mockReturnThis(),
@@ -222,7 +223,7 @@ describe('CsfQrService', () => {
 
   describe('when image processing fails', () => {
     it('should throw BadRequestException when sharp fails', async () => {
-      const sharp = require('sharp')
+      const sharp = sharpMock as unknown as jest.Mock
       sharp.mockImplementationOnce(() => ({
         ensureAlpha: jest.fn().mockReturnThis(),
         raw: jest.fn().mockReturnThis(),

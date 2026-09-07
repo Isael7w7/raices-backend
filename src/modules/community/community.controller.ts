@@ -10,7 +10,7 @@ import { ActualizarPublicacionDto } from './dto/actualizar-publicacion.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import {
   GrupoDto, PaginaGruposDto, PublicacionDto, PaginaPublicacionesDto, ComentarioDto, PaginaComentariosDto,
-  RespuestaMeGustaDto, RespuestaUnirseDto, RespuestaSalirDto, EstadisticasComunidadDto, MiembroDto, PaginaMiembrosDto,
+  RespuestaMeGustaDto, RespuestaUnirseDto, RespuestaSalirDto, EstadisticasComunidadDto, PaginaMiembrosDto,
   ForoDto, PaginaForosDto, ForoConRespuestasDto, RespuestaForoDto,
 } from './dto/respuestas-comunidad.dto'
 import { Throttle } from '@nestjs/throttler'

@@ -429,7 +429,7 @@ describe('InstitutionsService', () => {
         }),
       })
 
-      const result: any = await service.updateMine('user1', { nombre: 'Centro Actualizado' })
+      await service.updateMine('user1', { nombre: 'Centro Actualizado' })
 
       expect(updateMock).toHaveBeenCalled()
     })

@@ -1,9 +1,7 @@
 import { ExecutionContext, BadRequestException } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { LimitDependientesGuard } from './limit-dependientes.guard'
-import { FIRESTORE } from '../../database/firebase.provider'
 import { getMaxDependientesPorTutor } from '../../database/firestore.constants'
-import { LIMIT_DEPENDIENTES_KEY } from '../decorators/limit-dependientes.decorator'
 
 function mockExecutionContext(user?: { id: string }) {
   return {

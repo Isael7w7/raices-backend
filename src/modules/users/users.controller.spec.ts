@@ -41,7 +41,6 @@ describe('UsersController', () => {
 
   it('registra GET dependientes/:dependienteId/permisos con roles tutor/admin y ANTES de la ruta paramétrica :id', () => {
     const handler = (UsersController.prototype as any).getDependentPermissions
-    const getDependent = (UsersController.prototype as any).getDependent
 
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('dependientes/:dependienteId/permisos')
     expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.GET)

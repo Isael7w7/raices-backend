@@ -57,7 +57,7 @@ describe('AdminService', () => {
     service = module.get<AdminService>(AdminService)
   })
 
-  function chainableSnap(docs: any[], empty = false) {
+  function _chainableSnap(docs: any[], empty = false) {
     return { empty, docs, size: docs.length }
   }
 

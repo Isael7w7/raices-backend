@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { ApiProperty } from '@nestjs/swagger'
 import { PaginacionMetaDto } from '../../../common/dto/paginacion.dto'
 
 // ─── Revelación Progresiva ──────────────────────────────────────────

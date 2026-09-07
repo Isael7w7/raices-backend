@@ -1,8 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { ThrottlerModule, ThrottlerGuard, ThrottlerException } from '@nestjs/throttler'
-import { ExecutionContext, CallHandler } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
-import { of } from 'rxjs'
 
 /**
  * ══════════════════════════════════════════════════════════════════════════════

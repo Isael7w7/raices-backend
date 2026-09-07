@@ -19,7 +19,6 @@ import { BadRequestException } from '@nestjs/common'
 
 describe('InstitutionsController', () => {
   let controller: InstitutionsController
-  let service: InstitutionsService
 
   const mockService = {
     findAll: jest.fn(),
@@ -50,7 +49,6 @@ describe('InstitutionsController', () => {
     }).compile()
 
     controller = module.get<InstitutionsController>(InstitutionsController)
-    service = module.get<InstitutionsService>(InstitutionsService)
   })
 
   afterEach(() => {

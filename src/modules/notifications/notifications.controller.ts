@@ -1,5 +1,5 @@
-import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent, Res, HttpCode } from '@nestjs/common'
-import { Observable, fromEvent } from 'rxjs'
+import { Controller, Get, Patch, Param, UseGuards, Sse, MessageEvent, HttpCode } from '@nestjs/common'
+import { Observable } from 'rxjs'
 import { map } from 'rxjs/operators'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { NotificationsService } from './notifications.service'

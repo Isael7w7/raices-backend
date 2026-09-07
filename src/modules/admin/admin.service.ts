@@ -645,7 +645,6 @@ export class AdminService {
         const CINCO_MIN = 5 * 60 * 1000
         const UN_DIA = 24 * 60 * 60 * 1000
         const UNA_SEMANA = 7 * UN_DIA
-        const UN_MES = 30 * UN_DIA
 
         const sesiones = analiticasSnap.docs.map(d => d.data() as any)
         const timestamps = sesiones
@@ -686,7 +685,6 @@ export class AdminService {
     const perfilesConActividadReciente = perfilesExtendidosSnap.size
 
     // Estimaciones basadas en proporciones reales
-    const proporcionActivos = totalUsuarios > 0 ? activos / totalUsuarios : 0.6
     const proporcionCompletaronPerfil = totalUsuarios > 0 ? perfilesConActividadReciente / totalUsuarios : 0.3
 
     const live = Math.max(1, Math.round(activos * 0.05 * proporcionCompletaronPerfil))

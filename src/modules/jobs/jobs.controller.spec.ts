@@ -71,7 +71,6 @@ describe('JobsController', () => {
 
   it('registra GET postulantes-institucion con guards y roles correctos, ANTES de la ruta paramétrica :id', () => {
     const handler = (JobsController.prototype as any).institutionApplicants
-    const findOne = (JobsController.prototype as any).findOne
 
     // Ruta y método HTTP
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('postulantes-institucion')

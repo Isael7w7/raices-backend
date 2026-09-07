@@ -67,15 +67,6 @@ interface HistorialUsuario {
   cantidadPostulaciones: number
 }
 
-/** Estructura esperada del JSON de Gemini. Campos opcionales: el modelo puede omitirlos. */
-interface RespuestaGemini {
-  proximosPasos?: unknown
-  razonamiento?: unknown
-  sugerenciasInstitucion?: unknown
-  resumenUnParrafo?: unknown
-  resumenTresParrafos?: unknown
-}
-
 /**
  * Configuración de Gemini via Google Gen AI SDK (reemplaza @google-cloud/vertexai).
  * Los valores se leen de variables de entorno montadas desde GCP Secret Manager:

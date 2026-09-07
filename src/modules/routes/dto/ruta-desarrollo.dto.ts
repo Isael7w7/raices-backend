@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsIn, IsOptional, IsString, IsArray, IsNumber, Min, Max } from 'class-validator'
+import { IsIn, IsOptional, IsString, IsNumber, Min } from 'class-validator'
 
 /**
  * Estado de una ruta de desarrollo.

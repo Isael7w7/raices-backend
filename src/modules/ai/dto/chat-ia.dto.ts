@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger'
 import { IsString, IsArray, IsOptional } from 'class-validator'
-import { Transform, Type } from 'class-transformer'
+import { Transform } from 'class-transformer'
 import { sanitizeHtml, sanitizeObject } from '../../../common/utils/sanitize-html'
 
 export class ChatIaDto {
