@@ -35,8 +35,66 @@ const AUTOR_NO_DISPONIBLE = Object.freeze({
 })
 
 /** Spread seguro de un snapshot de Firestore; retorna objeto vacío si data() es undefined */
-function extraerDoc<T = Record<string, any>>(d: { id: string; data(): DocumentData | undefined }): T & { id: string } {
+function extraerDoc<T = Record<string, unknown>>(d: { id: string; data(): DocumentData | undefined }): T & { id: string } {
   return { id: d.id, ...(d.data() ?? {}) } as T & { id: string }
+}
+
+/** Documento de la colección `grupos`. */
+interface GrupoDoc {
+  nombre?: string
+  descripcion?: string
+  cantidadMiembros?: number
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Documento de la colección `publicaciones`. */
+interface PublicacionDoc {
+  autorId: string
+  contenido?: string
+  mediaUrl?: string | null
+  categoriaCreativa?: string | null
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Documento de la colección `comentarios`. */
+interface ComentarioDoc {
+  autorId: string
+  contenido?: string
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Documento de la colección `foros`. */
+interface ForoDoc {
+  titulo?: string
+  descripcion?: string
+  institucionId: string
+  preguntasDetonantes?: string[]
+  activo?: boolean
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Documento de la colección `respuestasForo`. */
+interface RespuestaForoDoc {
+  autorId: string
+  preguntaIndex?: number
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Miembro/testimonio para la vista pública de la comunidad. */
+interface MiembroComunidad {
+  id: string
+  nombreCompleto: string
+  rol: string | null
+  profesion: string | null
+  bio: string | null
+  ciudad: string | null
+  estado: string | null
+  urlAvatar: string | null
 }
 
 /** Filtra valores falsy (null / undefined / '') de un array y retorna string[] limpio */
@@ -50,12 +108,12 @@ export class CommunityService {
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  async getGroups(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getGroups(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<GrupoDoc & { id: string }>> {
     try {
       const snap = await this.db.collection(COLECCIONES.grupos)
         .where('esPublico', '==', true).get()
 
-      let grupos = snap.docs.map(d => extraerDoc(d))
+      let grupos = snap.docs.map(d => extraerDoc<GrupoDoc>(d))
 
       if (buscar) {
         const termino = buscar.toLowerCase()
@@ -80,13 +138,13 @@ export class CommunityService {
     }
   }
 
-  async getPosts(grupoId?: string, usuarioId?: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getPosts(grupoId?: string, usuarioId?: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<PublicacionDoc & { id: string }>> {
     try {
       let q: Query = this.db.collection(COLECCIONES.publicaciones)
       if (grupoId) q = q.where('grupoId', '==', grupoId)
 
       const publicacionSnap = await q.get()
-      let publicaciones = publicacionSnap.docs.map(d => extraerDoc(d))
+      let publicaciones = publicacionSnap.docs.map(d => extraerDoc<PublicacionDoc>(d))
 
       if (buscar) {
         try {
@@ -124,7 +182,7 @@ export class CommunityService {
         }
       })
 
-      let conMeGusta: Record<string, unknown>[]
+      let conMeGusta: (PublicacionDoc & { id: string; usuarioMeGusta: boolean })[]
       try {
         if (usuarioId) {
           const likedSnap = await this.db.collection(COLECCIONES.meGustas)
@@ -148,12 +206,12 @@ export class CommunityService {
     }
   }
 
-  async getComments(publicacionId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getComments(publicacionId: string, pagina = 1, limite = 20): Promise<RespuestaPaginada<ComentarioDoc & { id: string }>> {
     try {
       const snap = await this.db.collection(COLECCIONES.comentarios)
         .where('publicacionId', '==', publicacionId).get()
 
-      const comentarios = snap.docs.map(d => extraerDoc(d))
+      const comentarios = snap.docs.map(d => extraerDoc<ComentarioDoc>(d))
       comentarios.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
 
       // Batch lookup de autores con IDs válidos únicamente
@@ -264,10 +322,10 @@ export class CommunityService {
     verificarMultimediaPermitida(user, media)
     const doc = await this.db.collection(COLECCIONES.publicaciones).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Publicación no encontrada')
-    const pub = doc.data() as any
+    const pub = doc.data() as Omit<PublicacionDoc, 'id'>
     if (pub.autorId !== user.id) throw new ForbiddenException('No tienes permiso para editar esta publicación')
 
-    const cambios: Record<string, any> = { contenido, fechaActualizacion: new Date().toISOString() }
+    const cambios: Record<string, unknown> = { contenido, fechaActualizacion: new Date().toISOString() }
     // Si se omite mediaUrl, se conserva el existente; si llega '' o null, se limpia
     if (mediaUrl !== undefined) cambios.mediaUrl = media
     await doc.ref.update(cambios)
@@ -281,7 +339,7 @@ export class CommunityService {
   async removePost(id: string, usuarioId: string, rol: string) {
     const doc = await this.db.collection(COLECCIONES.publicaciones).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Publicación no encontrada')
-    const pub = doc.data() as any
+    const pub = doc.data() as Omit<PublicacionDoc, 'id'>
     if (pub.autorId !== usuarioId && rol !== 'admin') {
       throw new ForbiddenException('No tienes permiso para eliminar esta publicación')
     }
@@ -309,7 +367,7 @@ export class CommunityService {
     await batch.commit()
 
     const doc = await this.db.collection(COLECCIONES.grupos).doc(ref.id).get()
-    return { id: ref.id, ...(doc.data() ?? {}) } as any
+    return { id: ref.id, ...(doc.data() ?? {}) } as ForoDoc & { id: string }
   }
 
   async joinGroup(grupoId: string, usuarioId: string) {
@@ -376,7 +434,7 @@ export class CommunityService {
    * Devuelve miembros/testimonios públicos de la comunidad.
    * Solo usuarios activos que tengan una bio configurada.
    */
-  async getMembers(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getMembers(pagina = 1, limite = 20): Promise<RespuestaPaginada<MiembroComunidad>> {
     try {
       const snap = await this.db.collection(COLECCIONES.perfiles)
         .where('activo', '==', true)
@@ -394,7 +452,7 @@ export class CommunityService {
           estado: data.estado ?? null,
           urlAvatar: data.urlAvatar ?? null,
         }
-      })
+      }) as MiembroComunidad[]
 
       // Solo usuarios que tengan bio (testimonios)
       miembros = miembros.filter(m => m.bio)
@@ -436,10 +494,10 @@ export class CommunityService {
     return { ...foroData, nombreInstitucion: perfil?.nombreCompleto ?? null }
   }
 
-  async getForos(pagina = 1, limite = 20, buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getForos(pagina = 1, limite = 20, buscar?: string): Promise<RespuestaPaginada<ForoDoc & { id: string }>> {
     const snap = await this.db.collection(COLECCIONES.foros)
       .where('activo', '==', true).get()
-    let foros = snap.docs.map(d => extraerDoc(d))
+    let foros = snap.docs.map(d => extraerDoc<ForoDoc>(d))
 
     if (buscar) {
       const termino = buscar.toLowerCase()
@@ -469,12 +527,12 @@ export class CommunityService {
   async getForoById(foroId: string) {
     const doc = await this.db.collection(COLECCIONES.foros).doc(foroId).get()
     if (!doc.exists) throw new NotFoundException('Foro no encontrado')
-    const foro = extraerDoc(doc)
+    const foro = extraerDoc<ForoDoc>(doc)
 
     // Obtener respuestas del foro
     const respuestasSnap = await this.db.collection(COLECCIONES.respuestasForo)
       .where('foroId', '==', foroId).get()
-    const respuestas = respuestasSnap.docs.map(d => extraerDoc(d))
+    const respuestas = respuestasSnap.docs.map(d => extraerDoc<RespuestaForoDoc>(d))
 
     // Enriquecer respuestas con datos de autor
     const autorIds = [...new Set(respuestas.map(r => r.autorId).filter(Boolean))] as string[]
@@ -496,7 +554,7 @@ export class CommunityService {
     // Agrupar respuestas por pregunta detonante
     const preguntasConRespuestas = (foro.preguntasDetonantes ?? []).map((pregunta: string, idx: number) => ({
       pregunta,
-      respuestas: respuestasEnriquecidas.filter((r: any) => r.preguntaIndex === idx),
+      respuestas: respuestasEnriquecidas.filter(r => r.preguntaIndex === idx),
     }))
 
     // Nombre de institución
@@ -560,12 +618,12 @@ export class CommunityService {
   // Espacio "Conectemos" (Contenido Creativo PCD)
   // ═══════════════════════════════════════════════════════════════════
 
-  async getConectemosPosts(pagina = 1, limite = 20, categoriaCreativa?: string, buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getConectemosPosts(pagina = 1, limite = 20, categoriaCreativa?: string, buscar?: string): Promise<RespuestaPaginada<PublicacionDoc & { id: string }>> {
     const q: Query = this.db.collection(COLECCIONES.publicaciones)
       .where('categoriaCreativa', '!=', null)
 
     const snap = await q.get()
-    let publicaciones = snap.docs.map(d => extraerDoc(d))
+    let publicaciones = snap.docs.map(d => extraerDoc<PublicacionDoc>(d))
 
     if (categoriaCreativa) {
       publicaciones = publicaciones.filter(p => p.categoriaCreativa === categoriaCreativa)
