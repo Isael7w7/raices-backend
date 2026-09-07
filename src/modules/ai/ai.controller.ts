@@ -1,23 +1,31 @@
-import { Controller, Post, Body, Req, HttpCode, UseGuards } from '@nestjs/common'
+import { Controller, Post, Patch, Get, Body, Param, Req, HttpCode, UseGuards } from '@nestjs/common'
 import { Request } from 'express'
-import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { AiService } from './ai.service'
+import { ValidationService } from './validation.service'
 import { ChatIaDto } from './dto/chat-ia.dto'
 import { RecomendacionIaDto } from './dto/recomendacion-ia.dto'
 import { RespuestaResumenDto } from './dto/resumen-ia.dto'
 import { RespuestaChatDto, RespuestaRecomendacionDto } from './dto/respuestas-ia.dto'
+import { ResultadoValidacionIaDto, OverrideValidacionDto } from './dto/validacion-ia.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { RolesGuard } from '../../common/guards/roles.guard'
+import { Roles } from '../../common/decorators/roles.decorator'
 import { DependientePropietarioGuard } from '../../common/guards/dependiente-propietario.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import type { DependienteDoc } from '../../common/interfaces/firestore-documents.interface'
 
 @ApiTags('Inteligencia Artificial')
 @ApiBearerAuth('jwt-auth')
 @UseGuards(JwtAuthGuard)
 @Controller('ia')
 export class AiController {
-  constructor(private readonly svc: AiService) {}
+  constructor(
+    private readonly svc: AiService,
+    private readonly validacion: ValidationService,
+  ) {}
 
   @Post('conversacion')
   @HttpCode(200)
@@ -40,7 +48,8 @@ export class AiController {
   recommend(@Body() dto: RecomendacionIaDto, @CurrentUser() user: CurrentUserPayload, @Req() req: Request) {
     if (dto?.dependienteId) {
       // DependientePropietarioGuard ya validó la autoría y adjuntó el documento en request.dependiente
-      return this.svc.recommendForDependent(user.id, dto.dependienteId, (req as any).dependiente)
+      const { dependiente } = req as Request & { dependiente?: DependienteDoc }
+      return this.svc.recommendForDependent(user.id, dto.dependienteId, dependiente)
     }
     return this.svc.recommend(user.id)
   }
@@ -60,5 +69,61 @@ export class AiController {
   @ApiResponse({ status: 401, description: 'No autenticado' })
   generarResumen(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.generarResumen(user.id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Validación automática de usuarios por IA (solo administradores)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Post('validar-usuario/:id')
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @Throttle({ default: { limit: 20, ttl: 3600000 } }) // 20 validaciones manuales por hora
+  @ApiOperation({
+    summary: 'Ejecutar validación manual por IA',
+    description: 'Analiza con Gemini la coherencia de nombre, email, CURP, rol, datos de institución y documentos de identidad del usuario. Confianza >= 80% con criterios clave → verificación inmediata; 50-79% → revisión manual del admin (último recurso); < 50% o problemas graves → rechazo. Si Vertex AI no está disponible, valida con reglas de código.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario a validar' })
+  @ApiOkResponse({ type: ResultadoValidacionIaDto, description: 'Resultado de la validación' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Solo administradores' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  validarUsuario(@Param('id') id: string) {
+    return this.validacion.validarUsuario(id)
+  }
+
+  @Patch('validar-usuario/:id/override')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Override manual de validación (admin)',
+    description: 'Permite a un administrador aprobar o rechazar manualmente la verificación de una cuenta, sin pasar por la IA. La decisión queda registrada en el historial de validaciones.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @ApiBody({ type: OverrideValidacionDto })
+  @ApiOkResponse({ type: ResultadoValidacionIaDto, description: 'Registro del override aplicado' })
+  @ApiResponse({ status: 400, description: 'Cuerpo inválido (falta aprobado)' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Solo administradores' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  overrideValidacion(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string, @Body() dto: OverrideValidacionDto) {
+    return this.validacion.overrideValidacion(id, dto.aprobado, user.id, dto.motivo)
+  }
+
+  @Get('validar-usuario/:id/historial')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Historial de validaciones por IA',
+    description: 'Devuelve todas las validaciones (automáticas, fallback por reglas y overrides de admin) del usuario, ordenadas de la más reciente a la más antigua.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @ApiOkResponse({ type: [ResultadoValidacionIaDto], description: 'Historial de validaciones' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Solo administradores' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  historialValidaciones(@Param('id') id: string) {
+    return this.validacion.obtenerHistorial(id)
   }
 }
