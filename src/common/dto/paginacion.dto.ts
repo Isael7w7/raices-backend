@@ -91,9 +91,9 @@ export class RespuestaPaginadaAnidadaDto<T> {
  */
 export function ordenar<T>(datos: T[], campo: string | undefined, direccion: 'asc' | 'desc'): T[] {
   if (!campo) return datos
-  return [...datos].sort((a: any, b: any) => {
-    const aVal = a[campo] ?? ''
-    const bVal = b[campo] ?? ''
+  return [...datos].sort((a, b) => {
+    const aVal = (a as Record<string, unknown>)[campo] ?? ''
+    const bVal = (b as Record<string, unknown>)[campo] ?? ''
     const cmp = String(aVal).localeCompare(String(bVal), 'es', { sensitivity: 'base' })
     return direccion === 'asc' ? cmp : -cmp
   })

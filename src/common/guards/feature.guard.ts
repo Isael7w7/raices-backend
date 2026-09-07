@@ -36,7 +36,7 @@ export class FeatureGuard implements CanActivate {
     const features: FeatureFlags = user?.features ?? FEATURES_POR_DEFECTO
 
     // Acceso seguro por string key
-    if ((features as any)[feature] === false) {
+    if ((features as unknown as Record<string, boolean>)[feature] === false) {
       throw new ForbiddenException(
         `Funcionalidad "${feature}" desactivada para tu cuenta. Contacta a tu tutor para activarla.`,
       )

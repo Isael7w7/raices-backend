@@ -2,6 +2,7 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nes
 import { Observable, of, EMPTY } from 'rxjs'
 import { switchMap } from 'rxjs/operators'
 import { createHash } from 'crypto'
+import type { Request } from 'express'
 import { Response } from 'express'
 
 interface EntradaCache {
@@ -39,7 +40,7 @@ export class ETagInterceptor implements NestInterceptor {
     ETagInterceptor.cache.clear()
   }
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const ctx = context.switchToHttp()
     const req = ctx.getRequest()
     const res = ctx.getResponse<Response>()
@@ -99,7 +100,7 @@ export class ETagInterceptor implements NestInterceptor {
    * Clave de caché: método + URL (con query) + userId.
    * Incluir userId evita servir datos personales de un usuario a otro.
    */
-  private buildKey(req: any): string {
+  private buildKey(req: Request & { user?: { id?: string } }): string {
     const userId = req.user?.id ?? 'anon'
     return `${req.method}:${req.originalUrl ?? req.url ?? '/'}:${userId}`
   }

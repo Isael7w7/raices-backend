@@ -80,9 +80,9 @@ export class HealthService {
         conTimeout,
       ])
       return { estado: 'ok' }
-    } catch (e: any) {
-      this.logger.error(`Health check: Firestore inaccesible: ${e?.message ?? e}`)
-      return { estado: 'error', detalle: e?.message ?? 'Firestore inaccesible' }
+    } catch (e: unknown) {
+      this.logger.error(`Health check: Firestore inaccesible: ${e instanceof Error ? e.message : String(e)}`)
+      return { estado: 'error', detalle: e instanceof Error ? e.message : 'Firestore inaccesible' }
     } finally {
       clearTimeout(timeout)
     }

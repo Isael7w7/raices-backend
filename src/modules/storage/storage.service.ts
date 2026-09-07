@@ -46,9 +46,9 @@ export class StorageService {
       try {
         this.bucket = getStorage().bucket(this.bucketName)
         this.logger.log(`✅ Firebase Storage bucket configurado: ${this.bucketName}`)
-      } catch (err: any) {
+      } catch (err: unknown) {
         this.logger.error(
-          `❌ Error al inicializar bucket "${this.bucketName}": ${err.message}`,
+          `❌ Error al inicializar bucket "${this.bucketName}": ${err instanceof Error ? err.message : String(err)}`,
         )
         this.logger.warn('⚠️  Fallback: se usará almacenamiento local.')
         // Intentionally NOT resetting bucketName so delete
@@ -114,26 +114,27 @@ export class StorageService {
           `[GCS] Archivo subido: ${filename} (${(file.length / 1024).toFixed(1)} KB, intento ${attempt})`,
         )
         return avatarUrl
-      } catch (err: any) {
-        lastError = err
+      } catch (err: unknown) {
+        const e = err as { code?: number | string; message?: string }
+        lastError = err instanceof Error ? err : new Error(String(err))
         const isTransient =
-          err.code === 503 ||
-          err.code === 500 ||
-          err.code === 429 ||
-          err.message?.includes('socket hang up') ||
-          err.message?.includes('ETIMEDOUT') ||
-          err.message?.includes('ECONNRESET') ||
-          err.message?.includes('equest failed')
+          e.code === 503 ||
+          e.code === 500 ||
+          e.code === 429 ||
+          e.message?.includes('socket hang up') ||
+          e.message?.includes('ETIMEDOUT') ||
+          e.message?.includes('ECONNRESET') ||
+          e.message?.includes('equest failed')
 
         if (isTransient && attempt < MAX_RETRIES) {
           const delay = BASE_RETRY_DELAY_MS * Math.pow(2, attempt - 1)
           this.logger.warn(
-            `[GCS] Intento ${attempt}/${MAX_RETRIES} falló (${err.message}). Reintentando en ${delay}ms...`,
+            `[GCS] Intento ${attempt}/${MAX_RETRIES} falló (${e.message}). Reintentando en ${delay}ms...`,
           )
           await this.sleep(delay)
         } else {
           this.logger.error(
-            `[GCS] Error definitivo al subir ${filename} tras ${attempt} intentos: ${err.message}`,
+            `[GCS] Error definitivo al subir ${filename} tras ${attempt} intentos: ${e.message}`,
           )
           throw err
         }
@@ -169,12 +170,13 @@ export class StorageService {
         await this.bucket.file(filePath).delete()
         this.logger.log(`[GCS] Archivo eliminado: ${filePath}`)
         return
-      } catch (e: any) {
-        if (e.code === 404) {
+      } catch (e: unknown) {
+        const err = e as { code?: number | string; message?: string }
+        if (err.code === 404) {
           this.logger.warn(`[GCS] Archivo no encontrado (ya eliminado): ${filePath}`)
         } else {
           this.logger.error(
-            `[GCS] Error al eliminar ${filePath}: ${e.message}. Código: ${e.code}`,
+            `[GCS] Error al eliminar ${filePath}: ${err.message}. Código: ${err.code}`,
           )
         }
       }

@@ -1,3 +1,5 @@
+import type { Request } from 'express'
+
 /**
  * FileFilter para Multer que acepta solo imágenes (JPEG, PNG, WebP, GIF).
  * Se usa en FileInterceptor para rechazar archivos inválidos antes de
@@ -12,7 +14,7 @@
  * ```
  */
 export function imageFileFilter(
-  req: any,
+  req: Request,
   file: { fieldname: string; originalname: string; encoding: string; mimetype: string; size: number; destination: string; filename: string; path: string; buffer: Buffer },
   callback: (error: Error | null, acceptFile: boolean) => void,
 ): void {
@@ -58,7 +60,7 @@ const MULTIMEDIA_MIMES = [
 ]
 
 export function multimediaFileFilter(
-  req: any,
+  req: Request,
   file: { fieldname: string; originalname: string; encoding: string; mimetype: string; size: number; destination: string; filename: string; path: string; buffer: Buffer },
   callback: (error: Error | null, acceptFile: boolean) => void,
 ): void {

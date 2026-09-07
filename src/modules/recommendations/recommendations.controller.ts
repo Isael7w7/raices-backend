@@ -45,10 +45,10 @@ export class RecommendationsController {
   async pesos(@CurrentUser() user: CurrentUserPayload) {
     try {
       return { pesos: await this.svc.pesos(user.id) }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Sin registros de interacción (o consulta fallida) nunca debe ser un 500:
       // se responde 200 con un mapa de pesos vacío.
-      this.logger.error(`GET /usuarios/interacciones/pesos falló para ${user.id}: ${err?.message ?? err}`, err?.stack)
+      this.logger.error(`GET /usuarios/interacciones/pesos falló para ${user.id}: ${err instanceof Error ? err.message : String(err)}`, err instanceof Error ? err.stack : undefined)
       return { pesos: {} }
     }
   }
@@ -64,10 +64,10 @@ export class RecommendationsController {
   async recomendaciones(@CurrentUser() user: CurrentUserPayload, @Query() q: RecomendacionesQueryDto) {
     try {
       return await this.svc.recomendaciones(user.id, q.pagina, q.limite)
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Red de seguridad final: perfil vacío o datos faltantes nunca deben
       // producir un 500; se devuelve una página vacía estructurada.
-      this.logger.error(`GET /usuarios/recomendaciones falló para ${user.id}: ${err?.message ?? err}`, err?.stack)
+      this.logger.error(`GET /usuarios/recomendaciones falló para ${user.id}: ${err instanceof Error ? err.message : String(err)}`, err instanceof Error ? err.stack : undefined)
       return {
         datos: [],
         paginacion: { total: 0, pagina: q.pagina ?? 1, limite: q.limite ?? 20, totalPaginas: 0 },

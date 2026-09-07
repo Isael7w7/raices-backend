@@ -95,13 +95,13 @@ function ensureApp(config: ConfigService) {
       })
 
       logger.log(`✅ Firebase Admin initialized with service account for project: ${projectId}`)
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (e instanceof SyntaxError) {
         const msg = `${credentialsVar} is not valid JSON. Paste the entire JSON content as a single line string.`
         logger.error(`❌ ${msg}`)
         throw new InternalServerErrorException(msg)
       }
-      const msg = `Firebase initialization error: ${e.message}`
+      const msg = `Firebase initialization error: ${e instanceof Error ? e.message : String(e)}`
       logger.error(`❌ ${msg}`)
       throw new InternalServerErrorException(msg)
     }
@@ -113,8 +113,8 @@ function ensureApp(config: ConfigService) {
 
     try {
       initializeApp({ projectId })
-    } catch (e: any) {
-      const msg = `Firebase initialization error: ${e.message}`
+    } catch (e: unknown) {
+      const msg = `Firebase initialization error: ${e instanceof Error ? e.message : String(e)}`
       logger.error(`❌ ${msg}`)
       throw new InternalServerErrorException(msg)
     }

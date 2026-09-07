@@ -16,19 +16,19 @@ export interface AuditConfig {
    * Función extraer metadatos del resultado.
    * Se ejecuta después del handler y recibe el valor de retorno.
    */
-  extraerMetadatos?: (resultado: any) => Record<string, any>
+  extraerMetadatos?: (resultado: Record<string, unknown> | undefined) => Record<string, unknown>
 
   /**
    * Función para obtener el ID del recurso afectado.
    * Por defecto busca en el parámetro 'id'.
    */
-  obtenerRecursoId?: (...args: any[]) => string | undefined
+  obtenerRecursoId?(...args: unknown[]): string | undefined
 
   /**
    * Función para obtener el nombre del recurso afectado.
    * Se ejecuta con el resultado del handler.
    */
-  obtenerRecursoNombre?: (resultado: any) => string | undefined
+  obtenerRecursoNombre?: (resultado: unknown) => string | undefined
 }
 
 /**

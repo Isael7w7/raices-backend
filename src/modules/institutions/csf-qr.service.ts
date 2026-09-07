@@ -60,7 +60,7 @@ export class CsfQrService {
       return this.convertirPdfAImagen(fileBuffer)
     }
 
-    if (IMAGE_MIMES.includes(mimeType as any)) {
+    if ((IMAGE_MIMES as readonly string[]).includes(mimeType)) {
       return fileBuffer
     }
 

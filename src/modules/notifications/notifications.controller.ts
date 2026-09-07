@@ -46,7 +46,7 @@ export class NotificationsController {
   stream(@CurrentUser() user: CurrentUserPayload): Observable<MessageEvent> {
     const subject = this.svc.getStream(user.id)
     return subject.asObservable().pipe(
-      map((data: any) => ({ data } as MessageEvent))
+      map((data: unknown) => ({ data } as MessageEvent))
     )
   }
 }

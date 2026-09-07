@@ -95,7 +95,7 @@ export class FirebaseAuthGuard implements CanActivate {
       }
 
       return true
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e
       throw new UnauthorizedException('Token inválido o expirado')
     }

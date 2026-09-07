@@ -27,7 +27,7 @@ export class AuditInterceptor implements NestInterceptor {
     private readonly auditService: AuditService,
   ) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const config = this.reflector.getAllAndOverride<AuditConfig>(AUDIT_KEY, [
       context.getHandler(),
       context.getClass(),

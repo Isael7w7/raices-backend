@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import { InstitucionDoc } from '../../common/interfaces/firestore-documents.interface'
 
 @Injectable()
 export class FavoritesService {
@@ -17,13 +18,13 @@ export class FavoritesService {
     const lotes: string[][] = []
     for (let i = 0; i < ids.length; i += 30) lotes.push(ids.slice(i, i + 30))
 
-    const instituciones: any[] = []
+    const instituciones: InstitucionDoc[] = []
     for (const lote of lotes) {
       const snap = await this.db.collection(COLECCIONES.instituciones)
         .where('__name__', 'in', lote).get()
-      instituciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() })))
+      instituciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as InstitucionDoc)))
     }
-    return instituciones.map((i: any) => ({
+    return instituciones.map(i => ({
       ...i,
       tiposDiscapacidad: parsearTiposDiscapacidad(i.tiposDiscapacidad),
     }))

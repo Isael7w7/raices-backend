@@ -88,9 +88,9 @@ export class AuditService {
 
       await this.col().add(doc)
       this.logger.debug(`Auditoría registrada: ${entry.accion} → ${entry.recurso}`)
-    } catch (err: any) {
+    } catch (err: unknown) {
       // La auditoría NUNCA debe bloquear la operación original
-      this.logger.error(`Error al registrar auditoría: ${err.message}`)
+      this.logger.error(`Error al registrar auditoría: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
 
