@@ -21,6 +21,7 @@ export const COLECCIONES = {
   vacantes: 'vacantes',
   configuraciones: 'configuraciones',
   documentosIdentidad: 'documentosIdentidad',
+  validacionesIA: 'validacionesIA',
   rutasDesarrollo: 'rutasDesarrollo',
   pasosRuta: 'pasosRuta',
   analiticas: '_analiticas',
