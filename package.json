@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "start:dev": "nodemon --watch src --ext ts --exec ts-node src/main.ts",
     "seed": "ts-node src/database/seed/seed.ts",
     "db:scan": "ts-node scripts/read-db-structure.ts",
@@ -40,6 +42,7 @@
   "devDependencies": {
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",
+    "@eslint/js": "^10.0.1",
     "@nestjs/testing": "^10.4.22",
     "@swc/core": "^1.15.43",
     "@swc/jest": "^0.2.39",
@@ -50,12 +53,14 @@
     "@types/supertest": "^7.2.1",
     "@types/uuid": "^10.0.0",
     "babel-jest": "^30.4.1",
+    "eslint": "^10.10.0",
     "jest": "^30.4.2",
     "nodemon": "^3.1.0",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.69.0"
   }
 }
