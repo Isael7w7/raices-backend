@@ -2,10 +2,8 @@ import { Injectable, NestInterceptor, ExecutionContext, CallHandler, Logger } fr
 import { Observable, throwError } from 'rxjs'
 import { tap, catchError } from 'rxjs/operators'
 import { Reflector } from '@nestjs/core'
-import { Request } from 'express'
 import { AuditService } from '../audit/audit.service'
 import { AUDIT_KEY, AuditConfig } from '../decorators/audit.decorator'
-import { AUDIT_ACCIONES } from '../interfaces/audit-log.interface'
 import { CurrentUserPayload } from '../interfaces/current-user.interface'
 
 /**
@@ -39,8 +37,8 @@ export class AuditInterceptor implements NestInterceptor {
       return next.handle()
     }
 
-    const req = context.switchToHttp().getRequest()
-    const user = (req as any).user as CurrentUserPayload | undefined
+    const req = context.switchToHttp().getRequest() as { user?: CurrentUserPayload; headers: Record<string, string | undefined>; ip?: string }
+    const user = req.user as CurrentUserPayload | undefined
     const args = context.getArgs()
 
     // Extraer metadatos de la petición

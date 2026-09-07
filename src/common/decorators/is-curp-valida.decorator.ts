@@ -1,4 +1,4 @@
-import { ValidationOptions, registerDecorator, ValidationArguments } from 'class-validator'
+import { ValidationOptions, registerDecorator } from 'class-validator'
 import { esCurpValida } from '../validators/curp.validator'
 
 /**
@@ -12,18 +12,18 @@ import { esCurpValida } from '../validators/curp.validator'
  * ```
  */
 export function IsCurpValida(validationOptions?: ValidationOptions) {
-  return function (object: Object, propertyName: string) {
+  return function (object: object, propertyName: string) {
     registerDecorator({
       name: 'isCurpValida',
       target: object.constructor,
       propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, args: ValidationArguments) {
-          if (!value) return true // Los campos opcionales se validan con @IsOptional
+        validate(value: unknown) {
+          if (typeof value !== 'string' || !value) return true // Los campos opcionales se validan con @IsOptional
           return esCurpValida(value)
         },
-        defaultMessage(args: ValidationArguments) {
+        defaultMessage() {
           return `${propertyName} no es una CURP válida. Debe tener el formato oficial mexicano de 18 caracteres`
         },
       },

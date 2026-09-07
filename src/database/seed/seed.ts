@@ -50,7 +50,7 @@ if (getApps().length === 0) {
         credential: cert(parsedServiceAccount),
         projectId: parsedServiceAccount.project_id || projectId,
       });
-    } catch (e) {
+    } catch {
       console.warn(
         "⚠️ No se pudo parsear FIREBASE_CREDENTIALS de las variables de entorno.",
       );
@@ -85,13 +85,13 @@ async function limpiarColeccion(nombre: string) {
  */
 async function insertarLote(
   coleccion: string,
-  documentos: Record<string, any>[],
+  documentos: Record<string, unknown>[],
 ) {
   for (let i = 0; i < documentos.length; i += 500) {
     const lote = db.batch();
     const porcion = documentos.slice(i, i + 500);
     for (const datos of porcion) {
-      const ref = datos.id
+      const ref = typeof datos.id === 'string'
         ? db.collection(coleccion).doc(datos.id)
         : db.collection(coleccion).doc();
       lote.set(ref, { ...datos, id: ref.id });

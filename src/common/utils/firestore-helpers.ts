@@ -3,6 +3,8 @@ import { FEATURES_POR_DEFECTO } from '../interfaces/feature-flags.interface'
 
 /**
  * Helpers reutilizables para interactuar con Firestore de forma segura.
+ * Firestore es dinámico por naturaleza (DocumentData), así que las funciones
+ * de parseo aceptan `unknown` y retornan tipos concretos ya verificados.
  */
 
 /**
@@ -12,19 +14,22 @@ const BATCH_LIMIT = 30
 
 /**
  * Obtiene documentos por sus IDs usando consultas `in` en lotes de 30.
- * Retorna un Map<string, Record<string, any>> con el ID como clave y el documento como valor.
+ * Retorna un Map con el ID como clave y el documento tipado como valor.
+ *
+ * @example
+ * const mapa = await obtenerDocumentosPorIds<PerfilDoc>(db, 'perfiles', ids)
  *
  * @param db        Instancia de Firestore
-n * @param coleccion Nombre de la colección
+ * @param coleccion Nombre de la colección
  * @param ids       Array de IDs a buscar
- * @returns Map con ID → datos del documento
+ * @returns Map con ID → documento tipado
  */
-export async function obtenerDocumentosPorIds(
+export async function obtenerDocumentosPorIds<T = Record<string, unknown>>(
   db: Firestore,
   coleccion: string,
   ids: string[],
-): Promise<Map<string, Record<string, any>>> {
-  const mapa = new Map<string, Record<string, any>>()
+): Promise<Map<string, T>> {
+  const mapa = new Map<string, T>()
   if (ids.length === 0) return mapa
 
   for (let i = 0; i < ids.length; i += BATCH_LIMIT) {
@@ -32,7 +37,7 @@ export async function obtenerDocumentosPorIds(
     const snap = await db.collection(coleccion)
       .where(FieldPath.documentId(), 'in', lote)
       .get()
-    snap.docs.forEach(doc => mapa.set(doc.id, doc.data()))
+    snap.docs.forEach(doc => mapa.set(doc.id, doc.data() as T))
   }
 
   return mapa
@@ -40,21 +45,24 @@ export async function obtenerDocumentosPorIds(
 
 /**
  * Obtiene documentos por un campo con valor `in` (lotes de 30).
- * Retorna un Map con el valor del campo como clave y el documento como valor
- * (si hay varios docs con el mismo valor, se conserva el primero).
+ * Retorna un Map con el valor del campo como clave y el documento tipado como
+ * valor (si hay varios docs con el mismo valor, se conserva el primero).
+ *
+ * @example
+ * const mapa = await obtenerDocumentosPorCampo<PerfilExtendidoDoc>(db, 'perfilesExtendidos', 'usuarioId', ids)
  *
  * @param db        Instancia de Firestore
  * @param coleccion Nombre de la colección
  * @param campo     Campo sobre el que se filtra (ej. 'usuarioId')
  * @param valores   Valores a buscar
  */
-export async function obtenerDocumentosPorCampo(
+export async function obtenerDocumentosPorCampo<T = Record<string, unknown>>(
   db: Firestore,
   coleccion: string,
   campo: string,
   valores: string[],
-): Promise<Map<string, Record<string, any>>> {
-  const mapa = new Map<string, Record<string, any>>()
+): Promise<Map<string, T>> {
+  const mapa = new Map<string, T>()
   if (valores.length === 0) return mapa
 
   for (let i = 0; i < valores.length; i += BATCH_LIMIT) {
@@ -63,9 +71,9 @@ export async function obtenerDocumentosPorCampo(
       .where(campo, 'in', lote)
       .get()
     snap.docs.forEach(doc => {
-      const datos = doc.data()
-      const clave = datos[campo] as string | undefined
-      if (clave && !mapa.has(clave)) mapa.set(clave, datos)
+      const datos = doc.data() as T
+      const clave = (datos as Record<string, unknown>)[campo]
+      if (typeof clave === 'string' && !mapa.has(clave)) mapa.set(clave, datos)
     })
   }
 
@@ -140,18 +148,23 @@ export async function registrarDependienteVinculado(
   return 'creado'
 }
 
+/** Extrae los strings válidos de un array desconocido. */
+function filtrarStrings(valor: unknown[]): string[] {
+  return valor.filter((v): v is string => typeof v === 'string')
+}
+
 /**
  * Parsea un valor que puede venir como array nativo de Firestore,
  * como string JSON serializado, o como cualquier otro tipo.
- * Siempre retorna un string[] válido.
+ * Siempre retorna un string[] válido (solo elementos string).
  */
-export function parsearTiposDiscapacidad(valor: any): string[] {
+export function parsearTiposDiscapacidad(valor: unknown): string[] {
   if (!valor) return []
-  if (Array.isArray(valor)) return valor
+  if (Array.isArray(valor)) return filtrarStrings(valor)
   if (typeof valor === 'string') {
     try {
-      const parsed = JSON.parse(valor)
-      return Array.isArray(parsed) ? parsed : []
+      const parsed: unknown = JSON.parse(valor)
+      return Array.isArray(parsed) ? filtrarStrings(parsed) : []
     } catch {
       return []
     }
@@ -161,27 +174,39 @@ export function parsearTiposDiscapacidad(valor: any): string[] {
 
 /**
  * Parsea un campo JSON genérico que puede venir como string o como valor nativo.
- * Si viene como string válido, retorna el objeto parseado.
- * Si no, retorna el valor tal cual.
+ * Si viene como string válido, retorna el objeto parseado; si no, retorna el
+ * valor tal cual. Retorna `unknown`: el consumidor debe verificar el tipo.
+ *
+ * @example
+ * const parsed: unknown = parsearCampoJson(valor)
+ * if (Array.isArray(parsed)) { ... }
  */
-export function parsearCampoJson(valor: any): any {
+export function parsearCampoJson(valor: unknown): unknown {
   if (typeof valor === 'string') {
-    try { return JSON.parse(valor) }
+    try { return JSON.parse(valor) as unknown }
     catch { return valor }
   }
   return valor
 }
 
 /**
- * Parsea un objeto JSON embebido (como datosPerfil).
- * Retorna un objeto vacío si falla el parseo.
+ * Parsea un objeto JSON embebido (como datosPerfil). Acepta string JSON u
+ * objeto nativo. Siempre retorna un Record; {} si el valor no es un objeto.
  */
-export function parsearObjeto(valor: any): Record<string, any> {
+export function parsearObjeto(valor: unknown): Record<string, unknown> {
   if (!valor) return {}
-  try {
-    const p = JSON.parse(valor)
-    return p && typeof p === 'object' ? p : {}
-  } catch {
-    return {}
+  if (typeof valor === 'object' && !Array.isArray(valor)) {
+    return valor as Record<string, unknown>
   }
+  if (typeof valor === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(valor)
+      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
 }

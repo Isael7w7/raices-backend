@@ -11,6 +11,8 @@ export function extractStoragePath(url: string): string | null {
 
     const localMatch = url.match(/\/uploads\/(.+)/)
     if (localMatch) return decodeURIComponent(localMatch[1])
-  } catch {}
+  } catch {
+    // URL malformada: se retorna null
+  }
   return null
 }

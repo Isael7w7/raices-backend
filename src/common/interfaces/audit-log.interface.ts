@@ -37,7 +37,7 @@ export interface AuditLog {
   resultado: 'exito' | 'error' | 'denegado'
 
   /** Detalles adicionales (cambios aplicados, error message, etc.) */
-  metadatos?: Record<string, any>
+  metadatos?: Record<string, unknown>
 
   /** IP del cliente (si está disponible) */
   ip?: string
