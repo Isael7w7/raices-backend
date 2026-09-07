@@ -593,15 +593,15 @@ describe('AuthService', () => {
           doc: jest.fn().mockReturnValue(mockFirestoreDoc(instData, true, 'inst-1')),
         })
 
-      const result = await service.me('inst-1')
+      const result = (await service.me('inst-1')) as { institucionId?: string; institucion?: { nombre?: string; categoria?: string; descripcion?: string; telefono?: string; tiposDiscapacidad?: string[] } | null } | null
 
       expect(result!.institucionId).toBe('inst-1')
       expect(result!.institucion).not.toBeNull()
-      expect(result!.institucion.nombre).toBe('Centro Test')
-      expect(result!.institucion.categoria).toBe('funcional')
-      expect(result!.institucion.descripcion).toBe('Terapias físicas y ocupacionales')
-      expect(result!.institucion.telefono).toBe('9999990001')
-      expect(result!.institucion.tiposDiscapacidad).toEqual(['tea', 'motriz'])
+      expect(result!.institucion!.nombre).toBe('Centro Test')
+      expect(result!.institucion!.categoria).toBe('funcional')
+      expect(result!.institucion!.descripcion).toBe('Terapias físicas y ocupacionales')
+      expect(result!.institucion!.telefono).toBe('9999990001')
+      expect(result!.institucion!.tiposDiscapacidad).toEqual(['tea', 'motriz'])
     })
 
     it('should fall back to the institution created by creadoPor for legacy institution users', async () => {
@@ -626,11 +626,11 @@ describe('AuthService', () => {
           get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'inst-aleatoria', data: () => instData }] }),
         })
 
-      const result = await service.me('legacy-1')
+      const result = (await service.me('legacy-1')) as { institucionId?: string; institucion?: { nombre?: string } | null } | null
 
       expect(result!.institucionId).toBe('inst-aleatoria')
       expect(result!.institucion).not.toBeNull()
-      expect(result!.institucion.nombre).toBe('Centro Legacy')
+      expect(result!.institucion!.nombre).toBe('Centro Legacy')
     })
   })
 })

@@ -6,11 +6,11 @@ import { COLECCIONES } from '../../database/firestore.constants'
 
 @Injectable()
 export class NotificationsService {
-  private streams = new Map<string, Subject<any>>()
+  private streams = new Map<string, Subject<{ data: string }>>()
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  getStream(usuarioId: string): Subject<any> {
+  getStream(usuarioId: string): Subject<{ data: string }> {
     if (!this.streams.has(usuarioId)) {
       this.streams.set(usuarioId, new Subject())
     }
@@ -34,8 +34,8 @@ export class NotificationsService {
       .where('usuarioId', '==', usuarioId).get()
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const notificaciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    notificaciones.sort((a: any, b: any) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+    const notificaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as { id: string; fechaCreacion?: string }))
+    notificaciones.sort((a, b) => String(b.fechaCreacion ?? '').localeCompare(String(a.fechaCreacion ?? '')))
 
     // Limitar a 50 después de ordenar
     return notificaciones.slice(0, 50)

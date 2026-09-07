@@ -5,6 +5,16 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
 
+/** Mensaje de la colección `mensajesDirectos` (campos usados por este servicio). */
+interface MensajeDirectoDoc {
+  remitenteId: string
+  destinatarioId: string
+  contenido?: string
+  fechaCreacion?: string
+  leido?: boolean
+  [key: string]: unknown
+}
+
 @Injectable()
 export class MessagesService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
@@ -14,9 +24,9 @@ export class MessagesService {
       this.db.collection(COLECCIONES.mensajesDirectos).where('remitenteId', '==', usuarioId).get(),
       this.db.collection(COLECCIONES.mensajesDirectos).where('destinatarioId', '==', usuarioId).get(),
     ])
-    const mensajes = [...enviadosSnap.docs, ...recibidosSnap.docs].map(d => ({ id: d.id, ...d.data() } as any))
+    const mensajes = [...enviadosSnap.docs, ...recibidosSnap.docs].map(d => ({ id: d.id, ...d.data() } as MensajeDirectoDoc & { id: string }))
 
-    const socios = new Map<string, any>()
+    const socios = new Map<string, MensajeDirectoDoc & { id: string }>()
     for (const msg of mensajes) {
       const socioId = msg.remitenteId === usuarioId ? msg.destinatarioId : msg.remitenteId
       if (!socios.has(socioId)) socios.set(socioId, msg)
@@ -27,7 +37,7 @@ export class MessagesService {
     const lotes: string[][] = []
     for (let i = 0; i < sociosIds.length; i += 30) lotes.push(sociosIds.slice(i, i + 30))
 
-    const perfiles = new Map<string, any>()
+    const perfiles = new Map<string, Record<string, unknown>>()
     for (const lote of lotes) {
       const snap = await this.db.collection(COLECCIONES.perfiles).where('__name__', 'in', lote).get()
       snap.docs.forEach(d => perfiles.set(d.id, d.data()))
@@ -38,7 +48,7 @@ export class MessagesService {
       ultimoMensaje: socios.get(sid)?.contenido ?? '',
       ultimoEn: socios.get(sid)?.fechaCreacion,
       noLeidos: mensajes.filter(m => m.remitenteId === sid && m.destinatarioId === usuarioId && !m.leido).length,
-    })).sort((a: any, b: any) => new Date(b.ultimoEn ?? 0).getTime() - new Date(a.ultimoEn ?? 0).getTime())
+    })).sort((a, b) => new Date(b.ultimoEn ?? 0).getTime() - new Date(a.ultimoEn ?? 0).getTime())
   }
 
   async getMessages(usuarioId: string, socioId: string) {
@@ -73,8 +83,8 @@ export class MessagesService {
     ])
 
     return [...enviadosSnap.docs, ...recibidosSnap.docs]
-      .map(d => ({ id: d.id, ...d.data() }))
-      .sort((a: any, b: any) => new Date(a.fechaCreacion ?? 0).getTime() - new Date(b.fechaCreacion ?? 0).getTime())
+      .map(d => ({ id: d.id, ...d.data() } as MensajeDirectoDoc & { id: string }))
+      .sort((a, b) => new Date(String(a.fechaCreacion ?? 0)).getTime() - new Date(String(b.fechaCreacion ?? 0)).getTime())
   }
 
   async sendMessage(user: CurrentUserPayload, destinatarioId: string, contenido: string, mediaUrl?: string) {

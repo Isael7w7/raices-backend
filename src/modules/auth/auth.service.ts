@@ -78,9 +78,10 @@ export class AuthService {
         password: dto.password,
         displayName: dto.nombreCompleto,
       })
-    } catch (e: any) {
-      this.logger.error(`Firebase Auth user creation failed: ${e?.message ?? e}`)
-      if (e?.code === 'auth/email-already-exists') {
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string }
+      this.logger.error(`Firebase Auth user creation failed: ${err?.message ?? e}`)
+      if (err?.code === 'auth/email-already-exists') {
         throw new ConflictException('Email ya registrado en Firebase Auth')
       }
       throw new UnauthorizedException('Error al crear usuario')
@@ -90,7 +91,7 @@ export class AuthService {
 
     const features = dto.features ?? { ...FEATURES_POR_DEFECTO }
 
-    const perfilData: Record<string, any> = {
+    const perfilData: Record<string, unknown> = {
       id: uid,
       email: dto.email,
       nombreCompleto: dto.nombreCompleto,
@@ -120,7 +121,7 @@ export class AuthService {
 
     // Si el rol es 'institucion', crear también el documento en la colección
     // 'instituciones' (mismo ID que el UID) para que aparezca en el directorio.
-    let institucionData: Record<string, any> | null = null
+    let institucionData: Record<string, unknown> | null = null
     if (dto.rol === 'institucion') {
       institucionData = {
         id: uid,
@@ -157,8 +158,8 @@ export class AuthService {
       this.logger.error(`Firestore batch commit failed: ${detalle}. Reverting Firebase user ${uid}`)
       try {
         await this.auth.deleteUser(uid)
-      } catch (rollbackError: any) {
-        this.logger.warn(`No se pudo revertir el usuario de Firebase Auth: ${rollbackError?.message ?? rollbackError}`)
+      } catch (rollbackError: unknown) {
+        this.logger.warn(`No se pudo revertir el usuario de Firebase Auth: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`)
       }
       throw e
     }
@@ -212,11 +213,12 @@ export class AuthService {
         password: dto.password,
         returnSecureToken: true,
       })
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e
-      const status = e?.response?.status
+      const err = e as { response?: { status?: number; data?: { error?: { message?: string } } }; message?: string }
+      const status = err?.response?.status
       if (status === 400) {
-        const errorMsg = e?.response?.data?.error?.message
+        const errorMsg = err?.response?.data?.error?.message
         if (errorMsg === 'EMAIL_NOT_FOUND' || errorMsg === 'INVALID_PASSWORD') {
           throw new UnauthorizedException('Credenciales incorrectas')
         }
@@ -224,7 +226,7 @@ export class AuthService {
           throw new UnauthorizedException('Cuenta desactivada')
         }
       }
-      this.logger.error(`Login failed: ${e?.message ?? e}`)
+      this.logger.error(`Login failed: ${err?.message ?? e}`)
       throw new UnauthorizedException('Credenciales incorrectas')
     }
 
@@ -291,9 +293,9 @@ export class AuthService {
           features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
         },
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e
-      this.logger.warn(`Refresh token verification failed: ${e?.message ?? e}`)
+      this.logger.warn(`Refresh token verification failed: ${e instanceof Error ? e.message : String(e)}`)
       throw new UnauthorizedException('Refresh token inválido o expirado')
     }
   }
@@ -303,7 +305,7 @@ export class AuthService {
     if (!doc.exists) return null
     const d = doc.data()!
 
-    const base: Record<string, any> = {
+    const base: Record<string, unknown> = {
       id: d.id,
       email: d.email,
       rol: d.rol,
