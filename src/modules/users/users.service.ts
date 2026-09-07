@@ -1,10 +1,11 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException, Logger, Optional } from '@nestjs/common'
 import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
-import { DependienteDoc, DependienteFormateado, PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
+import { DependienteDoc, DependienteFormateado, PerfilDoc, PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
 import { StorageService } from '../storage/storage.service'
+import { ValidationService } from '../ai/validation.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
@@ -19,6 +20,8 @@ export class UsersService {
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
     private readonly storage: StorageService,
+    // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
+    @Optional() private readonly validation?: ValidationService,
   ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
@@ -341,6 +344,15 @@ export class UsersService {
     // Actualizar estado de validación del perfil
     await this.actualizarEstadoValidacion(usuarioId)
 
+    // Re-evaluación automática por IA en BACKGROUND al subir un nuevo
+    // documento de identidad: si el perfil resulta coherente con confianza
+    // alta, la cuenta se verifica sin esperar revisión manual del admin.
+    if (this.validation) {
+      void this.validation.validarYAplicar(usuarioId).catch((e: unknown) =>
+        this.logger.warn(`Re-validación IA en background falló para ${usuarioId}: ${e instanceof Error ? e.message : String(e)}`),
+      )
+    }
+
     return {
       tipo,
       urlDocumento,
@@ -556,8 +568,8 @@ export class UsersService {
     if (pcdIds.length === 0) return
 
     const [mapaPerfiles, mapaExtendidos] = await Promise.all([
-      obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, pcdIds),
-      obtenerDocumentosPorCampo(this.db, COLECCIONES.perfilesExtendidos, 'usuarioId', pcdIds),
+      obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, pcdIds),
+      obtenerDocumentosPorCampo<PerfilExtendidoDoc>(this.db, COLECCIONES.perfilesExtendidos, 'usuarioId', pcdIds),
     ])
     for (const dep of dependientes) {
       if (!dep.esCuentaVinculada) continue
@@ -568,7 +580,7 @@ export class UsersService {
       const ext = mapaExtendidos.get(pcdId)
       if (ext) {
         const tipos = this.parsearCampoJson(ext.tiposDiscapacidad)
-        dep.tiposDiscapacidad = Array.isArray(tipos) ? tipos : []
+        dep.tiposDiscapacidad = Array.isArray(tipos) ? tipos.filter((t): t is string => typeof t === 'string') : []
         dep.discapacidad = ext.severidadDiscapacidad ?? null
         dep.etapaVida = ext.etapaVida ?? dep.etapaVida ?? null
       }

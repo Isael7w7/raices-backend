@@ -8,6 +8,7 @@ import { EmailService } from '../email/email.service'
 import { StorageService } from '../storage/storage.service'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
+import type { PerfilDoc, InstitucionDoc, DocumentoIdentidadDoc } from '../../common/interfaces/firestore-documents.interface'
 
 const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
   tea: 'TEA / Autismo', motriz: 'Motriz', intelectual: 'Intelectual',
@@ -23,6 +24,7 @@ const CONFIGURACION_POR_DEFECTO: Record<string, string> = {
   nombrePlataforma: 'Raíces para Florecer', emailSoporte: 'soporte@raices.mx',
   permitirRegistro: 'true', aprobacionInstitucionRequerida: 'true',
   iaHabilitada: 'true', modoMantenimiento: 'false',
+  validacionIAHabilitada: 'true',
   maxResenasPorUsuario: '10', ciudadPorDefecto: 'Mérida',
 }
 
@@ -147,7 +149,7 @@ export class AdminService {
     const perfiles = perfilesSnap.docs.map(d => d.data())
     const instituciones = institucionesSnap.docs.map(d => d.data())
 
-    const parsear = (v: any): any[] => parsearTiposDiscapacidad(v)
+    const parsear = (v: unknown): string[] => parsearTiposDiscapacidad(v)
 
     const demandaPorDiscapacidad: Record<string, number> = {}
     const necesidadesCount: Record<string, number> = {}
@@ -281,10 +283,10 @@ export class AdminService {
       instituciones.map((i: any) => i.usuarioId ?? i.creadoPor).filter(Boolean)
     )] as string[]
 
-    const mapaPerfiles = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+    const mapaPerfiles = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
     // Para cada usuario, buscar sus documentos de identidad
-    const mapaDocsIdentidad = new Map<string, any[]>()
+    const mapaDocsIdentidad = new Map<string, DocumentoIdentidadDoc[]>()
     for (const uid of usuarioIds) {
       const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
         .where('usuarioId', '==', uid).get()
@@ -559,8 +561,8 @@ export class AdminService {
 
     // Batch lookups en lugar de N+1 queries
     const [mapaUsuarios, mapaInst] = await Promise.all([
-      obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuariosIds),
-      obtenerDocumentosPorIds(this.db, COLECCIONES.instituciones, instIds),
+      obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuariosIds),
+      obtenerDocumentosPorIds<InstitucionDoc>(this.db, COLECCIONES.instituciones, instIds),
     ])
 
     let todos = resenas.map(r => ({
@@ -920,7 +922,7 @@ export class AdminService {
 
     // Enriquecer con datos del usuario
     const usuarioIds = [...new Set(documentos.map(d => (d as any).usuarioId).filter(Boolean))] as string[]
-    const mapaUsuarios = await obtenerDocumentosPorIds(this.db, COLECCIONES.perfiles, usuarioIds)
+    const mapaUsuarios = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
     documentos = documentos.map(d => {
       const data = d as any

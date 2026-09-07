@@ -10,6 +10,7 @@ import { FEATURES_POR_DEFECTO } from '../../common/interfaces/feature-flags.inte
 import { registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
+import { ValidationService } from '../ai/validation.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 
 @Injectable()
@@ -26,6 +27,8 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     @Optional() private readonly analytics?: FirebaseAnalyticsService,
+    // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
+    @Optional() private readonly validation?: ValidationService,
   ) {
     // SECURITY: la API key de Firebase Auth se lee de ConfigService (secreto
     // montado desde GCP Secret Manager en Cloud Run). Sin valores hardcodeados.
@@ -181,6 +184,16 @@ export class AuthService {
     await this.analytics?.incrementar('usuariosActivos')
 
     this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch((): null => null)
+
+    // Validación automática por IA en BACKGROUND: no bloquea el tiempo de
+    // respuesta del registro. Aprueba cuentas válidas al instante (confianza
+    // >= 80%); solo los casos dudosos (50-79%) llegan a revisión manual del
+    // administrador, como último recurso.
+    if (this.validation) {
+      void this.validation.validarYAplicar(uid).catch((e: unknown) =>
+        this.logger.warn(`Validación IA en background falló para ${uid}: ${e instanceof Error ? e.message : String(e)}`),
+      )
+    }
 
     // El registro NUNCA devuelve tokens: se obliga al usuario a iniciar sesión
     // de forma explícita para obtener un ID token real que los guards acepten.

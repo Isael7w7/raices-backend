@@ -13,6 +13,13 @@ export function authE2E(): any {
 
 export function limpiarDb(): void {
   ;(globalThis as any).__E2E__.limpiar()
+  // La validación automática por IA (ValidationService) se dispara en
+  // background desde el registro y la subida de documentos. Para que los
+  // specs existentes sigan siendo deterministas, cada spec arranca con la
+  // validación IA DESHABILITADA; validacion-ia.e2e-spec.ts la habilita
+  // explícitamente cuando prueba ese flujo.
+  // La escritura del mock en memoria es síncrona, no hace falta await.
+  void dbE2E().collection('configuraciones').doc('validacionIAHabilitada').set({ clave: 'validacionIAHabilitada', valor: 'false' })
 }
 
 export async function sembrarPerfil(datos: any): Promise<void> {
