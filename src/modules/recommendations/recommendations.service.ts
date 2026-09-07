@@ -76,10 +76,10 @@ export class RecommendationsService {
         .get()
 
       return this.calcularPesos(snap.docs.map(d => d.data() as InteraccionDoc))
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Colección inexistente, índice compuesto pendiente o error transitorio:
       // la ausencia de interacciones nunca debe romper el endpoint → pesos vacíos.
-      this.logger.warn(`pesos falló para usuario ${usuarioId}: ${err?.message ?? err}`)
+      this.logger.warn(`pesos falló para usuario ${usuarioId}: ${err instanceof Error ? err.message : String(err)}`)
       return {}
     }
   }
@@ -110,7 +110,7 @@ export class RecommendationsService {
       // Null-Safety sobre el perfil: el documento puede no existir, venir como
       // objeto anidado `perfilNecesidades` (compatibilidad con getProfile) o
       // traer campos null/undefined → se normaliza con fallbacks neutros.
-      const necesidades = this.leerObjeto((perfil as Record<string, any>).perfilNecesidades)
+      const necesidades = this.leerObjeto((perfil as Record<string, unknown>).perfilNecesidades)
       const metas = this.leerArregloDeTexto(perfil.metasActuales ?? necesidades.metasActuales)
       const areasInteres = this.leerArregloDeTexto(perfil.areasInteres ?? necesidades.areasInteres)
       // escalasVida: si no existe el documento o algún valor es null/undefined,
@@ -147,10 +147,10 @@ export class RecommendationsService {
           totalPaginas: Math.ceil(total / limite),
         },
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Última red de seguridad: nunca responder 500 por datos faltantes o
       // errores esperados; se devuelve una página vacía estructurada.
-      this.logger.error(`recomendaciones falló para usuario ${usuarioId}: ${err?.message ?? err}`, err?.stack)
+      this.logger.error(`recomendaciones falló para usuario ${usuarioId}: ${err instanceof Error ? err.message : String(err)}`, err instanceof Error ? err.stack : undefined)
       pagina = Math.max(1, Number(pagina) || 1)
       limite = Math.min(50, Math.max(1, Number(limite) || 20))
       return {
@@ -166,8 +166,8 @@ export class RecommendationsService {
       const snap = await this.col(COLECCIONES.perfilesExtendidos)
         .where('usuarioId', '==', usuarioId).limit(1).get()
       return (snap.empty ? {} : snap.docs[0].data()) as PerfilExtendidoDoc
-    } catch (err: any) {
-      this.logger.warn(`obtenerPerfilExtendido falló para usuario ${usuarioId}: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      this.logger.warn(`obtenerPerfilExtendido falló para usuario ${usuarioId}: ${err instanceof Error ? err.message : String(err)}`)
       return {}
     }
   }
@@ -177,8 +177,8 @@ export class RecommendationsService {
     try {
       const snap = await this.col(COLECCIONES.instituciones).where('activa', '==', true).get()
       return snap.docs.map(d => ({ id: d.id, ...d.data() })) as (InstitucionDoc & { id: string })[]
-    } catch (err: any) {
-      this.logger.warn(`obtenerInstitucionesActivas falló: ${err?.message ?? err}`)
+    } catch (err: unknown) {
+      this.logger.warn(`obtenerInstitucionesActivas falló: ${err instanceof Error ? err.message : String(err)}`)
       return []
     }
   }
@@ -188,22 +188,22 @@ export class RecommendationsService {
    * null/undefined → [], arrays → solo strings no vacíos, strings JSON válidos
    * (arrays) se parsean; JSON inválido u otros tipos → [] (nunca rompe).
    */
-  private leerArregloDeTexto(valor: any): string[] {
+  private leerArregloDeTexto(valor: unknown): string[] {
     if (valor == null) return []
     const arr = typeof valor === 'string' ? parsearCampoJson(valor) : valor
     if (!Array.isArray(arr)) return []
     return arr
-      .filter((t: any) => typeof t === 'string' && t.trim().length > 0)
-      .map((t: string) => t.trim())
+      .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+      .map(t => t.trim())
   }
 
   /** Parsea un objeto que puede venir como JSON string, objeto nativo o null. Nunca lanza. */
-  private leerObjeto(valor: any): Record<string, any> {
+  private leerObjeto(valor: unknown): Record<string, unknown> {
     if (valor == null) return {}
     const obj = typeof valor === 'string'
       ? (() => { try { return JSON.parse(valor) ?? {} } catch { return {} } })()
       : valor
-    return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {}
+    return obj && typeof obj === 'object' && !Array.isArray(obj) ? (obj as Record<string, unknown>) : {}
   }
 
   /**
@@ -211,7 +211,7 @@ export class RecommendationsService {
    * si el documento no existe o los valores son null/undefined, se usa 0 en
    * lugar de intentar leer propiedades de undefined. Acepta strings numéricos.
    */
-  private normalizarEscalasVida(valor: any): Record<string, number> {
+  private normalizarEscalasVida(valor: unknown): Record<string, number> {
     const base: Record<string, number> = {}
     for (const clave of CLAVES_ESCALAS_VIDA) base[clave] = 0
     const obj = this.leerObjeto(valor)
