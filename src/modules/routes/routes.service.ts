@@ -4,6 +4,23 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto } from './dto/ruta-desarrollo.dto'
 
+/** Ruta de desarrollo de la colección `rutasDesarrollo`. */
+interface RutaDoc {
+  id: string
+  usuarioId: string
+  estado: string
+  prioridad: string
+  totalPasos: number
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Paso de la colección `pasosRuta`. */
+interface PasoDoc {
+  rutaId: string
+  [key: string]: unknown
+}
+
 @Injectable()
 export class RoutesService {
   private readonly logger = new Logger('RoutesService')
@@ -50,19 +67,19 @@ export class RoutesService {
       .where('usuarioId', '==', usuarioId)
 
     const snap = await q.get()
-    let rutas = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    let rutas = snap.docs.map(d => ({ id: d.id, ...d.data() } as RutaDoc))
 
     // Filtros en memoria
     if (filtros?.estado) {
-      rutas = rutas.filter(r => (r as any).estado === filtros.estado)
+      rutas = rutas.filter(r => r.estado === filtros.estado)
     }
     if (filtros?.areaInteres) {
-      rutas = rutas.filter(r => (r as any).areaInteres === filtros.areaInteres)
+      rutas = rutas.filter(r => r.areaInteres === filtros.areaInteres)
     }
 
     // Ordenar por prioridad y fecha de creación
     const ordenPrioridad: Record<string, number> = { alta: 0, media: 1, baja: 2 }
-    rutas.sort((a: any, b: any) => {
+    rutas.sort((a, b) => {
       const prioDiff = (ordenPrioridad[a.prioridad] ?? 1) - (ordenPrioridad[b.prioridad] ?? 1)
       if (prioDiff !== 0) return prioDiff
       return (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? '')
@@ -78,18 +95,19 @@ export class RoutesService {
     const doc = await this.col(COLECCIONES.rutasDesarrollo).doc(rutaId).get()
     if (!doc.exists) throw new NotFoundException('Ruta no encontrada')
 
-    const ruta = { id: doc.id, ...doc.data() } as any
+    const ruta = { id: doc.id, ...doc.data() } as RutaDoc
     if (ruta.usuarioId !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para ver esta ruta')
     }
 
-    // Obtener pasos de la ruta
+    // Obtener pasos de la ruta (sin .orderBy() para evitar índice compuesto; se ordena en memoria)
     const pasosSnap = await this.col(COLECCIONES.pasosRuta)
       .where('rutaId', '==', rutaId)
-      .orderBy('orden', 'asc')
       .get()
 
-    const pasos = pasosSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const pasos = pasosSnap.docs
+      .map(d => ({ id: d.id, ...d.data() } as PasoDoc & { id: string }))
+      .sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0))
 
     return { ...ruta, pasos }
   }
@@ -101,12 +119,12 @@ export class RoutesService {
     const doc = await this.col(COLECCIONES.rutasDesarrollo).doc(rutaId).get()
     if (!doc.exists) throw new NotFoundException('Ruta no encontrada')
 
-    const ruta = doc.data() as any
+    const ruta = doc.data() as Omit<RutaDoc, 'id'>
     if (ruta.usuarioId !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para actualizar esta ruta')
     }
 
-    const carga: Record<string, any> = {}
+    const carga: Record<string, unknown> = {}
     if (dto.nombre !== undefined) carga.nombre = dto.nombre
     if (dto.descripcion !== undefined) carga.descripcion = dto.descripcion
     if (dto.metaFinal !== undefined) carga.metaFinal = dto.metaFinal
@@ -129,7 +147,7 @@ export class RoutesService {
     const doc = await this.col(COLECCIONES.rutasDesarrollo).doc(rutaId).get()
     if (!doc.exists) throw new NotFoundException('Ruta no encontrada')
 
-    const ruta = doc.data() as any
+    const ruta = doc.data() as Omit<RutaDoc, 'id'>
     if (ruta.usuarioId !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para eliminar esta ruta')
     }
@@ -160,19 +178,20 @@ export class RoutesService {
     const rutaDoc = await this.col(COLECCIONES.rutasDesarrollo).doc(rutaId).get()
     if (!rutaDoc.exists) throw new NotFoundException('Ruta no encontrada')
 
-    const ruta = rutaDoc.data() as any
+    const ruta = rutaDoc.data() as Omit<RutaDoc, 'id'>
     if (ruta.usuarioId !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para modificar esta ruta')
     }
 
-    // Obtener el último orden
+    // Obtener el último orden (sin .orderBy() para evitar índice compuesto; máximo en memoria)
     const pasosSnap = await this.col(COLECCIONES.pasosRuta)
       .where('rutaId', '==', rutaId)
-      .orderBy('orden', 'desc')
-      .limit(1)
       .get()
 
-    const ultimoOrden = pasosSnap.empty ? 0 : (pasosSnap.docs[0].data().orden ?? 0)
+    const ultimoOrden = pasosSnap.docs.reduce((max, d) => {
+      const o = d.data().orden
+      return typeof o === 'number' && o > max ? o : max
+    }, 0)
     const orden = dto.orden ?? ultimoOrden + 1
 
     const ref = this.col(COLECCIONES.pasosRuta).doc()
@@ -191,7 +210,7 @@ export class RoutesService {
 
     // Actualizar total de pasos en la ruta
     await rutaDoc.ref.update({
-      totalPasos: (ruta.totalPasos ?? 0) + 1,
+      totalPasos: Number(ruta.totalPasos ?? 0) + 1,
       fechaActualizacion: new Date().toISOString(),
     })
 
@@ -206,7 +225,7 @@ export class RoutesService {
     const rutaDoc = await this.col(COLECCIONES.rutasDesarrollo).doc(rutaId).get()
     if (!rutaDoc.exists) throw new NotFoundException('Ruta no encontrada')
 
-    const ruta = rutaDoc.data() as any
+    const ruta = rutaDoc.data() as Omit<RutaDoc, 'id'>
     if (ruta.usuarioId !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para modificar esta ruta')
     }
@@ -215,7 +234,7 @@ export class RoutesService {
     const pasoDoc = await this.col(COLECCIONES.pasosRuta).doc(pasoId).get()
     if (!pasoDoc.exists) throw new NotFoundException('Paso no encontrado')
 
-    const paso = pasoDoc.data() as any
+    const paso = pasoDoc.data() as Omit<PasoDoc, 'id'>
     if (paso.rutaId !== rutaId) {
       throw new BadRequestException('El paso no pertenece a esta ruta')
     }
@@ -261,7 +280,7 @@ export class RoutesService {
     const rutaDoc = await this.col(COLECCIONES.rutasDesarrollo).doc(rutaId).get()
     if (!rutaDoc.exists) throw new NotFoundException('Ruta no encontrada')
 
-    const ruta = rutaDoc.data() as any
+    const ruta = rutaDoc.data() as Omit<RutaDoc, 'id'>
     if (ruta.usuarioId !== usuarioId) {
       throw new ForbiddenException('No tienes permiso para modificar esta ruta')
     }
@@ -270,7 +289,7 @@ export class RoutesService {
     const pasoDoc = await this.col(COLECCIONES.pasosRuta).doc(pasoId).get()
     if (!pasoDoc.exists) throw new NotFoundException('Paso no encontrado')
 
-    const paso = pasoDoc.data() as any
+    const paso = pasoDoc.data() as Omit<PasoDoc, 'id'>
     if (paso.rutaId !== rutaId) {
       throw new BadRequestException('El paso no pertenece a esta ruta')
     }
