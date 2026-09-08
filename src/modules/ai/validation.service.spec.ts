@@ -305,6 +305,45 @@ describe('ValidationService', () => {
       expect(res.confianza).toBe(85)
     })
 
+    it('parsea JSON dentro de un bloque ```json con texto antes y después (no anclado)', async () => {
+      const json = JSON.stringify(respuestaGemini({ confianza: 88, aprobado: true }))
+      mockGenerateContent.mockResolvedValue(
+        geminiResponse('Aquí está el análisis:\n```json\n' + json + '\n```\nSaludos.'),
+      )
+
+      const res = await svc.validarUsuario('user-1')
+
+      expect(res.fuente).toBe('gemini')
+      expect(res.confianza).toBe(88)
+      expect(res.aprobado).toBe(true)
+    })
+
+    it('confianza null de Gemini: usa la confianza por reglas (no la convierte en 0/rechazo)', async () => {
+      // Perfil coherente → reglas calculan 75 (20+20+25+10). Antes Number(null)=0
+      // lo convertía en rechazo pese a datos coherentes.
+      const payload = respuestaGemini({ confianza: 88 }) as unknown as Record<string, unknown>
+      payload.confianza = null
+      mockGenerateContent.mockResolvedValue(geminiResponse(JSON.stringify(payload)))
+
+      const res = await svc.validarUsuario('user-1')
+
+      expect(res.fuente).toBe('gemini')
+      expect(res.confianza).toBe(75)
+      expect(res.aprobado).toBe(false)
+      expect(res.requiereRevisionManual).toBe(true) // 75 cae en 50-79 → revisión manual
+    })
+
+    it('confianza como string numérico de Gemini se acepta ("90" → 90)', async () => {
+      const payload = respuestaGemini({}) as unknown as Record<string, unknown>
+      payload.confianza = '90'
+      mockGenerateContent.mockResolvedValue(geminiResponse(JSON.stringify(payload)))
+
+      const res = await svc.validarUsuario('user-1')
+
+      expect(res.confianza).toBe(90)
+      expect(res.aprobado).toBe(true)
+    })
+
     it('recolecta los documentos de identidad y los expone en detalles', async () => {
       fs = crearFirestoreMock({
         perfil: { ...PERFIL_BASE },
@@ -518,6 +557,9 @@ describe('ValidationService', () => {
       expect(registro!.aprobado).toBe(false)
       expect(registro!.requiereRevisionManual).toBe(false)
       expect(fs.batch.update.mock.calls[0][1].verificado).toBe(false)
+      // En rechazo NO debe existir fecha/método de verificación (cuenta sin verificar)
+      expect(fs.batch.update.mock.calls[0][1].fechaVerificacion).toBeUndefined()
+      expect(fs.batch.update.mock.calls[0][1].metodoVerificacion).toBeUndefined()
     })
 
     it('usa tipo "fallback" cuando la fuente son las reglas (IA caída)', async () => {
@@ -577,6 +619,41 @@ describe('ValidationService', () => {
       expect(registro.aprobado).toBe(false)
       expect(registro.razonamiento).toBe('Rechazado manualmente por un administrador')
       expect(fs.batch.update.mock.calls[0][1].verificado).toBe(false)
+    })
+
+    it('override con documentos pendientes: aprueba los docs con revisadoPor=admin, no "ia" (auditoría)', async () => {
+      fs = crearFirestoreMock({
+        perfil: { ...PERFIL_BASE },
+        documentos: [{ tipo: 'curp', estado: 'pendiente' }],
+      })
+      svc = await crearServicio(fs.db, configConVertex())
+
+      const registro = await svc.overrideValidacion('user-1', true, 'admin-1', 'Doc revisado a mano')
+
+      expect(registro.aprobado).toBe(true)
+      const updates = fs.batch.update.mock.calls
+      // 1 update de perfil + 1 update del documento pendiente
+      expect(updates).toHaveLength(2)
+      const updateDoc = updates.find(c => c[1].estado === 'aprobado')
+      expect(updateDoc).toBeDefined()
+      expect(updateDoc![1].revisadoPor).toBe('admin-1')
+    })
+
+    it('validación automática aprobada con documentos pendientes: revisadoPor="ia"', async () => {
+      fs = crearFirestoreMock({
+        perfil: { ...PERFIL_BASE },
+        documentos: [{ tipo: 'curp', estado: 'pendiente' }],
+      })
+      svc = await crearServicio(fs.db, configConVertex())
+      mockGenerateContent.mockResolvedValue(
+        geminiResponse(JSON.stringify(respuestaGemini({ confianza: 92, aprobado: true }))),
+      )
+
+      await svc.validarYAplicar('user-1')
+
+      const updateDoc = fs.batch.update.mock.calls.find(c => c[1].estado === 'aprobado')
+      expect(updateDoc).toBeDefined()
+      expect(updateDoc![1].revisadoPor).toBe('ia')
     })
 
     it('lanza NotFoundException cuando el usuario no existe', async () => {

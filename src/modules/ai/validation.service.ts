@@ -199,7 +199,8 @@ export class ValidationService {
   /** Parsea JSON de la respuesta tolerando bloques ```json. Devuelve unknown: el llamador narrowing. */
   private parseJsonResponse(text: string): unknown {
     let cleaned = text.trim()
-    const fence = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
+    // No anclado: tolera texto antes/después del bloque (p. ej. "Aquí está el análisis:")
+    const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/)
     if (fence) cleaned = fence[1].trim()
     try {
       return JSON.parse(cleaned) as unknown
@@ -320,7 +321,13 @@ Responde SOLO con JSON válido:
       observaciones: [...base.observaciones, ...observacionesModelo],
     }
 
-    const confianzaModelo = Number(respuesta.confianza)
+    // Solo se aceptan números o strings numéricos; null/""/booleanos/objetos se
+    // tratan como ausentes y se usa la confianza calculada por reglas.
+    // (Number(null) === 0 haría rechazar al usuario sin motivo real.)
+    const crudo = respuesta.confianza
+    const confianzaModelo = typeof crudo === 'number'
+      ? crudo
+      : typeof crudo === 'string' && crudo.trim() !== '' ? Number(crudo) : NaN
     let confianza = Number.isFinite(confianzaModelo) ? confianzaModelo : base.confianza
     confianza = Math.min(100, Math.max(0, Math.round(confianza)))
 
@@ -531,13 +538,19 @@ Responde SOLO con JSON válido:
     const perfilUpdate: ActualizacionPerfilValidacion = { fechaUltimaValidacionIA: fecha }
     if (!resultado.requiereRevisionManual) {
       perfilUpdate.verificado = resultado.aprobado
-      perfilUpdate.fechaVerificacion = fecha
-      perfilUpdate.metodoVerificacion = opciones?.tipo === 'override' ? 'admin' : 'ia'
+      // La fecha/método de verificación solo tienen sentido en aprobaciones:
+      // en un rechazo la cuenta queda sin verificar y sin fecha de verificación.
+      if (resultado.aprobado) {
+        perfilUpdate.fechaVerificacion = fecha
+        perfilUpdate.metodoVerificacion = opciones?.tipo === 'override' ? 'admin' : 'ia'
+      }
     }
     if (resultado.aprobado && docsPendientes.length > 0) {
       perfilUpdate.estadoValidacionIdentidad = 'aprobado'
+      // En un override el revisor es el administrador, no la IA.
+      const revisadoPor = opciones?.tipo === 'override' ? (opciones.adminId ?? 'admin') : 'ia'
       for (const doc of docsPendientes) {
-        batch.update(doc.ref, { estado: 'aprobado', fechaRevision: fecha, revisadoPor: 'ia' })
+        batch.update(doc.ref, { estado: 'aprobado', fechaRevision: fecha, revisadoPor })
       }
     }
     batch.update(perfilRef, perfilUpdate)
