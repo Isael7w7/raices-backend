@@ -42,11 +42,14 @@ async function bootstrap() {
   });
 
   // Security headers via Helmet
+  // CSP: como es una API JSON, el CSP solo afecta a Swagger UI (/docs) y archivos estáticos.
+  // 'unsafe-inline' en styleSrc es necesario para Swagger UI. 'unsafe-eval' se eliminó
+  // porque Swagger no lo necesita. Si en el futuro se agregan pages HTML, reconsiderar.
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", "data:", "https:"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],

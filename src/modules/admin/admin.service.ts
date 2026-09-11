@@ -1,6 +1,8 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
-import { FIRESTORE } from '../../database/firebase.provider'
+import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
+import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
+import { getAuth } from 'firebase-admin/auth'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -8,7 +10,7 @@ import { EmailService } from '../email/email.service'
 import { StorageService } from '../storage/storage.service'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
-import type { PerfilDoc, InstitucionDoc, DocumentoIdentidadDoc } from '../../common/interfaces/firestore-documents.interface'
+import type { PerfilDoc, InstitucionDoc, DocumentoIdentidadDoc, AlertaRiesgo } from '../../common/interfaces/firestore-documents.interface'
 
 const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
   tea: 'TEA / Autismo', motriz: 'Motriz', intelectual: 'Intelectual',
@@ -28,6 +30,25 @@ const CONFIGURACION_POR_DEFECTO: Record<string, string> = {
   maxResenasPorUsuario: '10', ciudadPorDefecto: 'Mérida',
 }
 
+/** Tope de documentos de identidad leídos por consulta antes de filtrar en memoria.
+ *  Evita depender de índices compuestos (causa de errores 500 cuando no existen). */
+const LIMITE_LECTURA_DOCS_IDENTIDAD = 500
+
+/** Documento de identidad pendiente, enriquecido con datos del usuario dueño.
+ *  (Retorno tipado de getDocumentosIdentidadPendientes; reemplaza RespuestaPaginada<any>) */
+interface DocumentoIdentidadPendienteDto {
+  id: string
+  tipo: DocumentoIdentidadDoc['tipo']
+  urlDocumento: DocumentoIdentidadDoc['urlDocumento']
+  numeroCurp: string | null
+  estado: DocumentoIdentidadDoc['estado']
+  fechaSubida: DocumentoIdentidadDoc['fechaSubida']
+  usuarioId: DocumentoIdentidadDoc['usuarioId']
+  nombreUsuario: string | null
+  emailUsuario: string | null
+  rolUsuario: string | null
+}
+
 @Injectable()
 export class AdminService {
   private readonly logger = new Logger('AdminService')
@@ -37,6 +58,7 @@ export class AdminService {
     private readonly notificaciones: NotificationsService,
     private readonly email: EmailService,
     private readonly storage: StorageService,
+    @Optional() @Inject(FIREBASE_AUTH) private readonly auth?: FirebaseAuth,
   ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
@@ -438,7 +460,27 @@ export class AdminService {
     const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     const nuevoActivo = !doc.data()!.activo
-    await doc.ref.update({ activo: nuevoActivo })
+
+    const actualizacion: Record<string, unknown> = { activo: nuevoActivo }
+    if (nuevoActivo) {
+      // Si el admin reactiva la cuenta, se restaura y se cancela el proceso de eliminación
+      actualizacion.eliminado = false
+      actualizacion.fechaSolicitudEliminacion = null
+      actualizacion.fechaEliminacionPermanente = null
+    }
+
+    await doc.ref.update(actualizacion)
+
+    try {
+      const authSdk = this.auth ?? getAuth()
+      await authSdk.updateUser(id, { disabled: !nuevoActivo })
+      if (!nuevoActivo) {
+        await authSdk.revokeRefreshTokens(id)
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`No se pudo sincronizar estado en Firebase Auth para ${id}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
     return { activo: nuevoActivo }
   }
 
@@ -466,8 +508,8 @@ export class AdminService {
       try {
         const filePath = extractStoragePath(perfil.urlAvatar)
         if (filePath) await this.storage.delete(filePath)
-      } catch (err: any) {
-        this.logger.warn(`No se pudo eliminar avatar de Storage: ${err.message}`)
+      } catch (err: unknown) {
+        this.logger.warn(`No se pudo eliminar avatar de Storage: ${err instanceof Error ? err.message : String(err)}`)
       }
     }
 
@@ -507,6 +549,44 @@ export class AdminService {
 
     // 3. Eliminar perfil principal
     await doc.ref.delete()
+
+    // 4. Eliminar de Firebase Auth
+    try {
+      const authSdk = this.auth ?? getAuth()
+      await authSdk.deleteUser(id)
+    } catch (err: unknown) {
+      this.logger.warn(`No se pudo eliminar usuario de Firebase Auth: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  /**
+   * Purga definitiva de todas las cuentas que solicitaron eliminación y cuyo
+   * período de gracia (60 días) ha expirado (fechaEliminacionPermanente <= ahora).
+   */
+  async purgarUsuariosEliminadosExpirados() {
+    const ahoraIso = new Date().toISOString()
+    const snapshot = await this.col(COLECCIONES.perfiles)
+      .where('eliminado', '==', true)
+      .where('fechaEliminacionPermanente', '<=', ahoraIso)
+      .get()
+
+    const resultados = {
+      procesados: snapshot.size,
+      eliminados: 0,
+      fallidos: 0,
+    }
+
+    for (const doc of snapshot.docs) {
+      try {
+        await this.deleteUser(doc.id, 'SYSTEM_PURGE')
+        resultados.eliminados++
+      } catch (err: unknown) {
+        this.logger.error(`Error al purgar usuario expirado ${doc.id}: ${err instanceof Error ? err.message : String(err)}`)
+        resultados.fallidos++
+      }
+    }
+
+    return resultados
   }
 
   /**
@@ -670,8 +750,8 @@ export class AdminService {
 
         return { personasActivas: live, promedioDiario: avgDaily, promedioSemanal: avgWeekly, promedioMensual: avgMonthly, historialMinutos: historial }
       }
-    } catch (err: any) {
-      this.logger.warn(`No se pudieron obtener datos de sesiones reales: ${err.message}. Usando fallback calculado.`)
+    } catch (err: unknown) {
+      this.logger.warn(`No se pudieron obtener datos de sesiones reales: ${err instanceof Error ? err.message : String(err)}. Usando fallback calculado.`)
     }
 
     // 2. Fallback: calcular basado en perfiles activos
@@ -706,7 +786,7 @@ export class AdminService {
   /* ─────────────────────────── Alertas de riesgo ─────────────────────────── */
 
   async getAlerts() {
-    const alertas: any[] = []
+    const alertas: AlertaRiesgo[] = []
     const ahora = new Date()
     const hace7Dias = new Date(ahora.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
     const hace48Horas = new Date(ahora.getTime() - 48 * 60 * 60 * 1000).toISOString()
@@ -850,12 +930,18 @@ export class AdminService {
     const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
     const perfil = perfilDoc.exists ? perfilDoc.data()! : null
 
+    // Leer solo por orderBy y filtrar usuarioId en memoria: combinar where + orderBy
+    // sobre campos distintos exige índice compuesto de Firestore (causa de 500s)
     const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
-      .where('usuarioId', '==', usuarioId).orderBy('fechaSubida', 'desc').get()
-    const documentos = docsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Record<string, any>))
+      .orderBy('fechaSubida', 'desc')
+      .limit(LIMITE_LECTURA_DOCS_IDENTIDAD)
+      .get()
+    const documentos = docsSnap.docs
+      .map(d => ({ id: d.id, ...d.data() } as DocumentoIdentidadDoc & { id: string }))
+      .filter(d => d.usuarioId === usuarioId)
 
-    const tieneCurp = documentos.some((d: any) => d.tipo === 'curp')
-    const tieneIdentificacion = documentos.some((d: any) => d.tipo === 'identificacion_oficial')
+    const tieneCurp = documentos.some(d => d.tipo === 'curp')
+    const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
     const estadoIdentidad = perfil?.estadoValidacionIdentidad ?? 'sin_documentos'
 
     // Determinar si puede aprobarse
@@ -871,7 +957,7 @@ export class AdminService {
       } else if (estadoIdentidad === 'pendiente') {
         motivo = 'Documentos pendientes de revisión por administrador'
       } else if (estadoIdentidad === 'rechazado') {
-        const rechazado = documentos.find((d: any) => d.estado === 'rechazado')
+        const rechazado = documentos.find(d => d.estado === 'rechazado')
         motivo = `Documentos rechazados: ${rechazado?.motivoRechazo ?? 'Sin motivo especificado'}`
       }
     }
@@ -892,7 +978,7 @@ export class AdminService {
         puedeAprobarse,
         motivo,
       },
-      documentos: documentos.map((d: any) => ({
+      documentos: documentos.map(d => ({
         id: d.id,
         tipo: d.tipo,
         estado: d.estado,
@@ -909,39 +995,48 @@ export class AdminService {
 
   /**
    * Lista documentos de identidad pendientes de revisión.
+   *
+   * Estrategia: se lee la colección ordenada por `fechaSubida` y el filtro
+   * `estado == 'pendiente'` se aplica EN MEMORIA. Combinar `where` sobre un
+   * campo con `orderBy` sobre otro exige un índice compuesto de Firestore
+   * (causa de errores 500 cuando el índice no existe en el proyecto).
    */
-  async getDocumentosIdentidadPendientes(pagina = 1, limite = 20): Promise<RespuestaPaginada<any>> {
+  async getDocumentosIdentidadPendientes(pagina = 1, limite = 20): Promise<RespuestaPaginada<DocumentoIdentidadPendienteDto>> {
+    // Leer ordenado por fechaSubida (funciona con el índice automático de un solo campo)
     const snap = await this.col(COLECCIONES.documentosIdentidad)
-      .where('estado', '==', 'pendiente')
       .orderBy('fechaSubida', 'desc')
+      .limit(LIMITE_LECTURA_DOCS_IDENTIDAD)
       .get()
 
-    let documentos = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // Filtro en memoria: solo documentos pendientes
+    const crudos = snap.docs.map(d => ({ id: d.id, ...d.data() } as DocumentoIdentidadDoc & { id: string }))
+    const pendientes = crudos.filter(d => d.estado === 'pendiente')
 
-    // Enriquecer con datos del usuario
-    const usuarioIds = [...new Set(documentos.map(d => (d as any).usuarioId).filter(Boolean))] as string[]
+    // Enriquecer con datos del usuario (type-guard: descarta documentos sin usuarioId)
+    const usuarioIds = pendientes
+      .map(d => d.usuarioId)
+      .filter((id): id is string => Boolean(id))
     const mapaUsuarios = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
-    documentos = documentos.map(d => {
-      const data = d as any
-      const usuario = mapaUsuarios.get(data.usuarioId) ?? {}
+    const datos: DocumentoIdentidadPendienteDto[] = pendientes.map(d => {
+      const usuario = d.usuarioId ? mapaUsuarios.get(d.usuarioId) : undefined
       return {
         id: d.id,
-        tipo: data.tipo,
-        urlDocumento: data.urlDocumento,
-        numeroCurp: data.numeroCurp ?? null,
-        estado: data.estado,
-        fechaSubida: data.fechaSubida,
-        usuarioId: data.usuarioId,
-        nombreUsuario: usuario.nombreCompleto ?? null,
-        emailUsuario: usuario.email ?? null,
-        rolUsuario: usuario.rol ?? null,
+        tipo: d.tipo,
+        urlDocumento: d.urlDocumento,
+        numeroCurp: d.numeroCurp ?? null,
+        estado: d.estado,
+        fechaSubida: d.fechaSubida,
+        usuarioId: d.usuarioId,
+        nombreUsuario: usuario?.nombreCompleto ?? null,
+        emailUsuario: usuario?.email ?? null,
+        rolUsuario: usuario?.rol ?? null,
       }
     })
 
-    const total = documentos.length
+    const total = datos.length
     const inicio = (pagina - 1) * limite
-    const paginados = documentos.slice(inicio, inicio + limite)
+    const paginados = datos.slice(inicio, inicio + limite)
 
     return {
       datos: paginados,

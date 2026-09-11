@@ -1,12 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsString, IsOptional, IsIn, IsBoolean } from 'class-validator'
+import { IsString, IsOptional, IsIn, IsBoolean, MaxLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CrearPublicacionDto {
   @ApiProperty({ description: 'Contenido de la publicación', example: '¡Hola comunidad!' })
   @Transform(({ value }) => sanitizeHtml(value))
-  @IsString() contenido!: string
+  @IsString() @MaxLength(5000, { message: 'El contenido no puede exceder 5000 caracteres' }) contenido!: string
 
   @ApiProperty({ description: 'ID del grupo (opcional)', required: false })
   @IsOptional() @IsString() grupoId?: string

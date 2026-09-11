@@ -1,6 +1,8 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, ServiceUnavailableException, Logger, Optional } from '@nestjs/common'
 import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
-import { FIRESTORE } from '../../database/firebase.provider'
+import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
+import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
+import { getAuth } from 'firebase-admin/auth'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
 import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
 import { DependienteDoc, DependienteFormateado, PerfilDoc, PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
@@ -22,6 +24,7 @@ export class UsersService {
     private readonly storage: StorageService,
     // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
     @Optional() private readonly validation?: ValidationService,
+    @Optional() @Inject(FIREBASE_AUTH) private readonly auth?: FirebaseAuth,
   ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
@@ -892,5 +895,35 @@ export class UsersService {
 
     await this.col(COLECCIONES.perfiles).doc(pcdUserId).update({ features: actualizados })
     return { id: pcdUserId, features: actualizados }
+  }
+
+  /**
+   * Eliminación reversible de la propia cuenta (Soft Delete con 60 días de gracia).
+   * 1. Marca el perfil en Firestore como activo=false, eliminado=true y programa la fecha de purga en 60 días.
+   * 2. Deshabilita la cuenta en Firebase Auth y revoca todos los tokens de sesión activos.
+   */
+  async deleteAccount(usuarioId: string): Promise<void> {
+    const doc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
+
+    const ahora = new Date()
+    const DIAS_GRACIA = 60
+    const fechaEliminacionPermanente = new Date(ahora.getTime() + DIAS_GRACIA * 24 * 60 * 60 * 1000)
+
+    await doc.ref.update({
+      activo: false,
+      eliminado: true,
+      fechaSolicitudEliminacion: ahora.toISOString(),
+      fechaEliminacionPermanente: fechaEliminacionPermanente.toISOString(),
+    })
+
+    try {
+      const authSdk = this.auth ?? getAuth()
+      await authSdk.updateUser(usuarioId, { disabled: true })
+      await authSdk.revokeRefreshTokens(usuarioId)
+      this.logger.log(`Cuenta ${usuarioId} marcada como eliminada (gracia: ${DIAS_GRACIA} días) y deshabilitada en Firebase Auth`)
+    } catch (err: unknown) {
+      this.logger.warn(`No se pudo desactivar la cuenta en Firebase Auth para ${usuarioId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 }

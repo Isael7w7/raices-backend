@@ -305,5 +305,67 @@ export interface DocumentoIdentidadDoc {
   fechaRevision?: string | null
 }
 
+/**
+ * Resumen de institución para listados admin.
+ * Útil como referencia de tipo para sort/map callbacks en admin.service.
+ */
+export interface InstitucionResumen {
+  id?: string
+  nombre?: string
+  categoria?: string
+  ciudad?: string
+  activa?: boolean
+  verificada?: boolean
+  calificacionPromedio?: number
+  cantidadCalificaciones?: number
+  fechaCreacion?: string
+  usuarioId?: string
+  creadoPor?: string
+  tiposDiscapacidad?: string[] | string
+}
+
+/**
+ * Alerta de riesgo para el panel admin.
+ */
+export interface AlertaRiesgo {
+  id?: string
+  severidad: 'critica' | 'media' | 'info'
+  tipo: string
+  titulo: string
+  descripcion: string
+  accion?: string
+  tipoEntidad: string
+  idEntidad?: string
+}
+
+/**
+ * Resena con datos enriquecidos para moderación admin.
+ */
+export interface ResenaAdmin {
+  id?: string
+  calificacion?: number
+  comentario?: string
+  fechaCreacion?: string
+  usuarioId?: string
+  institucionId?: string
+  nombreUsuario?: string | null
+  emailUsuario?: string | null
+  nombreInstitucion?: string | null
+}
+
+/**
+ * Documento de usuario para listados admin.
+ */
+export interface UsuarioAdmin {
+  id?: string
+  email?: string
+  nombreCompleto?: string
+  rol?: string
+  ciudad?: string
+  activo?: boolean
+  verificado?: boolean
+  fechaCreacion?: string
+}
+
 /** Default features constant for convenience */
 export const DEFAULT_FEATURES: FeatureFlags = { ...FEATURES_POR_DEFECTO }

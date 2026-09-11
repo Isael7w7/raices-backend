@@ -227,6 +227,18 @@ export class AdminController {
     return this.svc.deleteUser(id, user.id)
   }
 
+  @Post('usuarios/purgar-eliminados')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @ApiOperation({
+    summary: 'Purgar cuentas eliminadas expiradas (> 60 días)',
+    description: 'Elimina de forma permanente y en cascada (Storage, Firestore y Firebase Auth) todas las cuentas que solicitaron eliminación y cuyo período de gracia de 60 días ha vencido.',
+  })
+  @ApiOkResponse({ description: 'Resumen de usuarios purgados permanentemente' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  purgarUsuariosEliminados() {
+    return this.svc.purgarUsuariosEliminadosExpirados()
+  }
+
   /* ── Reseñas ── */
   @Get('resenas')
   @UseETag()

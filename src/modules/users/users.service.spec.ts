@@ -1609,4 +1609,41 @@ describe('UsersService', () => {
       await expect(service.updateLinkedPcdFeatures('tutor1', 'pcd1', { chat: false })).rejects.toThrow(ForbiddenException)
     })
   })
+
+  // ── deleteAccount ────────────────────────────────────────────────────────
+  describe('deleteAccount', () => {
+    it('debe lanzar NotFoundException si el usuario no existe', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+        }),
+      })
+
+      await expect(service.deleteAccount('nonexistent-uid')).rejects.toThrow(NotFoundException)
+    })
+
+    it('debe marcar la cuenta como inactiva y eliminada con gracia de 60 días', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue({
+            exists: true,
+            id: 'user-123',
+            data: () => ({ id: 'user-123', email: 'user@test.com', activo: true }),
+            ref: { update: updateMock },
+          }),
+        }),
+      })
+
+      await expect(service.deleteAccount('user-123')).resolves.toBeUndefined()
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activo: false,
+          eliminado: true,
+          fechaSolicitudEliminacion: expect.any(String),
+          fechaEliminacionPermanente: expect.any(String),
+        }),
+      )
+    })
+  })
 });

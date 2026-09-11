@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException, BadRequestException, Inject, Logger, Optional } from '@nestjs/common'
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, NotFoundException, Inject, Logger, Optional } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
 import axios from 'axios'
@@ -363,5 +363,23 @@ export class AuthService {
     }
 
     return base
+  }
+
+  /**
+   * Revoca todos los refresh tokens emitidos para el usuario en Firebase Auth.
+   * Invalida de inmediato todas las sesiones activas en cualquier dispositivo.
+   */
+  async cerrarSesionGlobal(userId: string): Promise<void> {
+    try {
+      await this.auth.revokeRefreshTokens(userId)
+      this.logger.log(`Tokens de refresco revocados globalmente para usuario: ${userId}`)
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string }
+      this.logger.error(`Error al revocar tokens en Firebase Auth para el usuario ${userId}: ${err?.message ?? e}`)
+      if (err?.code === 'auth/user-not-found') {
+        throw new NotFoundException('Usuario no encontrado')
+      }
+      throw new BadRequestException('No se pudo revocar la sesión en todos los dispositivos')
+    }
   }
 }

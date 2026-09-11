@@ -9,10 +9,11 @@ import { LoginDto } from './dto/login.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
 import { RespuestaRegistroDto, RespuestaSesionDto, RespuestaPerfilDto } from './dto/respuestas-auth.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FirebaseAuthGuard } from '../../common/guards/firebase-auth.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
-import { NOMBRE_COOKIE_ACCESO, NOMBRE_COOKIE_REFRESCO, parseCookies } from '../../common/utils/cookies'
+import { NOMBRE_COOKIE_ACCESO, NOMBRE_COOKIE_REFRESCO, parseCookies, limpiarCookiesSesion } from '../../common/utils/cookies'
 import { esOrigenPermitido, obtenerOrigenesPermitidos } from '../../common/utils/cors-origins'
 
 // Duración de las cookies de sesión (ms). El ID token de Firebase expira en 1h
@@ -90,6 +91,25 @@ export class AuthController {
     const base = this.opcionesBaseCookie()
     res.clearCookie(NOMBRE_COOKIE_ACCESO, base)
     res.clearCookie(NOMBRE_COOKIE_REFRESCO, base)
+  }
+
+  @Post('cerrar-sesion-global')
+  @HttpCode(200)
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Cerrar sesión en todos los dispositivos',
+    description: 'Revoca todos los tokens de refresco del usuario en Firebase Auth y limpia las cookies de sesión httpOnly locales.',
+  })
+  @ApiOkResponse({ description: 'Sesión cerrada en todos los dispositivos exitosamente' })
+  @ApiResponse({ status: 401, description: 'No autenticado o token inválido' })
+  async cerrarSesionGlobal(
+    @CurrentUser() user: CurrentUserPayload,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.cerrarSesionGlobal(user.id)
+    limpiarCookiesSesion(res, this.config)
+    return { mensaje: 'Sesión cerrada en todos los dispositivos exitosamente' }
   }
 
   @Get('yo')

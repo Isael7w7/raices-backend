@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsIn, IsOptional, IsString, IsNumber, Min } from 'class-validator'
+import { IsIn, IsOptional, IsString, IsNumber, Min, MaxLength } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 /**
  * Estado de una ruta de desarrollo.
@@ -26,7 +28,9 @@ export class CrearRutaDto {
     description: 'Nombre de la ruta',
     example: 'Ingreso a educación media superior',
   })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(200, { message: 'El nombre no puede exceder 200 caracteres' })
   nombre!: string
 
   @ApiPropertyOptional({
@@ -34,7 +38,9 @@ export class CrearRutaDto {
     example: 'Meta: Ingresar a una escuela de educación media superior inclusiva',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(2000, { message: 'La descripción no puede exceder 2000 caracteres' })
   descripcion?: string
 
   @ApiPropertyOptional({
@@ -42,7 +48,9 @@ export class CrearRutaDto {
     example: 'Inscripción exitosa en escuela inclusiva',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(1000, { message: 'La meta final no puede exceder 1000 caracteres' })
   metaFinal?: string
 
   @ApiPropertyOptional({
@@ -68,15 +76,15 @@ export class CrearRutaDto {
  */
 export class ActualizarRutaDto {
   @ApiPropertyOptional({ description: 'Nombre de la ruta' })
-  @IsOptional() @IsString()
+  @IsOptional() @Transform(({ value }) => sanitizeHtml(value)) @IsString() @MaxLength(200, { message: 'El nombre no puede exceder 200 caracteres' })
   nombre?: string
 
   @ApiPropertyOptional({ description: 'Descripción de la ruta' })
-  @IsOptional() @IsString()
+  @IsOptional() @Transform(({ value }) => sanitizeHtml(value)) @IsString() @MaxLength(2000, { message: 'La descripción no puede exceder 2000 caracteres' })
   descripcion?: string
 
   @ApiPropertyOptional({ description: 'Meta final de la ruta' })
-  @IsOptional() @IsString()
+  @IsOptional() @Transform(({ value }) => sanitizeHtml(value)) @IsString() @MaxLength(1000, { message: 'La meta final no puede exceder 1000 caracteres' })
   metaFinal?: string
 
   @ApiPropertyOptional({ description: 'Estado de la ruta', enum: ['activa', 'completada', 'pausada', 'cancelada'] })
@@ -97,11 +105,13 @@ export class ActualizarRutaDto {
  */
 export class CrearPasoDto {
   @ApiProperty({ description: 'Título del paso', example: 'Investigar escuelas inclusivas' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(200, { message: 'El título no puede exceder 200 caracteres' })
   titulo!: string
 
   @ApiPropertyOptional({ description: 'Descripción del paso' })
-  @IsOptional() @IsString()
+  @IsOptional() @Transform(({ value }) => sanitizeHtml(value)) @IsString() @MaxLength(1000, { message: 'La descripción no puede exceder 1000 caracteres' })
   descripcion?: string
 
   @ApiPropertyOptional({ description: 'Orden del paso en la ruta', example: 1 })

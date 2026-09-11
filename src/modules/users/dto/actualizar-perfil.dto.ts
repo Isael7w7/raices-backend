@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString, IsIn } from 'class-validator'
+import { IsOptional, IsString, IsIn, MaxLength, Matches } from 'class-validator'
+import { Transform } from 'class-transformer'
 import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class ActualizarPerfilDto {
   @ApiPropertyOptional({
@@ -8,7 +10,10 @@ export class ActualizarPerfilDto {
     example: 'Juan Pérez López',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(100, { message: 'El nombre no puede exceder 100 caracteres' })
+  @Matches(/^[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ\s'-]*$/, { message: 'El nombre solo puede contener letras, espacios, guiones y apóstrofes' })
   nombreCompleto?: string
 
   @ApiPropertyOptional({
@@ -40,7 +45,9 @@ export class ActualizarPerfilDto {
     example: 'Calle 20 #300 Col. García Ginerés, CP 97070',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(300, { message: 'El domicilio no puede exceder 300 caracteres' })
   domicilio?: string
 
   @ApiPropertyOptional({
@@ -56,7 +63,9 @@ export class ActualizarPerfilDto {
     example: 'Madre de familia',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(100, { message: 'La profesión no puede exceder 100 caracteres' })
   profesion?: string
 
   @ApiPropertyOptional({
@@ -64,7 +73,9 @@ export class ActualizarPerfilDto {
     example: 'Mamá de Santiago (8 años, TEA). Comparte experiencias sobre terapia ABA y escuela inclusiva.',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(500, { message: 'La biografía no puede exceder 500 caracteres' })
   bio?: string
 
   // ═══════════════════════════════════════════════════════════════════

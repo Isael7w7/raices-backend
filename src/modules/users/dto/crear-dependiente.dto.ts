@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString, IsArray } from 'class-validator'
+import { IsOptional, IsString, IsArray, MaxLength, Matches } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CrearDependienteDto {
   @ApiPropertyOptional({
@@ -7,7 +9,10 @@ export class CrearDependienteDto {
     example: 'María García López',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(100, { message: 'El nombre no puede exceder 100 caracteres' })
+  @Matches(/^[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ\s'-]*$/, { message: 'El nombre solo puede contener letras, espacios, guiones y apóstrofes' })
   nombreCompleto?: string
 
   @ApiPropertyOptional({
@@ -15,7 +20,9 @@ export class CrearDependienteDto {
     example: 'hijo',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(50, { message: 'El parentesco no puede exceder 50 caracteres' })
   parentesco?: string
 
   @ApiPropertyOptional({
@@ -49,6 +56,8 @@ export class CrearDependienteDto {
     example: 'Requiere acompañamiento en terapias',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(500, { message: 'Las notas no pueden exceder 500 caracteres' })
   notas?: string
 }

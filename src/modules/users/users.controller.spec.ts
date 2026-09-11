@@ -5,6 +5,7 @@ import { UsersController } from './users.controller'
 import { UsersService } from './users.service'
 import { StorageService } from '../storage/storage.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FirebaseAuthGuard } from '../../common/guards/firebase-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { LimitDependientesGuard } from '../../common/guards/limit-dependientes.guard'
 
@@ -14,6 +15,7 @@ describe('UsersController', () => {
     getProfile: jest.fn(),
     getDependentPermissions: jest.fn(),
     updateDependentFeatures: jest.fn(),
+    deleteAccount: jest.fn(),
   }
 
   beforeEach(async () => {
@@ -91,5 +93,25 @@ describe('UsersController', () => {
 
     expect(mockSvc.updateDependentFeatures).toHaveBeenCalledWith('tutor-1', 'dep1', dto)
     expect(result.features.chat).toBe(false)
+  })
+
+  it('registra DELETE cuenta con FirebaseAuthGuard y delega al servicio limpiando cookies', async () => {
+    const handler = (UsersController.prototype as any).deleteAccount
+
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('cuenta')
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.DELETE)
+
+    const guards = Reflect.getMetadata('__guards__', handler) ?? []
+    expect(guards).toContain(FirebaseAuthGuard)
+
+    const user = { id: 'u-eliminar', email: 'u@test.com', rol: 'pcd', nombreCompleto: 'U', verificado: false, tutorId: null, features: {} }
+    const resMock = { clearCookie: jest.fn() }
+
+    mockSvc.deleteAccount.mockResolvedValue(undefined)
+
+    await controller.deleteAccount(user as any, resMock as any)
+
+    expect(mockSvc.deleteAccount).toHaveBeenCalledWith('u-eliminar')
+    expect(resMock.clearCookie).toHaveBeenCalledTimes(2)
   })
 })

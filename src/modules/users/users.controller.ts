@@ -1,4 +1,6 @@
-import { Controller, Get, Put, Patch, Post, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, MaxFileSizeValidator, HttpCode } from '@nestjs/common'
+import { Controller, Get, Put, Patch, Post, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, BadRequestException, ParseFilePipe, MaxFileSizeValidator, HttpCode, Res, Optional } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { Response } from 'express'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { MultimediaMagicBytesValidator } from '../../common/validators/multimedia-magic-bytes.validator'
 import { imageFileFilter } from '../../common/utils/image-filter'
@@ -16,6 +18,7 @@ import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, Dependiente
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FirebaseAuthGuard } from '../../common/guards/firebase-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
@@ -23,6 +26,7 @@ import { CurrentUserPayload } from '../../common/interfaces/current-user.interfa
 import { UseETag } from '../../common/decorators/use-etag.decorator'
 import { LimitDependientes } from '../../common/decorators/limit-dependientes.decorator'
 import { LimitDependientesGuard } from '../../common/guards/limit-dependientes.guard'
+import { limpiarCookiesSesion } from '../../common/utils/cookies'
 
 @ApiTags('Usuarios')
 @ApiBearerAuth('jwt-auth')
@@ -32,6 +36,7 @@ export class UsersController {
   constructor(
     private readonly svc: UsersService,
     private readonly storage: StorageService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   @Get('perfil')
@@ -376,5 +381,24 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'Usuario PCD no encontrado' })
   unlinkPcdFromTutor(@CurrentUser() user: CurrentUserPayload, @Param('pcdUserId') pcdUserId: string) {
     return this.svc.unlinkPcdFromTutor(user.id, user.rol, pcdUserId)
+  }
+
+  @Delete('cuenta')
+  @HttpCode(204)
+  @UseGuards(FirebaseAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Eliminar la propia cuenta (reversible - 60 días de gracia)',
+    description: 'Inicia el proceso de eliminación de cuenta con un período de gracia de 60 días. Desactiva inmediatamente el acceso en Firestore y Firebase Auth y limpia las cookies de sesión httpOnly.',
+  })
+  @ApiNoContentResponse({ description: 'Cuenta programada para eliminación (60 días de gracia) y sesión cerrada' })
+  @ApiResponse({ status: 401, description: 'No autenticado o token inválido' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  async deleteAccount(
+    @CurrentUser() user: CurrentUserPayload,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.svc.deleteAccount(user.id)
+    limpiarCookiesSesion(res, this.config)
   }
 }

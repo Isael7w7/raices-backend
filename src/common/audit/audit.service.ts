@@ -30,6 +30,11 @@ const DEFAULT_LIMITE = 20
  */
 @Injectable()
 export class AuditService {
+  /** Tope de documentos leídos por consulta. La auditoría se consume con
+   *  páginas pequeñas, así que leer los últimos N registros y filtrar en
+   *  memoria evita depender de índices compuestos de Firestore. */
+  private static readonly LIMITE_LECTURA = 500
+
   private readonly logger = new Logger('AuditService')
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
@@ -96,6 +101,16 @@ export class AuditService {
 
   /**
    * Consulta logs de auditoría con paginación y filtros opcionales.
+   *
+   * Estrategia: se leen los últimos `LIMITE_LECTURA` registros ordenados por
+   * `timestamp` y TODOS los filtros (usuarioId, accion, recurso, fechas) se
+   * aplican en memoria. Esto evita combinar `where` sobre un campo con
+   * `orderBy` sobre otro, combinación que exige índices compuestos en
+   * Firestore (causa de errores 500 en producción cuando el índice no existe).
+   *
+   * `accion` y `recurso` aceptan coincidencia por prefijo, insensible a
+   * mayúsculas (ej: `accion=actualizar` matchea `actualizar_configuracion`),
+   * para permitir filtrar "familias" de acciones sin conocer el valor exacto.
    */
   async consultar(paginacion: PaginacionDto, filtros?: {
     usuarioId?: string
@@ -104,28 +119,35 @@ export class AuditService {
     fechaDesde?: string
     fechaHasta?: string
   }): Promise<RespuestaPaginada<AuditLog>> {
-    let query: FirebaseFirestore.Query = this.col().orderBy('timestamp', 'desc')
-
-    if (filtros?.usuarioId) {
-      query = query.where('usuarioId', '==', filtros.usuarioId)
-    }
-    if (filtros?.accion) {
-      query = query.where('accion', '==', filtros.accion)
-    }
-    if (filtros?.recurso) {
-      query = query.where('recurso', '==', filtros.recurso)
-    }
-
-    // Firestore no soporta rangos de fechas con where compuesto sin índice,
-    // así que filtramos en memoria para fechaDesde/fechaHasta
-    const snap = await query.limit(500).get()
+    const snap = await this.col()
+      .orderBy('timestamp', 'desc')
+      .limit(AuditService.LIMITE_LECTURA)
+      .get()
     let registros = snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog))
 
-    if (filtros?.fechaDesde) {
-      registros = registros.filter(r => r.timestamp >= filtros.fechaDesde!)
+    // Normalizar filtros una sola vez (los parámetros de query pueden venir
+    // con espacios o mayúsculas desde el frontend)
+    const usuarioId = filtros?.usuarioId?.trim()
+    const accion = filtros?.accion?.trim().toLowerCase()
+    const recurso = filtros?.recurso?.trim().toLowerCase()
+    const fechaDesde = filtros?.fechaDesde?.trim()
+    const fechaHasta = filtros?.fechaHasta?.trim()
+
+    if (usuarioId) {
+      registros = registros.filter(r => r.usuarioId === usuarioId)
     }
-    if (filtros?.fechaHasta) {
-      registros = registros.filter(r => r.timestamp <= filtros.fechaHasta!)
+    if (accion) {
+      registros = registros.filter(r => r.accion.toLowerCase().startsWith(accion))
+    }
+    if (recurso) {
+      registros = registros.filter(r => r.recurso.toLowerCase().startsWith(recurso))
+    }
+    // Rangos de fechas: comparación lexicográfica segura porque timestamp es ISO 8601 UTC
+    if (fechaDesde) {
+      registros = registros.filter(r => r.timestamp >= fechaDesde)
+    }
+    if (fechaHasta) {
+      registros = registros.filter(r => r.timestamp <= fechaHasta)
     }
 
     const total = registros.length

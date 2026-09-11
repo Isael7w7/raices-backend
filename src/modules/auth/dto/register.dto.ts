@@ -1,14 +1,22 @@
-import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray } from 'class-validator'
+import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray, Matches, MaxLength } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
 
 export class RegisterDto {
   @ApiProperty({ description: 'Correo electrónico del usuario', example: 'usuario@correo.mx' })
   @IsEmail() email!: string
-  @ApiProperty({ description: 'Contraseña (mínimo 6 caracteres)', example: 'MiPassword123' })
-  @IsString() @MinLength(6) password!: string
+  @ApiProperty({ description: 'Contraseña (mínimo 8 caracteres, al menos una mayúscula, una minúscula y un número)', example: 'MiPassword123' })
+  @IsString()
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
+  @Matches(/^(?=.*[a-z])/, { message: 'La contraseña debe incluir al menos una letra minúscula' })
+  @Matches(/^(?=.*[A-Z])/, { message: 'La contraseña debe incluir al menos una letra mayúscula' })
+  @Matches(/^(?=.*\d)/, { message: 'La contraseña debe incluir al menos un número' })
+  password!: string
   @ApiProperty({ description: 'Nombre completo', example: 'Juan Pérez' })
-  @IsString() nombreCompleto!: string
+  @IsString()
+  @MaxLength(100, { message: 'El nombre no puede exceder 100 caracteres' })
+  @Matches(/^[a-zA-ZáéíóúñüÁÉÍÓÚÑÜ\s'-]+$/, { message: 'El nombre solo puede contener letras, espacios, guiones y apóstrofes' })
+  nombreCompleto!: string
   @ApiProperty({ description: 'Rol del usuario', enum: ['pcd', 'padre_tutor', 'institucion', 'especialista', 'empresa', 'institucional'] })
   @IsIn(['pcd', 'padre_tutor', 'institucion', 'especialista', 'empresa', 'institucional']) rol!: string
   @ApiPropertyOptional({ description: 'Ciudad', example: 'Mérida' })

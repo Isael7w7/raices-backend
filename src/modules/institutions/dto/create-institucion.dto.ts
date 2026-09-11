@@ -8,6 +8,7 @@ import {
   IsIn,
   Min,
   Max,
+  MaxLength,
 } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { sanitizeHtml } from '../../../common/utils/sanitize-html'
@@ -17,12 +18,14 @@ export class CreateInstitucionDto {
   @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200, { message: 'El nombre no puede exceder 200 caracteres' })
   nombre!: string
 
   @ApiPropertyOptional({ description: 'Descripción de la institución', example: 'Terapias físicas, ocupacionales y de lenguaje.' })
   @Transform(({ value }) => sanitizeHtml(value))
   @IsOptional()
   @IsString()
+  @MaxLength(2000, { message: 'La descripción no puede exceder 2000 caracteres' })
   descripcion?: string
 
   @ApiProperty({ description: 'Categoría', example: 'funcional', enum: ['funcional', 'educativo', 'laboral', 'social'] })

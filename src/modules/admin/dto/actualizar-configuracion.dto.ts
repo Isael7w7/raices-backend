@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString } from 'class-validator'
+import { IsOptional, IsString, MaxLength } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class ActualizarConfiguracionDto {
   @ApiPropertyOptional({
@@ -7,7 +9,9 @@ export class ActualizarConfiguracionDto {
     example: 'Raíces para Florecer',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(100, { message: 'El nombre de la plataforma no puede exceder 100 caracteres' })
   nombrePlataforma?: string
 
   @ApiPropertyOptional({
@@ -63,6 +67,8 @@ export class ActualizarConfiguracionDto {
     example: 'Mérida',
   })
   @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
+  @MaxLength(100, { message: 'La ciudad no puede exceder 100 caracteres' })
   ciudadPorDefecto?: string
 }

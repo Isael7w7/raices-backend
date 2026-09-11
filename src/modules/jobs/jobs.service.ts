@@ -4,7 +4,7 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
-import { VacanteDoc, InstitucionDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
+import { VacanteDoc, InstitucionDoc, PerfilDoc, PostulacionDoc } from '../../common/interfaces/firestore-documents.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
@@ -239,13 +239,13 @@ export class JobsService {
 
     // Postulaciones de esas vacantes (consultas `in` en lotes de 30)
     const idsVacantes = [...mapaVacantes.keys()]
-    const postulaciones: any[] = []
+    const postulaciones: PostulacionDoc[] = []
     for (let i = 0; i < idsVacantes.length; i += 30) {
       const lote = idsVacantes.slice(i, i + 30)
       const snap = await this.db.collection(COLECCIONES.postulaciones)
         .where('vacanteId', 'in', lote)
         .get()
-      postulaciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as any)))
+      postulaciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as PostulacionDoc)))
     }
     // Ordenar en memoria por fecha de creación descendente
     postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
@@ -256,7 +256,7 @@ export class JobsService {
 
     let todos = postulaciones.map(p => {
       const vacante = mapaVacantes.get(p.vacanteId) ?? ({} as VacanteDoc)
-      const perfil = mapaUsuarios.get(p.usuarioId) ?? ({} as PerfilDoc)
+      const perfil = mapaUsuarios.get(p.usuarioId ?? '') ?? ({} as PerfilDoc)
       return {
         id: p.id,
         vacanteId: p.vacanteId,
@@ -333,7 +333,7 @@ export class JobsService {
     const mapaUsuarios = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
     let todos = postulaciones.map(p => {
-      const perfil = mapaUsuarios.get(p.usuarioId) ?? ({} as PerfilDoc)
+      const perfil = mapaUsuarios.get(p.usuarioId ?? '') ?? ({} as PerfilDoc)
       return {
         id: p.id,
         vacanteId: p.vacanteId,

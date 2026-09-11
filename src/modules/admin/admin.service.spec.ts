@@ -209,6 +209,136 @@ describe('AdminService', () => {
     })
   })
 
+  // ── getDocumentosIdentidadPendientes ─────────────────────────────────
+
+  /** Shape mínimo de un documento de identidad en Firestore para los tests */
+  interface DocIdentidadTest {
+    id: string
+    usuarioId?: string
+    tipo?: 'curp' | 'identificacion_oficial' | 'certificado_discapacidad'
+    urlDocumento?: string
+    numeroCurp?: string | null
+    estado?: 'pendiente' | 'aprobado' | 'rechazado'
+    fechaSubida?: string
+  }
+
+  /** Mock tipado de la cadena orderBy→limit→get (sin cláusula where, a propósito) */
+  interface CadenaDocsMock {
+    orderBy: jest.Mock
+    limit: jest.Mock
+    get: jest.Mock
+    where?: never
+  }
+
+  describe('getDocumentosIdentidadPendientes', () => {
+    /** Configura el mock de Firestore para documentosIdentidad + perfiles */
+    function mockColecciones(docs: DocIdentidadTest[], perfiles: { id: string; data: Record<string, unknown> }[] = []) {
+      const cadena: CadenaDocsMock = {
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          docs: docs.map(d => ({ id: d.id, data: () => d })),
+        }),
+      }
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'documentosIdentidad') return cadena
+        // perfiles: consulta por FieldPath.documentId() 'in' lote
+        return {
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({
+            docs: perfiles.map(p => ({ id: p.id, data: () => p.data })),
+          }),
+        }
+      })
+      return cadena
+    }
+
+    const docPendiente = (id: string, usuarioId: string, fechaSubida: string): DocIdentidadTest => ({
+      id,
+      usuarioId,
+      tipo: 'curp',
+      urlDocumento: `https://storage/${id}.pdf`,
+      estado: 'pendiente',
+      fechaSubida,
+    })
+
+    it('debe consultar SIN where y filtrar estado=pendiente EN MEMORIA (regresión del 500 por índice compuesto)', async () => {
+      const cadena = mockColecciones([
+        docPendiente('d1', 'u1', '2026-09-02T00:00:00.000Z'),
+        { id: 'd2', usuarioId: 'u2', tipo: 'identificacion_oficial', estado: 'aprobado', fechaSubida: '2026-09-01T00:00:00.000Z' },
+        { id: 'd3', usuarioId: 'u3', tipo: 'curp', estado: 'rechazado', fechaSubida: '2026-08-30T00:00:00.000Z' },
+      ])
+
+      const result = await service.getDocumentosIdentidadPendientes()
+
+      // La consulta debe ser orderBy+limit, JAMÁS where (era la causa del 500)
+      expect(cadena.orderBy).toHaveBeenCalledWith('fechaSubida', 'desc')
+      expect(cadena.limit).toHaveBeenCalledWith(500)
+      expect(cadena.where).toBeUndefined()
+      // Solo el pendiente sobrevive al filtro en memoria
+      expect(result.total).toBe(1)
+      expect(result.datos[0]?.id).toBe('d1')
+      expect(result.datos[0]?.estado).toBe('pendiente')
+    })
+
+    it('debe enriquecer cada documento con nombre, email y rol del usuario dueño', async () => {
+      mockColecciones(
+        [docPendiente('d1', 'u1', '2026-09-02T00:00:00.000Z')],
+        [{ id: 'u1', data: { nombreCompleto: 'Ana López', email: 'ana@test.com', rol: 'pcd' } }],
+      )
+
+      const result = await service.getDocumentosIdentidadPendientes()
+
+      expect(result.datos[0]).toMatchObject({
+        id: 'd1',
+        usuarioId: 'u1',
+        nombreUsuario: 'Ana López',
+        emailUsuario: 'ana@test.com',
+        rolUsuario: 'pcd',
+      })
+    })
+
+    it('debe poner null en datos del usuario cuando el documento no tiene usuarioId', async () => {
+      mockColecciones([
+        { id: 'd-huerfano', tipo: 'curp', estado: 'pendiente', fechaSubida: '2026-09-02T00:00:00.000Z' },
+      ])
+
+      const result = await service.getDocumentosIdentidadPendientes()
+
+      expect(result.total).toBe(1)
+      expect(result.datos[0]?.usuarioId).toBeUndefined()
+      expect(result.datos[0]?.nombreUsuario).toBeNull()
+      expect(result.datos[0]?.emailUsuario).toBeNull()
+      expect(result.datos[0]?.rolUsuario).toBeNull()
+    })
+
+    it('debe paginar correctamente (página 2 de 3 pendientes con límite 2)', async () => {
+      mockColecciones([
+        docPendiente('a', 'u1', '2026-09-03T00:00:00.000Z'),
+        docPendiente('b', 'u2', '2026-09-02T00:00:00.000Z'),
+        docPendiente('c', 'u3', '2026-09-01T00:00:00.000Z'),
+      ])
+
+      const result = await service.getDocumentosIdentidadPendientes(2, 2)
+
+      expect(result.total).toBe(3)
+      expect(result.pagina).toBe(2)
+      expect(result.limite).toBe(2)
+      expect(result.totalPaginas).toBe(2)
+      expect(result.datos.map(d => d.id)).toEqual(['c'])
+    })
+
+    it('debe retornar respuesta vacía sin consultar perfiles cuando no hay pendientes', async () => {
+      mockColecciones([
+        { id: 'd2', usuarioId: 'u2', estado: 'aprobado', fechaSubida: '2026-09-01T00:00:00.000Z' },
+      ])
+
+      const result = await service.getDocumentosIdentidadPendientes()
+
+      expect(result).toEqual({ datos: [], total: 0, pagina: 1, limite: 20, totalPaginas: 0 })
+    })
+  })
+
   // ── toggleUserActive ────────────────────────────────────────────────
 
   describe('toggleUserActive', () => {
@@ -335,6 +465,44 @@ describe('AdminService', () => {
       expect(perfilDoc.ref.delete).toHaveBeenCalled()
       expect(batch.commit).toHaveBeenCalled()
       expect(batch.delete).toHaveBeenCalledWith(vacanteDoc.ref)
+    })
+  })
+
+  // ── purgarUsuariosEliminadosExpirados ─────────────────────────────────
+  describe('purgarUsuariosEliminadosExpirados', () => {
+    it('debe buscar y purgar permanentemente usuarios expirados', async () => {
+      const docExpirado = {
+        id: 'u-expirado',
+        data: () => ({ id: 'u-expirado', urlAvatar: null, rol: 'pcd' }),
+        ref: { delete: jest.fn().mockResolvedValue(undefined) },
+      }
+      const snapshot = { empty: false, size: 1, docs: [docExpirado] }
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnValue({
+              where: jest.fn().mockReturnValue({
+                get: jest.fn().mockResolvedValue(snapshot),
+              }),
+            }),
+            doc: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue({
+                exists: true,
+                data: () => ({ id: 'u-expirado', rol: 'pcd' }),
+                ref: { delete: jest.fn().mockResolvedValue(undefined) },
+              }),
+            }),
+          }
+        }
+        return chainCollection()
+      })
+
+      const resultado = await service.purgarUsuariosEliminadosExpirados()
+
+      expect(resultado.procesados).toBe(1)
+      expect(resultado.eliminados).toBe(1)
+      expect(resultado.fallidos).toBe(0)
     })
   })
 

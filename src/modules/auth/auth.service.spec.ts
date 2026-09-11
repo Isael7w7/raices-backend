@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { ConflictException, UnauthorizedException, BadRequestException } from '@nestjs/common'
+import { ConflictException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { AuthService } from './auth.service'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
@@ -50,6 +50,7 @@ describe('AuthService', () => {
       createUser: jest.fn().mockResolvedValue({ uid: 'new-uid-123' }),
       verifyIdToken: jest.fn().mockResolvedValue({ uid: 'user-uid-123', email: 'test@test.com' }),
       deleteUser: jest.fn().mockResolvedValue(undefined),
+      revokeRefreshTokens: jest.fn().mockResolvedValue(undefined),
     }
     emailMock = {
       sendWelcome: jest.fn().mockResolvedValue(undefined),
@@ -631,6 +632,24 @@ describe('AuthService', () => {
       expect(result!.institucionId).toBe('inst-aleatoria')
       expect(result!.institucion).not.toBeNull()
       expect(result!.institucion!.nombre).toBe('Centro Legacy')
+    })
+  })
+
+  // ── cerrarSesionGlobal ──────────────────────────────────────────────────
+  describe('cerrarSesionGlobal', () => {
+    it('debe revocar todos los tokens de refresco del usuario exitosamente', async () => {
+      await expect(service.cerrarSesionGlobal('user-uid-123')).resolves.toBeUndefined()
+      expect(authMock.revokeRefreshTokens).toHaveBeenCalledWith('user-uid-123')
+    })
+
+    it('debe lanzar NotFoundException si el usuario no existe en Firebase Auth', async () => {
+      authMock.revokeRefreshTokens.mockRejectedValueOnce({ code: 'auth/user-not-found' })
+      await expect(service.cerrarSesionGlobal('usuario-inexistente')).rejects.toThrow(NotFoundException)
+    })
+
+    it('debe lanzar BadRequestException si ocurre otro error al revocar tokens', async () => {
+      authMock.revokeRefreshTokens.mockRejectedValueOnce(new Error('Network failure'))
+      await expect(service.cerrarSesionGlobal('user-uid-123')).rejects.toThrow(BadRequestException)
     })
   })
 })

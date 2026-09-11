@@ -1,20 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray } from 'class-validator'
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsArray, MaxLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CreateJobDto {
   @ApiProperty({ description: 'Título de la vacante', example: 'Terapeuta Ocupacional' })
   @Transform(({ value }) => sanitizeHtml(value))
-  @IsString() @IsNotEmpty() titulo!: string
+  @IsString() @IsNotEmpty() @MaxLength(200, { message: 'El título no puede exceder 200 caracteres' }) titulo!: string
 
   @ApiProperty({ description: 'Descripción detallada de la vacante', required: false, example: 'Buscamos terapeuta ocupacional para atención a niños con TEA...' })
   @Transform(({ value }) => sanitizeHtml(value))
-  @IsOptional() @IsString() descripcion?: string
+  @IsOptional() @IsString() @MaxLength(2000, { message: 'La descripción no puede exceder 2000 caracteres' }) descripcion?: string
 
   @ApiProperty({ description: 'Requisitos del puesto', required: false, example: 'Título en terapia ocupacional, experiencia mínima de 2 años' })
   @Transform(({ value }) => sanitizeHtml(value))
-  @IsOptional() @IsString() requisitos?: string
+  @IsOptional() @IsString() @MaxLength(1000, { message: 'Los requisitos no pueden exceder 1000 caracteres' }) requisitos?: string
 
   @ApiProperty({ description: 'Modalidad de trabajo', required: false, example: 'presencial', enum: ['presencial', 'remoto', 'híbrido'] })
   @IsOptional() @IsString() modalidad?: string

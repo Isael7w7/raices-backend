@@ -1,16 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator'
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, MaxLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CrearGrupoDto {
   @ApiProperty({ description: 'Nombre del grupo', example: 'Familias TEA Mérida' })
   @Transform(({ value }) => sanitizeHtml(value))
-  @IsString() @IsNotEmpty() nombre!: string
+  @IsString() @IsNotEmpty() @MaxLength(200, { message: 'El nombre no puede exceder 200 caracteres' }) nombre!: string
 
   @ApiPropertyOptional({ description: 'Descripción del grupo', example: 'Grupo de apoyo para familias con niños TEA' })
   @Transform(({ value }) => sanitizeHtml(value))
-  @IsOptional() @IsString() descripcion?: string
+  @IsOptional() @IsString() @MaxLength(1000, { message: 'La descripción no puede exceder 1000 caracteres' }) descripcion?: string
 
   @ApiPropertyOptional({ description: 'El grupo es público o privado', default: true })
   @IsOptional() @IsBoolean() esPublico?: boolean

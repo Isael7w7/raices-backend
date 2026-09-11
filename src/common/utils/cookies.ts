@@ -41,3 +41,36 @@ export function parseCookies(cookieHeader?: string): Record<string, string> {
 
   return resultado
 }
+
+import type { Response, CookieOptions } from 'express'
+
+/**
+ * Retorna las opciones base de cookies de sesión respetando configuración de entorno.
+ */
+export function obtenerOpcionesBaseCookie(config?: { get: (key: string) => unknown }): CookieOptions {
+  const secureExplicito = (config?.get('COOKIE_SECURE') as string | undefined) ?? process.env.COOKIE_SECURE
+  const secure = secureExplicito !== undefined
+    ? secureExplicito === 'true'
+    : process.env.NODE_ENV === 'production'
+
+  const sameSiteConfigurado = ((config?.get('COOKIE_SAMESITE') as string | undefined) ?? process.env.COOKIE_SAMESITE ?? 'lax').toLowerCase()
+  const sameSite = ['lax', 'none', 'strict'].includes(sameSiteConfigurado)
+    ? (sameSiteConfigurado as 'lax' | 'none' | 'strict')
+    : 'lax'
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: '/',
+  }
+}
+
+/**
+ * Limpia las cookies httpOnly de sesión (acceso y refresco).
+ */
+export function limpiarCookiesSesion(res: Response, config?: { get: (key: string) => unknown }): void {
+  const base = obtenerOpcionesBaseCookie(config)
+  res.clearCookie(NOMBRE_COOKIE_ACCESO, base)
+  res.clearCookie(NOMBRE_COOKIE_REFRESCO, base)
+}
