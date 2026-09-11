@@ -564,19 +564,23 @@ export class AdminService {
    * período de gracia (60 días) ha expirado (fechaEliminacionPermanente <= ahora).
    */
   async purgarUsuariosEliminadosExpirados() {
-    const ahoraIso = new Date().toISOString()
     const snapshot = await this.col(COLECCIONES.perfiles)
       .where('eliminado', '==', true)
-      .where('fechaEliminacionPermanente', '<=', ahoraIso)
       .get()
 
+    const ahoraIso = new Date().toISOString()
+    const expirados = snapshot.docs.filter((d) => {
+      const data = d.data()
+      return data.fechaEliminacionPermanente && data.fechaEliminacionPermanente <= ahoraIso
+    })
+
     const resultados = {
-      procesados: snapshot.size,
+      procesados: expirados.length,
       eliminados: 0,
       fallidos: 0,
     }
 
-    for (const doc of snapshot.docs) {
+    for (const doc of expirados) {
       try {
         await this.deleteUser(doc.id, 'SYSTEM_PURGE')
         resultados.eliminados++

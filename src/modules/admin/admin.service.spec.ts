@@ -473,7 +473,7 @@ describe('AdminService', () => {
     it('debe buscar y purgar permanentemente usuarios expirados', async () => {
       const docExpirado = {
         id: 'u-expirado',
-        data: () => ({ id: 'u-expirado', urlAvatar: null, rol: 'pcd' }),
+        data: () => ({ id: 'u-expirado', urlAvatar: null, rol: 'pcd', fechaEliminacionPermanente: '2020-01-01T00:00:00.000Z' }),
         ref: { delete: jest.fn().mockResolvedValue(undefined) },
       }
       const snapshot = { empty: false, size: 1, docs: [docExpirado] }
@@ -482,9 +482,7 @@ describe('AdminService', () => {
         if (name === 'perfiles') {
           return {
             where: jest.fn().mockReturnValue({
-              where: jest.fn().mockReturnValue({
-                get: jest.fn().mockResolvedValue(snapshot),
-              }),
+              get: jest.fn().mockResolvedValue(snapshot),
             }),
             doc: jest.fn().mockReturnValue({
               get: jest.fn().mockResolvedValue({
