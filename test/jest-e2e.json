@@ -1,0 +1,13 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "test/.*\\.e2e-spec\\.ts$",
+  "transform": {
+    "^.+\\.(ts|js|tsx|jsx)$": "@swc/jest"
+  },
+  "transformIgnorePatterns": [],
+  "setupFiles": ["<rootDir>/test/setup-e2e.ts"],
+  "testTimeout": 30000,
+  "maxWorkers": 1
+}

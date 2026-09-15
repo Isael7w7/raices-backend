@@ -14,7 +14,27 @@ export const COLECCIONES = {
   notificaciones: 'notificaciones',
   postulaciones: 'postulaciones',
   instituciones: 'instituciones',
+  foros: 'foros',
+  respuestasForo: 'respuestasForo',
+  especialistas: 'especialistas',
+  interacciones: 'interacciones',
   vacantes: 'vacantes',
   configuraciones: 'configuraciones',
+  documentosIdentidad: 'documentosIdentidad',
+  validacionesIA: 'validacionesIA',
+  rutasDesarrollo: 'rutasDesarrollo',
+  pasosRuta: 'pasosRuta',
   analiticas: '_analiticas',
+  auditoria: '_auditoria',
 } as const
+
+// ─── Límites de negocio ─────────────────────────────────────────────
+/** Límite máximo de dependientes por tutor (configurable via env MAX_DEPENDIENTES_POR_TUTOR) */
+export function getMaxDependientesPorTutor(): number {
+  const val = process.env.MAX_DEPENDIENTES_POR_TUTOR
+  const parsed = val ? parseInt(val, 10) : NaN
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5
+}
+
+/** @deprecated Usa getMaxDependientesPorTutor() para valor configurable */
+export const MAX_DEPENDIENTES_POR_TUTOR = 5

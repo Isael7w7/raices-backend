@@ -41,7 +41,7 @@ raices-backend/
 ├── .dockerignore           ← Archivos excluidos del build
 ├── docker-compose.yml      ← Para testing local
 ├── deploy.sh               ← Script de deploy automatizado
-└── .env.production.example ← Plantilla de variables de entorno
+└── .env.example ← Plantilla de variables de entorno
 ```
 
 ### Archivos importantes para ti:
@@ -50,7 +50,7 @@ raices-backend/
 |---------|---------------|
 | `Dockerfile` | Modificar cuando cambien dependencias o configuración de build |
 | `deploy.sh` | Ejecutar cada vez que hagas deploy |
-| `.env.production` | **NUNCA** subir a Git, contiene secretos |
+| `.env` | **NUNCA** subir a Git, contiene secretos |
 
 ---
 
@@ -99,13 +99,13 @@ cd raices-backend
 
 ## 4. Variables de Entorno
 
-### Crear archivo de producción:
+### Crear archivo de entorno:
 ```bash
 # Copiar plantilla
-cp .env.production.example .env.production
+cp .env.example .env
 
 # Editar con tus valores
-nano .env.production
+nano .env
 ```
 
 ### Variables necesarias:
@@ -116,13 +116,51 @@ nano .env.production
 | `FIREBASE_CLIENT_EMAIL` | Email de cuenta de servicio | Firebase → Cuentas de servicio |
 | `FIREBASE_PRIVATE_KEY` | Clave privada | Firebase → Cuentas de servicio → Generar clave |
 | `JWT_SECRET` | Secreto para tokens | Crear uno seguro (ej: `openssl rand -base64 32`) |
-| `ANTHROPIC_API_KEY` | API key de IA | https://console.anthropic.com/ |
+| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Gemini vía Vertex AI con el SDK `@google/genai` (fallback: `FIREBASE_PROJECT_ID`) | Consola GCP → Vertex AI |
+| `VERTEX_AI_LOCATION` | Región de Vertex AI (default: `us-central1`) | Consola GCP → Vertex AI |
+| `VERTEX_AI_MODEL` | Modelo Gemini (default: `gemini-2.0-flash`) | https://cloud.google.com/vertex-ai |
 | `CORS_ORIGINS` | Dominios permitidos | Tu dominio de frontend |
+| `COOKIE_SAMESITE` | Política SameSite de las cookies de sesión (`lax`/`none`/`strict`) | Default en `deploy.sh`: `none` (ver sección siguiente) |
+| `COOKIE_SECURE` | Enviar las cookies solo por HTTPS (`true`/`false`) | Default en `deploy.sh`: `true` |
+
+> **IA (Gemini):** el backend consume Gemini con el SDK oficial **`@google/genai`**
+> (`vertexai: true`), que reemplaza a `@google-cloud/vertexai`. Las variables
+> `VERTEX_AI_*` **no cambian**. No se requiere API key: el SDK se autentica con ADC
+> usando la cuenta de servicio del Cloud Run, que debe tener el rol
+> `roles/aiplatform.user` en el proyecto.
+
+### 🍪 Cookies de sesión (deploy cross-site)
+
+El backend entrega los tokens de sesión como **cookies httpOnly**
+(`token_acceso`, `token_refresco`) además del body. Como el frontend
+(`raices.techmaleon.com.mx`) y la API (Cloud Run `*.run.app`) están en
+**orígenes distintos**, la cookie necesita:
+
+- **`COOKIE_SAMESITE=none`** — con `lax` (default del código) el navegador **no**
+  enviaría la cookie en requests cross-site y el flujo de cookies no funcionaría.
+- **`COOKIE_SECURE=true`** — obligatorio junto con `none` (los navegadores
+  rechazan `SameSite=None` sin `Secure`); Cloud Run siempre sirve por HTTPS.
+
+`deploy.sh` ya los fija por defecto en `--set-env-vars`:
+
+```
+COOKIE_SAMESITE=none
+COOKIE_SECURE=true
+```
+
+Se pueden sobreescribir antes del deploy (ej: `COOKIE_SAMESITE=lax ./deploy.sh deploy`).
+Los valores del `.env` local se omiten del deploy para no duplicar flags.
+
+> **CSRF:** `SameSite=None` reabre superficie CSRF, pero el `FirebaseAuthGuard`
+> valida el header `Origin` en peticiones de escritura autenticadas por cookie
+> (responde `403` si el origen no está permitido), así que el riesgo queda
+> mitigado. El desarrollo local no se ve afectado: `localhost:5173` →
+> `localhost:7000` son same-site, por lo que `lax` local sigue funcionando.
 
 ### ⚠️ REGLAS DE SEGURIDAD:
-- **NUNCA** subas `.env.production` a Git
+- **NUNCA** subas `.env` a Git
 - **NUNCA** compartas tus llaves privadas
-- Usa el archivo `.env.production.example` como referencia
+- Usa el archivo `.env.example` como referencia
 - Si una clave se compromete, revócala inmediatamente
 
 ---
@@ -155,7 +193,7 @@ Comandos útiles:
 ### Problema: "Variables de entorno no están disponibles"
 ```
 Causa: No se pasaron al deploy
-Solución: Verificar que .env.production existe y tiene las variables
+Solución: Verificar que .env existe y tiene las variables
 Verificar: gcloud run services describe raices-backend --region=us-central1
 ```
 

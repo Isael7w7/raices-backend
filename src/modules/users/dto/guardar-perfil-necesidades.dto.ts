@@ -133,4 +133,29 @@ export class GuardarPerfilNecesidadesDto {
   @IsOptional()
   @IsString()
   nivelApoyo?: string
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Campos requeridos por Spec MVP Raíces
+  // ═══════════════════════════════════════════════════════════════════
+
+  @ApiPropertyOptional({
+    description: 'Historial de instituciones previas (nombre, tipo, calificación personal)',
+    example: [
+      { nombre: 'Centro TEA Mérida', tipo: 'terapia', calificacionPersonal: 4 },
+      { nombre: 'Escuela Inclusiva #12', tipo: 'educacion', calificacionPersonal: 3 },
+    ],
+    type: [Object],
+  })
+  @IsOptional()
+  @IsArray()
+  historialInstituciones?: { nombre: string; tipo: string; calificacionPersonal?: number; notas?: string }[]
+
+  @ApiPropertyOptional({
+    description: 'Tono contextual de la plataforma (cómo quiere recibir la información)',
+    enum: ['formal', 'cercano', 'empatico', 'directo', 'infantil'],
+    example: 'empatico',
+  })
+  @IsOptional()
+  @IsIn(['formal', 'cercano', 'empatico', 'directo', 'infantil'])
+  tonoContextual?: string
 }

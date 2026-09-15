@@ -1,10 +1,16 @@
+packages:
+  - '.'
+
 allowBuilds:
   '@firebase/util': true
+  '@google/genai': true
   '@nestjs/core': true
   '@scarf/scarf': true
   '@swc/core': true
+  canvas: true
   esbuild: true
   protobufjs: true
+  puppeteer: true
   unrs-resolver: true
 
 overrides:

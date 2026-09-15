@@ -4,29 +4,35 @@ import {
   IsNotEmpty,
   IsOptional,
   IsNumber,
-  IsBoolean,
   IsArray,
   IsIn,
   Min,
   Max,
+  MaxLength,
 } from 'class-validator'
+import { Transform } from 'class-transformer'
+import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 
 export class CreateInstitucionDto {
   @ApiProperty({ description: 'Nombre de la institución', example: 'Centro de Rehabilitación DIF Mérida' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsString()
   @IsNotEmpty()
-  nombre: string
+  @MaxLength(200, { message: 'El nombre no puede exceder 200 caracteres' })
+  nombre!: string
 
   @ApiPropertyOptional({ description: 'Descripción de la institución', example: 'Terapias físicas, ocupacionales y de lenguaje.' })
+  @Transform(({ value }) => sanitizeHtml(value))
   @IsOptional()
   @IsString()
+  @MaxLength(2000, { message: 'La descripción no puede exceder 2000 caracteres' })
   descripcion?: string
 
   @ApiProperty({ description: 'Categoría', example: 'funcional', enum: ['funcional', 'educativo', 'laboral', 'social'] })
   @IsString()
   @IsNotEmpty()
   @IsIn(['funcional', 'educativo', 'laboral', 'social'])
-  categoria: string
+  categoria!: string
 
   @ApiPropertyOptional({ description: 'Subcategoría', example: 'terapias' })
   @IsOptional()

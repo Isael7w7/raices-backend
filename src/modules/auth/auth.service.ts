@@ -1,13 +1,16 @@
-import { Injectable, ConflictException, UnauthorizedException, Inject, Logger, Optional } from '@nestjs/common'
-import { Firestore } from 'firebase-admin/firestore'
-import { v4 as uuid } from 'uuid'
+import { Injectable, ConflictException, UnauthorizedException, BadRequestException, NotFoundException, Inject, Logger, Optional } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { Firestore, DocumentSnapshot, DocumentData } from 'firebase-admin/firestore'
 import axios from 'axios'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
+import { FEATURES_POR_DEFECTO } from '../../common/interfaces/feature-flags.interface'
+import { registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
+import { ValidationService } from '../ai/validation.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 
 @Injectable()
@@ -22,9 +25,14 @@ export class AuthService {
     @Inject(FIRESTORE) private readonly db: Firestore,
     @Inject(FIREBASE_AUTH) private readonly auth: FirebaseAuth,
     private readonly emailService: EmailService,
+    private readonly config: ConfigService,
     @Optional() private readonly analytics?: FirebaseAnalyticsService,
+    // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
+    @Optional() private readonly validation?: ValidationService,
   ) {
-    this.firebaseApiKey = process.env.FIREBASE_API_KEY ?? ''
+    // SECURITY: la API key de Firebase Auth se lee de ConfigService (secreto
+    // montado desde GCP Secret Manager en Cloud Run). Sin valores hardcodeados.
+    this.firebaseApiKey = this.config.get<string>('FIREBASE_API_KEY') ?? ''
     if (!this.firebaseApiKey) {
       this.logger.warn('FIREBASE_API_KEY is not set. Auth REST API calls will fail.')
     }
@@ -32,7 +40,33 @@ export class AuthService {
     this.secureTokenUrl = `https://securetoken.googleapis.com/v1/token?key=${this.firebaseApiKey}`
   }
 
-  async register(dto: RegisterDto, csfUrl?: string) {
+  async register(dto: RegisterDto) {
+    // Si se indica un tutor, validar que la relación sea coherente:
+    // solo cuentas PCD pueden vincularse y el tutor debe existir y estar activo.
+    if (dto.tutorId) {
+      if (dto.rol !== 'pcd') {
+        throw new BadRequestException('Solo las cuentas con rol PCD pueden estar vinculadas a un tutor')
+      }
+      const tutorDoc = await this.db.collection(COLECCIONES.perfiles).doc(dto.tutorId).get()
+      const tutor = tutorDoc.exists ? tutorDoc.data() : null
+      if (!tutor || (tutor.rol !== 'padre_tutor' && tutor.rol !== 'tutor') || tutor.activo === false) {
+        throw new BadRequestException('El tutor indicado no existe o no está activo')
+      }
+    }
+
+    // La categoría es obligatoria al registrar una institución: es el campo
+    // que permite filtrar el directorio por categoría (funcional, educativo...).
+    if (dto.rol === 'institucion' && !dto.categoria) {
+      throw new BadRequestException('La categoría es obligatoria para registrar una institución')
+    }
+
+    // La CURP es obligatoria para instituciones: es el documento principal
+    // de identidad del representante legal y se valida antes de permitir
+    // que la institución opere en la plataforma.
+    if (dto.rol === 'institucion' && !dto.curp) {
+      throw new BadRequestException('La CURP del representante legal es obligatoria para registrar una institución')
+    }
+
     const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
@@ -44,9 +78,10 @@ export class AuthService {
         password: dto.password,
         displayName: dto.nombreCompleto,
       })
-    } catch (e: any) {
-      this.logger.error(`Firebase Auth user creation failed: ${e?.message ?? e}`)
-      if (e?.code === 'auth/email-already-exists') {
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string }
+      this.logger.error(`Firebase Auth user creation failed: ${err?.message ?? e}`)
+      if (err?.code === 'auth/email-already-exists') {
         throw new ConflictException('Email ya registrado en Firebase Auth')
       }
       throw new UnauthorizedException('Error al crear usuario')
@@ -54,35 +89,86 @@ export class AuthService {
 
     const uid = firebaseUser.uid
 
-    const esOrganizacion = ['institution', 'institucion', 'institucional', 'empresa'].includes(dto.rol)
-    await this.db.collection(COLECCIONES.perfiles).doc(uid).set({
+    const features = dto.features ?? { ...FEATURES_POR_DEFECTO }
+
+    const perfilData: Record<string, unknown> = {
       id: uid,
       email: dto.email,
       nombreCompleto: dto.nombreCompleto,
       rol: dto.rol,
-      ciudad: dto.ciudad ?? null,
-      estado: dto.estado ?? null,
-      urlAvatar: null,
       activo: true,
       verificado: false,
-      estadoVerificacion: esOrganizacion ? 'pendiente' : null,
-      documentoCsf: csfUrl ?? null,
+      features,
       fechaCreacion: new Date().toISOString(),
-    })
+      ...(dto.ciudad && { ciudad: dto.ciudad }),
+      ...(dto.estado && { estado: dto.estado }),
+      ...(dto.tutorId && { tutorId: dto.tutorId }),
+      // Estado de acreditación: solo aplica para padres/tutores
+      ...(dto.rol === 'padre_tutor' && { estadoAcreditacionTutor: 'pendiente' }),
+      ...(dto.profesion && { profesion: dto.profesion }),
+      ...(dto.bio && { bio: dto.bio }),
+      // Vínculo explícito institución ↔ usuario: el perfil guarda el ID de su institución
+      ...(dto.rol === 'institucion' && { institucionId: uid }),
+      // ── Campos requeridos por Spec MVP Raíces ──
+      ...(dto.destinatarioRegistro && { destinatarioRegistro: dto.destinatarioRegistro }),
+      ...(dto.curp && { curp: dto.curp.toUpperCase() }),
+      ...(dto.telefonoContacto && { telefonoContacto: dto.telefonoContacto }),
+      ...(dto.preferenciasAcompanamiento && { preferenciasAcompanamiento: dto.preferenciasAcompanamiento }),
+      ...(dto.tonoContextual && { tonoContextual: dto.tonoContextual }),
+      ...(dto.fechaNacimiento && { fechaNacimiento: dto.fechaNacimiento }),
+      ...(dto.domicilio && { domicilio: dto.domicilio }),
+    }
 
-    let idToken: string
-    let tokenRefresco: string
+    // Si el rol es 'institucion', crear también el documento en la colección
+    // 'instituciones' (mismo ID que el UID) para que aparezca en el directorio.
+    let institucionData: Record<string, unknown> | null = null
+    if (dto.rol === 'institucion') {
+      institucionData = {
+        id: uid,
+        nombre: dto.nombreCompleto,
+        emailContacto: dto.email,
+        ciudad: dto.ciudad ?? null,
+        estado: dto.estado ?? null,
+        categoria: dto.categoria ?? null,
+        descripcion: dto.descripcion ?? '',
+        telefono: dto.telefono ?? '',
+        tiposDiscapacidad: Array.isArray(dto.tiposDiscapacidad) ? dto.tiposDiscapacidad : [],
+        activa: true,
+        verificada: false,
+        calificacionPromedio: 0,
+        cantidadCalificaciones: 0,
+        // Vínculo explícito institución ↔ usuario (permite buscar por dueño)
+        creadoPor: uid,
+        usuarioId: uid,
+        fechaCreacion: new Date().toISOString(),
+      }
+    }
+
+    // Escritura atómica de perfil (+ institución) con un solo batch:
+    // si falla cualquiera de los documentos, se revierte el usuario de Firebase Auth.
+    const batch = this.db.batch()
+    batch.set(this.db.collection(COLECCIONES.perfiles).doc(uid), perfilData)
+    if (institucionData) {
+      batch.set(this.db.collection(COLECCIONES.instituciones).doc(uid), institucionData)
+    }
     try {
-      const signInResponse = await axios.post(this.identityToolkitUrl, {
-        email: dto.email,
-        password: dto.password,
-        returnSecureToken: true,
-      })
-      idToken = signInResponse.data.idToken
-      tokenRefresco = signInResponse.data.refreshToken
-    } catch (e: any) {
-      this.logger.error(`Sign-in after register failed: ${e?.message ?? e}`)
-      throw new UnauthorizedException('No se pudo establecer la sesión después del registro.')
+      await batch.commit()
+    } catch (e) {
+      const detalle = e instanceof Error ? e.message : String(e)
+      this.logger.error(`Firestore batch commit failed: ${detalle}. Reverting Firebase user ${uid}`)
+      try {
+        await this.auth.deleteUser(uid)
+      } catch (rollbackError: unknown) {
+        this.logger.warn(`No se pudo revertir el usuario de Firebase Auth: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`)
+      }
+      throw e
+    }
+
+    // Si es una PCD dada de alta por un tutor, registrar la relación en 'dependientes'
+    // para que la persona aparezca en la lista de personas bajo cuidado del tutor.
+    // Se promueve un dependiente plano previo del tutor si coincide el nombre.
+    if (dto.rol === 'pcd' && dto.tutorId) {
+      await registrarDependienteVinculado(this.db, COLECCIONES.dependientes, dto.tutorId, uid, dto.nombreCompleto)
     }
 
     const usuario = {
@@ -90,18 +176,32 @@ export class AuthService {
       email: dto.email,
       rol: dto.rol,
       nombreCompleto: dto.nombreCompleto,
+      tutorId: dto.tutorId ?? null,
+      institucionId: dto.rol === 'institucion' ? uid : null,
+      features,
     }
 
     await this.analytics?.incrementar('totalUsuarios')
     await this.analytics?.incrementar('usuariosActivos')
 
-    this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch(() => null)
+    this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch((): null => null)
 
+    // Validación automática por IA en BACKGROUND: no bloquea el tiempo de
+    // respuesta del registro. Aprueba cuentas válidas al instante (confianza
+    // >= 80%); solo los casos dudosos (50-79%) llegan a revisión manual del
+    // administrador, como último recurso.
+    if (this.validation) {
+      void this.validation.validarYAplicar(uid).catch((e: unknown) =>
+        this.logger.warn(`Validación IA en background falló para ${uid}: ${e instanceof Error ? e.message : String(e)}`),
+      )
+    }
+
+    // El registro NUNCA devuelve tokens: se obliga al usuario a iniciar sesión
+    // de forma explícita para obtener un ID token real que los guards acepten.
+    // (Un custom token de Firebase no es un ID token y verifyIdToken() lo rechaza.)
     return {
-      tokenAcceso: idToken,
-      tokenRefresco,
-      expiraEn: this.defaultExpiresIn,
       usuario,
+      requiereInicioSesion: true,
     }
   }
 
@@ -113,11 +213,12 @@ export class AuthService {
         password: dto.password,
         returnSecureToken: true,
       })
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e
-      const status = e?.response?.status
+      const err = e as { response?: { status?: number; data?: { error?: { message?: string } } }; message?: string }
+      const status = err?.response?.status
       if (status === 400) {
-        const errorMsg = e?.response?.data?.error?.message
+        const errorMsg = err?.response?.data?.error?.message
         if (errorMsg === 'EMAIL_NOT_FOUND' || errorMsg === 'INVALID_PASSWORD') {
           throw new UnauthorizedException('Credenciales incorrectas')
         }
@@ -125,7 +226,7 @@ export class AuthService {
           throw new UnauthorizedException('Cuenta desactivada')
         }
       }
-      this.logger.error(`Login failed: ${e?.message ?? e}`)
+      this.logger.error(`Login failed: ${err?.message ?? e}`)
       throw new UnauthorizedException('Credenciales incorrectas')
     }
 
@@ -152,6 +253,9 @@ export class AuthService {
         email: datosUsuario.email,
         rol: datosUsuario.rol,
         nombreCompleto: datosUsuario.nombreCompleto,
+        tutorId: datosUsuario.tutorId ?? null,
+        institucionId: datosUsuario.institucionId ?? (datosUsuario.rol === 'institucion' ? datosUsuario.id : null),
+        features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
       },
     }
   }
@@ -184,11 +288,14 @@ export class AuthService {
           email: datosUsuario.email,
           rol: datosUsuario.rol,
           nombreCompleto: datosUsuario.nombreCompleto,
+          tutorId: datosUsuario.tutorId ?? null,
+          institucionId: datosUsuario.institucionId ?? (datosUsuario.rol === 'institucion' ? datosUsuario.id : null),
+          features: datosUsuario.features ?? { ...FEATURES_POR_DEFECTO },
         },
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (e instanceof UnauthorizedException) throw e
-      this.logger.warn(`Refresh token verification failed: ${e?.message ?? e}`)
+      this.logger.warn(`Refresh token verification failed: ${e instanceof Error ? e.message : String(e)}`)
       throw new UnauthorizedException('Refresh token inválido o expirado')
     }
   }
@@ -197,15 +304,82 @@ export class AuthService {
     const doc = await this.db.collection(COLECCIONES.perfiles).doc(userId).get()
     if (!doc.exists) return null
     const d = doc.data()!
-    return {
+
+    const base: Record<string, unknown> = {
       id: d.id,
       email: d.email,
       rol: d.rol,
       nombreCompleto: d.nombreCompleto,
-      ciudad: d.ciudad,
-      estado: d.estado,
-      urlAvatar: d.urlAvatar,
+      ciudad: d.ciudad ?? null,
+      estado: d.estado ?? null,
+      urlAvatar: d.urlAvatar ?? null,
       verificado: d.verificado,
+      tutorId: d.tutorId ?? null,
+      institucionId: d.institucionId ?? null,
+      features: d.features ?? { ...FEATURES_POR_DEFECTO },
+      // ── Campos Spec MVP Raíces ──
+      destinatarioRegistro: d.destinatarioRegistro ?? null,
+      curp: d.curp ?? null,
+      telefonoContacto: d.telefonoContacto ?? null,
+      preferenciasAcompanamiento: d.preferenciasAcompanamiento ?? null,
+      tonoContextual: d.tonoContextual ?? null,
+      fechaNacimiento: d.fechaNacimiento ?? null,
+      domicilio: d.domicilio ?? null,
+      // Campo específico para padres/tutores
+      estadoAcreditacionTutor: d.estadoAcreditacionTutor ?? null,
+    }
+
+    // Para usuarios institución, adjuntar los datos básicos de su institución.
+    // Se busca primero el documento canónico (id = UID) y, si no existe,
+    // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
+    if (d.rol === 'institucion') {
+      let instDoc: DocumentSnapshot<DocumentData> | null = await this.db.collection(COLECCIONES.instituciones).doc(userId).get()
+      if (!instDoc.exists) {
+        const porCreador = await this.db.collection(COLECCIONES.instituciones)
+          .where('creadoPor', '==', userId).limit(1).get()
+        instDoc = porCreador.empty ? null : porCreador.docs[0]
+      }
+      if (instDoc) {
+        const i = instDoc.data()!
+        base.institucionId = instDoc.id
+        base.institucion = {
+          id: instDoc.id,
+          nombre: i.nombre ?? null,
+          categoria: i.categoria ?? null,
+          descripcion: i.descripcion ?? null,
+          telefono: i.telefono ?? null,
+          tiposDiscapacidad: parsearTiposDiscapacidad(i.tiposDiscapacidad),
+          ciudad: i.ciudad ?? null,
+          estado: i.estado ?? null,
+          urlLogo: i.urlLogo ?? null,
+          activa: i.activa ?? false,
+          verificada: i.verificada ?? false,
+          calificacionPromedio: i.calificacionPromedio ?? 0,
+          cantidadCalificaciones: i.cantidadCalificaciones ?? 0,
+        }
+      } else {
+        base.institucion = null
+      }
+    }
+
+    return base
+  }
+
+  /**
+   * Revoca todos los refresh tokens emitidos para el usuario en Firebase Auth.
+   * Invalida de inmediato todas las sesiones activas en cualquier dispositivo.
+   */
+  async cerrarSesionGlobal(userId: string): Promise<void> {
+    try {
+      await this.auth.revokeRefreshTokens(userId)
+      this.logger.log(`Tokens de refresco revocados globalmente para usuario: ${userId}`)
+    } catch (e: unknown) {
+      const err = e as { code?: string; message?: string }
+      this.logger.error(`Error al revocar tokens en Firebase Auth para el usuario ${userId}: ${err?.message ?? e}`)
+      if (err?.code === 'auth/user-not-found') {
+        throw new NotFoundException('Usuario no encontrado')
+      }
+      throw new BadRequestException('No se pudo revocar la sesión en todos los dispositivos')
     }
   }
 }

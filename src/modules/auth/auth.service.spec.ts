@@ -1,0 +1,655 @@
+import { Test, TestingModule } from '@nestjs/testing'
+import { ConflictException, UnauthorizedException, BadRequestException, NotFoundException } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { AuthService } from './auth.service'
+import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
+import { EmailService } from '../email/email.service'
+import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
+import axios from 'axios'
+
+// ─── Mock helpers ────────────────────────────────────────────────────────
+
+function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-doc-id') {
+  return {
+    exists,
+    id: docId,
+    data: () => data,
+    ref: { update: jest.fn().mockResolvedValue(undefined) },
+  }
+}
+
+function mockFirestoreDoc(data: Record<string, any> | null, exists = true, docId = 'mock-doc-id') {
+  return {
+    get: jest.fn().mockResolvedValue(mockDoc(data, exists, docId)),
+    set: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(undefined),
+  }
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────
+
+describe('AuthService', () => {
+  let service: AuthService
+  let firestoreMock: Record<string, any>
+  let authMock: Record<string, any>
+  let emailMock: { sendWelcome: jest.Mock; sendInstitutionApproved: jest.Mock }
+  let analyticsMock: { incrementar: jest.Mock }
+  let axiosPostSpy: jest.SpyInstance
+
+  beforeEach(async () => {
+    process.env.FIREBASE_API_KEY = 'test-api-key'
+
+    firestoreMock = {
+      collection: jest.fn(),
+      batch: jest.fn().mockReturnValue({
+        set: jest.fn(),
+        commit: jest.fn().mockResolvedValue(undefined),
+      }),
+    }
+    authMock = {
+      createUser: jest.fn().mockResolvedValue({ uid: 'new-uid-123' }),
+      verifyIdToken: jest.fn().mockResolvedValue({ uid: 'user-uid-123', email: 'test@test.com' }),
+      deleteUser: jest.fn().mockResolvedValue(undefined),
+      revokeRefreshTokens: jest.fn().mockResolvedValue(undefined),
+    }
+    emailMock = {
+      sendWelcome: jest.fn().mockResolvedValue(undefined),
+      sendInstitutionApproved: jest.fn().mockResolvedValue(undefined),
+    }
+    analyticsMock = { incrementar: jest.fn().mockResolvedValue(undefined) }
+
+    axiosPostSpy = jest.spyOn(axios, 'post').mockResolvedValue({
+      data: { idToken: 'mock-id-token', refreshToken: 'mock-refresh-token' },
+    })
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AuthService,
+        { provide: FIRESTORE, useValue: firestoreMock },
+        { provide: FIREBASE_AUTH, useValue: authMock },
+        { provide: EmailService, useValue: emailMock },
+        { provide: FirebaseAnalyticsService, useValue: analyticsMock },
+        {
+          provide: ConfigService,
+          useValue: {
+            // Lee de process.env igual que ConfigService real (útil para tests)
+            get: jest.fn((key: string, defaultValue?: unknown) => process.env[key] ?? defaultValue),
+          },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AuthService>(AuthService)
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
+    delete process.env.FIREBASE_API_KEY
+  })
+
+  // ── register ────────────────────────────────────────────────────────
+
+  describe('register', () => {
+    const dto = { email: 'nuevo@test.com', password: 'Test1234', nombreCompleto: 'Nuevo Usuario', rol: 'pcd' as const }
+
+    it('should register a new user successfully', async () => {
+      // 1. Email check -> empty
+      // 2. Profile doc set
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(emailCheckSnap),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false, 'new-uid-123')),
+        })
+
+      const result = await service.register(dto)
+
+      expect(authMock.createUser).toHaveBeenCalledWith({
+        email: dto.email,
+        password: dto.password,
+        displayName: dto.nombreCompleto,
+      })
+      // El registro nunca inicia sesión ni devuelve tokens: se obliga al login
+      expect(axiosPostSpy).not.toHaveBeenCalled()
+      expect(result).not.toHaveProperty('tokenAcceso')
+      expect(result).not.toHaveProperty('tokenRefresco')
+      expect(result).not.toHaveProperty('expiraEn')
+      expect(result.requiereInicioSesion).toBe(true)
+      expect(result.usuario.email).toBe(dto.email)
+      expect(result.usuario.rol).toBe('pcd')
+      expect(analyticsMock.incrementar).toHaveBeenCalledWith('totalUsuarios')
+      expect(analyticsMock.incrementar).toHaveBeenCalledWith('usuariosActivos')
+      expect(emailMock.sendWelcome).toHaveBeenCalledWith(dto.email, dto.nombreCompleto)
+    })
+
+    it('should throw ConflictException when email already exists in Firestore', async () => {
+      const existingSnap = { empty: false, docs: [{ id: 'existing' }], size: 1 }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(existingSnap),
+        })
+
+      await expect(service.register(dto)).rejects.toThrow(ConflictException)
+    })
+
+    it('should throw ConflictException when Firebase Auth reports email-already-exists', async () => {
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      authMock.createUser.mockRejectedValue({ code: 'auth/email-already-exists', message: 'Email exists' })
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(emailCheckSnap),
+        })
+
+      await expect(service.register(dto)).rejects.toThrow(ConflictException)
+    })
+
+    it('should throw UnauthorizedException when Firebase Auth creation fails for other reason', async () => {
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      authMock.createUser.mockRejectedValue({ code: 'auth/invalid-password', message: 'Weak password' })
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue(emailCheckSnap),
+        })
+
+      await expect(service.register(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should link the PCD to the tutor and create the dependiente record when tutorId is provided', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
+
+      // perfiles: validación del tutor (doc.get), email check (where.get), perfil set (doc.set)
+      const perfilesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'padre_tutor', activo: true })),
+          set: jest.fn().mockResolvedValue(undefined),
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue(emailCheckSnap),
+      }
+      // dependientes: canónico no existe (doc.get), previos vacío (where.get) → crear (doc.set)
+      const dependientesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+          set: dependienteSetMock,
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }),
+      }
+      firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
+
+      const result = await service.register(dtoConTutor)
+
+      expect(result.usuario.tutorId).toBe('tutor-1')
+      expect(dependienteSetMock).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'new-uid-123',
+        tutorId: 'tutor-1',
+        pcdUserId: 'new-uid-123',
+        esCuentaVinculada: true,
+      }))
+    })
+
+    it('should promote an existing flat dependiente of the tutor instead of creating a duplicate', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      const promoteUpdate = jest.fn().mockResolvedValue(undefined)
+      const dependienteSetMock = jest.fn().mockResolvedValue(undefined)
+
+      const perfilesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'padre_tutor', activo: true })),
+          set: jest.fn().mockResolvedValue(undefined),
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue(emailCheckSnap),
+      }
+      const dependientesCol = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc(null, false)),
+          set: dependienteSetMock,
+        }),
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          empty: false,
+          docs: [{
+            id: 'dep-plano-1',
+            ref: { update: promoteUpdate },
+            data: () => ({ id: 'dep-plano-1', tutorId: 'tutor-1', nombreCompleto: dto.nombreCompleto }),
+          }],
+        }),
+      }
+      firestoreMock.collection.mockImplementation((name: string) => (name === 'dependientes' ? dependientesCol : perfilesCol))
+
+      const result = await service.register(dtoConTutor)
+
+      expect(result.usuario.tutorId).toBe('tutor-1')
+      expect(promoteUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        pcdUserId: 'new-uid-123',
+        esCuentaVinculada: true,
+        rol: 'pcd',
+      }))
+      expect(dependienteSetMock).not.toHaveBeenCalled()
+    })
+
+    it('should throw BadRequestException when tutorId is provided for a non-PCD role', async () => {
+      const dtoTutor = { ...dto, rol: 'padre_tutor' as const, tutorId: 'tutor-1' }
+      await expect(service.register(dtoTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the tutor does not exist', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'ghost-tutor' }
+      firestoreMock.collection.mockReturnValueOnce({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+      await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the tutor is inactive', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'tutor-1' }
+      firestoreMock.collection.mockReturnValueOnce({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'tutor-1', rol: 'padre_tutor', activo: false })),
+        }),
+      })
+      await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the tutorId points to a non-tutor account', async () => {
+      const dtoConTutor = { ...dto, tutorId: 'inst-1' }
+      firestoreMock.collection.mockReturnValueOnce({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'inst-1', rol: 'institucion', activo: true })),
+        }),
+      })
+      await expect(service.register(dtoConTutor)).rejects.toThrow(BadRequestException)
+    })
+
+    it('should create profile and institution docs atomically (batch) for institution role', async () => {
+      const dtoInst = {
+        ...dto, rol: 'institucion' as const,
+        ciudad: 'Mérida', estado: 'Yucatán', categoria: 'funcional',
+        descripcion: 'Terapias físicas y ocupacionales', telefono: '9999990001',
+        tiposDiscapacidad: ['tea', 'motriz'],
+        // La CURP del representante legal es obligatoria para instituciones
+        curp: 'GAPL800101MCYRL093',
+      }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      const batchSet = jest.fn()
+      const batchCommit = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.batch.mockReturnValue({ set: batchSet, commit: batchCommit })
+
+      const perfilDocRef = { ref: 'perfil-ref' }
+      const instDocRef = { ref: 'inst-ref' }
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(emailCheckSnap),
+            doc: jest.fn().mockReturnValue(perfilDocRef),
+          }
+        }
+        if (name === 'instituciones') return { doc: jest.fn().mockReturnValue(instDocRef) }
+        return {}
+      })
+
+      const result = await service.register(dtoInst)
+
+      // Ambos documentos se escriben en un solo batch atómico
+      expect(batchSet).toHaveBeenCalledTimes(2)
+      expect(batchSet).toHaveBeenCalledWith(perfilDocRef, expect.objectContaining({
+        rol: 'institucion',
+        institucionId: 'new-uid-123',
+      }))
+      expect(batchSet).toHaveBeenCalledWith(instDocRef, expect.objectContaining({
+        id: 'new-uid-123',
+        creadoPor: 'new-uid-123',
+        usuarioId: 'new-uid-123',
+        categoria: 'funcional',
+        descripcion: 'Terapias físicas y ocupacionales',
+        telefono: '9999990001',
+        tiposDiscapacidad: ['tea', 'motriz'],
+      }))
+      expect(batchCommit).toHaveBeenCalled()
+      expect(result.usuario.rol).toBe('institucion')
+      expect(result.usuario.institucionId).toBe('new-uid-123')
+    })
+
+    it('should rollback the Firebase user when the Firestore batch commit fails', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional', curp: 'GAPL800101MCYRL093' }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      const batchCommit = jest.fn().mockRejectedValue(new Error('commit failed'))
+      firestoreMock.batch.mockReturnValue({ set: jest.fn(), commit: batchCommit })
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(emailCheckSnap),
+            doc: jest.fn().mockReturnValue({ ref: 'perfil-ref' }),
+          }
+        }
+        if (name === 'instituciones') return { doc: jest.fn().mockReturnValue({ ref: 'inst-ref' }) }
+        return {}
+      })
+
+      await expect(service.register(dtoInst)).rejects.toThrow('commit failed')
+      expect(authMock.deleteUser).toHaveBeenCalledWith('new-uid-123')
+    })
+
+    it('should throw BadRequestException when registering an institution without categoria', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const }
+      await expect(service.register(dtoInst)).rejects.toThrow(BadRequestException)
+      // No se debe crear el usuario en Firebase Auth si la validación falla
+      expect(authMock.createUser).not.toHaveBeenCalled()
+    })
+
+    it('should throw BadRequestException when registering an institution without CURP', async () => {
+      const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional' }
+      await expect(service.register(dtoInst)).rejects.toThrow(
+        'La CURP del representante legal es obligatoria para registrar una institución',
+      )
+      expect(authMock.createUser).not.toHaveBeenCalled()
+    })
+
+  })
+
+  // ── login ───────────────────────────────────────────────────────────
+
+  describe('login', () => {
+    const dto = { email: 'test@test.com', password: 'Test1234' }
+
+    it('should login successfully', async () => {
+      const profileData = {
+        id: 'user-uid-123',
+        email: 'test@test.com',
+        rol: 'pcd',
+        nombreCompleto: 'Test User',
+        activo: true,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'user-uid-123')),
+        })
+
+      const result = await service.login(dto)
+
+      expect(result.tokenAcceso).toBe('mock-id-token')
+      expect(result.tokenRefresco).toBe('mock-refresh-token')
+      expect(result.usuario.email).toBe('test@test.com')
+      expect(result.usuario.rol).toBe('pcd')
+    })
+
+    it('should throw UnauthorizedException for invalid credentials (EMAIL_NOT_FOUND)', async () => {
+      axiosPostSpy.mockRejectedValueOnce({
+        response: { status: 400, data: { error: { message: 'EMAIL_NOT_FOUND' } } },
+      })
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException for invalid password', async () => {
+      axiosPostSpy.mockRejectedValueOnce({
+        response: { status: 400, data: { error: { message: 'INVALID_PASSWORD' } } },
+      })
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException for disabled account', async () => {
+      axiosPostSpy.mockRejectedValueOnce({
+        response: { status: 400, data: { error: { message: 'USER_DISABLED' } } },
+      })
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException when user profile not found', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false)),
+        })
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException when user account is inactive', async () => {
+      const inactiveProfile = {
+        id: 'user-uid-123',
+        email: 'test@test.com',
+        activo: false,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(inactiveProfile, true, 'user-uid-123')),
+        })
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException for network errors during sign-in', async () => {
+      axiosPostSpy.mockRejectedValueOnce(new Error('Network error'))
+
+      await expect(service.login(dto)).rejects.toThrow(UnauthorizedException)
+    })
+  })
+
+  // ── refresh ─────────────────────────────────────────────────────────
+
+  describe('refresh', () => {
+    it('should refresh tokens successfully', async () => {
+      const profileData = {
+        id: 'user-uid-123',
+        email: 'test@test.com',
+        rol: 'pcd',
+        nombreCompleto: 'Test User',
+        activo: true,
+      }
+
+      axiosPostSpy.mockResolvedValueOnce({
+        data: { id_token: 'new-id-token', refresh_token: 'new-refresh-token', user_id: 'user-uid-123' },
+      })
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'user-uid-123')),
+        })
+
+      const result = await service.refresh('old-refresh-token')
+
+      expect(result.tokenAcceso).toBe('new-id-token')
+      expect(result.tokenRefresco).toBe('new-refresh-token')
+      expect(result.usuario.email).toBe('test@test.com')
+    })
+
+    it('should throw UnauthorizedException for invalid refresh token', async () => {
+      axiosPostSpy.mockRejectedValueOnce(new Error('Token refresh failed'))
+
+      await expect(service.refresh('invalid-token')).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException when user not found', async () => {
+      axiosPostSpy.mockResolvedValueOnce({
+        data: { id_token: 'new-id', refresh_token: 'new-refresh', user_id: 'nonexistent' },
+      })
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false)),
+        })
+
+      await expect(service.refresh('old-refresh-token')).rejects.toThrow(UnauthorizedException)
+    })
+
+    it('should throw UnauthorizedException when user account is inactive', async () => {
+      const inactiveProfile = {
+        id: 'user-uid-123',
+        email: 'test@test.com',
+        activo: false,
+      }
+
+      axiosPostSpy.mockResolvedValueOnce({
+        data: { id_token: 'new-id', refresh_token: 'new-refresh', user_id: 'user-uid-123' },
+      })
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(inactiveProfile, true, 'user-uid-123')),
+        })
+
+      await expect(service.refresh('old-refresh-token')).rejects.toThrow(UnauthorizedException)
+    })
+  })
+
+  // ── me ──────────────────────────────────────────────────────────────
+
+  describe('me', () => {
+    it('should return user profile when user exists', async () => {
+      const profileData = {
+        id: 'user-1',
+        email: 'user@test.com',
+        rol: 'pcd',
+        nombreCompleto: 'User Test',
+        ciudad: 'Mérida',
+        estado: 'Yucatán',
+        urlAvatar: 'https://example.com/avatar.jpg',
+        verificado: true,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'user-1')),
+        })
+
+      const result = await service.me('user-1')
+
+      expect(result).not.toBeNull()
+      expect(result!.id).toBe('user-1')
+      expect(result!.email).toBe('user@test.com')
+      expect(result!.rol).toBe('pcd')
+      expect(result!.ciudad).toBe('Mérida')
+      expect(result!.urlAvatar).toBe('https://example.com/avatar.jpg')
+    })
+
+    it('should return null when user does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false)),
+        })
+
+      const result = await service.me('nonexistent')
+
+      expect(result).toBeNull()
+    })
+
+    it('should attach the institution object for institution users', async () => {
+      const profileData = {
+        id: 'inst-1',
+        email: 'centro@test.com',
+        rol: 'institucion',
+        nombreCompleto: 'Centro Test',
+        verificado: false,
+      }
+      const instData = {
+        id: 'inst-1',
+        nombre: 'Centro Test',
+        categoria: 'funcional',
+        descripcion: 'Terapias físicas y ocupacionales',
+        telefono: '9999990001',
+        tiposDiscapacidad: ['tea', 'motriz'],
+        activa: true,
+        verificada: false,
+        calificacionPromedio: 0,
+        cantidadCalificaciones: 0,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'inst-1')),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(instData, true, 'inst-1')),
+        })
+
+      const result = (await service.me('inst-1')) as { institucionId?: string; institucion?: { nombre?: string; categoria?: string; descripcion?: string; telefono?: string; tiposDiscapacidad?: string[] } | null } | null
+
+      expect(result!.institucionId).toBe('inst-1')
+      expect(result!.institucion).not.toBeNull()
+      expect(result!.institucion!.nombre).toBe('Centro Test')
+      expect(result!.institucion!.categoria).toBe('funcional')
+      expect(result!.institucion!.descripcion).toBe('Terapias físicas y ocupacionales')
+      expect(result!.institucion!.telefono).toBe('9999990001')
+      expect(result!.institucion!.tiposDiscapacidad).toEqual(['tea', 'motriz'])
+    })
+
+    it('should fall back to the institution created by creadoPor for legacy institution users', async () => {
+      const profileData = {
+        id: 'legacy-1',
+        email: 'legacy@test.com',
+        rol: 'institucion',
+        nombreCompleto: 'Centro Legacy',
+      }
+      const instData = { nombre: 'Centro Legacy', activa: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(profileData, true, 'legacy-1')),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue(mockFirestoreDoc(null, false, 'legacy-1')),
+        })
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'inst-aleatoria', data: () => instData }] }),
+        })
+
+      const result = (await service.me('legacy-1')) as { institucionId?: string; institucion?: { nombre?: string } | null } | null
+
+      expect(result!.institucionId).toBe('inst-aleatoria')
+      expect(result!.institucion).not.toBeNull()
+      expect(result!.institucion!.nombre).toBe('Centro Legacy')
+    })
+  })
+
+  // ── cerrarSesionGlobal ──────────────────────────────────────────────────
+  describe('cerrarSesionGlobal', () => {
+    it('debe revocar todos los tokens de refresco del usuario exitosamente', async () => {
+      await expect(service.cerrarSesionGlobal('user-uid-123')).resolves.toBeUndefined()
+      expect(authMock.revokeRefreshTokens).toHaveBeenCalledWith('user-uid-123')
+    })
+
+    it('debe lanzar NotFoundException si el usuario no existe en Firebase Auth', async () => {
+      authMock.revokeRefreshTokens.mockRejectedValueOnce({ code: 'auth/user-not-found' })
+      await expect(service.cerrarSesionGlobal('usuario-inexistente')).rejects.toThrow(NotFoundException)
+    })
+
+    it('debe lanzar BadRequestException si ocurre otro error al revocar tokens', async () => {
+      authMock.revokeRefreshTokens.mockRejectedValueOnce(new Error('Network failure'))
+      await expect(service.cerrarSesionGlobal('user-uid-123')).rejects.toThrow(BadRequestException)
+    })
+  })
+})

@@ -1,0 +1,483 @@
+import { Test, TestingModule } from '@nestjs/testing'
+import { RecommendationsService } from './recommendations.service'
+import { FIRESTORE } from '../../database/firebase.provider'
+
+/** Fecha ISO de hace N días respecto a ahora (para simular ventana de 30 días) */
+function haceDias(dias: number): string {
+  return new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString()
+}
+
+describe('RecommendationsService', () => {
+  let service: RecommendationsService
+  let firestoreMock: Record<string, any>
+
+  beforeEach(async () => {
+    firestoreMock = { collection: jest.fn() }
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [RecommendationsService, { provide: FIRESTORE, useValue: firestoreMock }],
+    }).compile()
+    service = module.get<RecommendationsService>(RecommendationsService)
+  })
+
+  // ── registrar ───────────────────────────────────────────────────────
+
+  describe('registrar', () => {
+    it('debe guardar el documento en interacciones con usuarioId, tipo, categoria y createdAt', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ id: 'inter-1', set: setMock }),
+      })
+
+      const resultado = await service.registrar('u1', {
+        institucionId: 'inst-1',
+        tipo: 'guardar',
+        categoria: 'laboral',
+      } as any)
+
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'inter-1',
+        usuarioId: 'u1',
+        institucionId: 'inst-1',
+        tipo: 'guardar',
+        categoria: 'laboral',
+        createdAt: expect.any(String),
+      }))
+      expect(resultado).toEqual({ exito: true, id: 'inter-1', mensaje: 'Interacción registrada' })
+    })
+
+    it('debe guardar categoria en null cuando no se envía', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ id: 'inter-2', set: setMock }),
+      })
+
+      await service.registrar('u1', { institucionId: 'inst-1', tipo: 'click_card' } as any)
+
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ categoria: null }))
+    })
+  })
+
+  // ── pesos ───────────────────────────────────────────────────────────
+
+  describe('pesos', () => {
+    it('debe agrupar los puntos por categoría (guardar=10, ver_detalle=5, click_card=2)', async () => {
+      const interacciones = [
+        { categoria: 'funcional', tipo: 'guardar' },       // 10
+        { categoria: 'funcional', tipo: 'click_card' },    // +2 → 12
+        { categoria: 'laboral', tipo: 'ver_detalle' },     // 5
+      ]
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: interacciones.map(d => ({ data: () => d })) }),
+      })
+
+      const pesos = await service.pesos('u1')
+
+      expect(pesos).toEqual({ funcional: 12, laboral: 5 })
+    })
+
+    it('debe ignorar las interacciones fuera de la ventana de 30 días', async () => {
+      const clausulas: any[][] = []
+      firestoreMock.collection.mockReturnValue({
+        where: (...args: any[]) => {
+          clausulas.push(args)
+          return {
+            where: (...mas: any[]) => { clausulas.push(mas); return { get: jest.fn().mockResolvedValue({ docs: [] }) } },
+            get: jest.fn().mockResolvedValue({ docs: [] }),
+          }
+        },
+      })
+
+      await service.pesos('u1')
+
+      // Primera cláusula filtra por usuario; segunda, por la ventana de createdAt
+      expect(clausulas[0][0]).toBe('usuarioId')
+      expect(clausulas[1][0]).toBe('createdAt')
+      expect(clausulas[1][1]).toBe('>=')
+      const limite = new Date(clausulas[1][2]).getTime()
+      // El límite debe ser "ahora - 30 días" (con tolerancia de 5s por el tiempo de ejecución)
+      const esperado = Date.now() - 30 * 24 * 60 * 60 * 1000
+      expect(Math.abs(limite - esperado)).toBeLessThan(5000)
+    })
+
+    it('debe retornar objeto vacío si no hay interacciones o sin categoria', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: [{ data: () => ({ tipo: 'guardar' }) }] }),
+      })
+
+      const pesos = await service.pesos('u1')
+
+      expect(pesos).toEqual({})
+    })
+
+    it('debe retornar {} si la consulta falla (colección inexistente o índice pendiente), sin lanzar 500', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockRejectedValue(new Error('The query requires an index')),
+      })
+
+      const pesos = await service.pesos('u1')
+
+      expect(pesos).toEqual({})
+    })
+  })
+
+  // ── recomendaciones ─────────────────────────────────────────────────
+
+  function mockearFuentes(perfil: any, instituciones: any[], interacciones: any[] = []) {
+    firestoreMock.collection.mockImplementation((nombre: string) => {
+      if (nombre === 'perfilesExtendidos') {
+        return {
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: !perfil, docs: perfil ? [{ data: () => perfil }] : [] }),
+        }
+      }
+      if (nombre === 'interacciones') {
+        return {
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: interacciones.map(d => ({ data: () => d })) }),
+        }
+      }
+      // instituciones
+      return {
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: instituciones.map(i => ({ id: i.id, data: () => i })) }),
+      }
+    })
+  }
+
+  it('debe calcular final_score = intereses*0.6 + comportamiento*0.4 y ordenar descendente', async () => {
+    mockearFuentes(
+      { metasActuales: '["empleo"]', areasInteres: '["tecnologia"]' },
+      [
+        // Coincide 'empleo' (1/2 tokens) + peso máximo laboral → final alto
+        { id: 'inst-laboral', nombre: 'Centro de empleo', categoria: 'laboral', activa: true, descripcion: '' },
+        // No coincide nada, sin peso → final 0
+        { id: 'inst-social', nombre: 'Centro social', categoria: 'social', activa: true, descripcion: '' },
+      ],
+      [
+        { categoria: 'laboral', tipo: 'guardar', createdAt: haceDias(1) }, // 10
+        { categoria: 'social', tipo: 'ver_detalle', createdAt: haceDias(2) }, // 5
+      ],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toHaveLength(2)
+    const [primera, segunda] = resultado.datos
+    expect(primera.id).toBe('inst-laboral')
+    expect(segunda.id).toBe('inst-social')
+
+    // inst-laboral: intereses 1/2=0.5, comportamiento 10/10=1 → 0.5*0.6+1*0.4=0.7
+    expect(primera.score_intereses).toBeCloseTo(0.5)
+    expect(primera.score_comportamiento).toBe(1)
+    expect(primera.final_score).toBeCloseTo(0.7)
+
+    // inst-social: intereses 0, comportamiento 5/10=0.5 → 0.4*0.5=0.2
+    expect(segunda.final_score).toBeCloseTo(0.2)
+
+    expect(resultado.paginacion).toEqual({ total: 2, pagina: 1, limite: 20, totalPaginas: 1 })
+  })
+
+  it('debe retornar score_intereses en 0 cuando el perfil no tiene metas ni áreas de interés', async () => {
+    mockearFuentes({}, [{ id: 'inst-1', nombre: 'X', categoria: 'social', activa: true }])
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos[0].score_intereses).toBe(0)
+    expect(resultado.datos[0].final_score).toBe(0)
+  })
+
+  it('no debe fallar sin perfil extendido y solo ponderar comportamiento', async () => {
+    mockearFuentes(
+      null,
+      [{ id: 'inst-1', nombre: 'X', categoria: 'educativo', activa: true }],
+      [{ categoria: 'educativo', tipo: 'guardar', createdAt: haceDias(3) }], // único peso → normalizado a 1
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos[0].score_comportamiento).toBe(1)
+    expect(resultado.datos[0].final_score).toBeCloseTo(0.4)
+  })
+
+  it('debe paginar los resultados', async () => {
+    mockearFuentes(
+      null,
+      Array.from({ length: 25 }, (_, i) => ({ id: `inst-${i}`, nombre: `C${i}`, categoria: 'social', activa: true })),
+    )
+
+    const pagina2: any = await service.recomendaciones('u1', 2, 20)
+
+    expect(pagina2.datos).toHaveLength(5)
+    expect(pagina2.paginacion).toEqual({ total: 25, pagina: 2, limite: 20, totalPaginas: 2 })
+  })
+
+  it('debe retornar lista base con scores 0 para usuario recién registrado (sin perfil extendido, sin escalasVida, sin interacciones)', async () => {
+    mockearFuentes(
+      null,
+      [
+        { id: 'inst-1', nombre: 'Centro A', categoria: 'social', activa: true },
+        { id: 'inst-2', nombre: 'Centro B', categoria: 'laboral', activa: true },
+      ],
+      [],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toHaveLength(2)
+    expect(resultado.paginacion).toEqual({ total: 2, pagina: 1, limite: 20, totalPaginas: 1 })
+    for (const fila of resultado.datos) {
+      expect(fila.score_intereses).toBe(0)
+      expect(fila.score_comportamiento).toBe(0)
+      expect(fila.final_score).toBe(0)
+    }
+  })
+
+  it('no debe romper con campos del perfil en tipos inesperados (metas/areas no-array, escalasVida null)', async () => {
+    mockearFuentes(
+      { metasActuales: 42, areasInteres: { a: 1 }, escalasVida: null },
+      [{ id: 'inst-1', nombre: 'Centro A', categoria: 'social', activa: true }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos[0].score_intereses).toBe(0)
+    expect(resultado.datos[0].final_score).toBe(0)
+  })
+
+  it('debe tratar metasActuales con JSON inválido como arreglo vacío en lugar de fallar', async () => {
+    mockearFuentes(
+      { metasActuales: 'empleo', areasInteres: '["tecnologia"]' }, // 'empleo' no es JSON válido
+      [{ id: 'inst-1', nombre: 'Centro de empleo', categoria: 'laboral', activa: true, descripcion: 'empleo' }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    // Solo 'tecnologia' es un token válido; no coincide con el texto → 0
+    expect(resultado.datos[0].score_intereses).toBe(0)
+  })
+
+  it('debe leer metasActuales anidadas en perfilNecesidades (compatibilidad con getProfile)', async () => {
+    mockearFuentes(
+      { perfilNecesidades: { metasActuales: '["empleo"]' } },
+      [{ id: 'inst-1', nombre: 'Centro de empleo', categoria: 'laboral', activa: true, descripcion: 'empleo' }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos[0].score_intereses).toBeGreaterThan(0)
+  })
+
+  it('debe normalizar escalasVida parciales con defaults neutros (0) sin romper', async () => {
+    mockearFuentes(
+      { escalasVida: { movilidad: 2 } }, // solo 1 de 8 escalas
+      [{ id: 'inst-1', nombre: 'Centro de movilidad', categoria: 'funcional', activa: true, descripcion: 'movilidad' }],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toHaveLength(1)
+    expect(resultado.datos[0].score_intereses).toBeGreaterThan(0)
+    expect(resultado.datos[0].final_score).toBeGreaterThan(0)
+  })
+
+  it('debe usar escalasVida con nivel ≤ 2 como tokens de interés cuando no hay metas/áreas', async () => {
+    mockearFuentes(
+      {
+        escalasVida: { autonomia: 3, independencia: 2, comunicacion: 1, comprension: 2, energia: 3, movilidad: 4, social: 3, emocional: 4 },
+      },
+      [
+        { id: 'inst-comunicacion', nombre: 'Centro de comunicacion', categoria: 'funcional', activa: true, descripcion: 'terapia de comunicacion' },
+        { id: 'inst-social', nombre: 'Centro social', categoria: 'social', activa: true, descripcion: '' },
+      ],
+    )
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    // Tokens por escalas: independencia, comunicacion, comprension (nivel ≤ 2)
+    expect(resultado.datos).toHaveLength(2)
+    expect(resultado.datos[0].id).toBe('inst-comunicacion')
+    expect(resultado.datos[0].score_intereses).toBeCloseTo(1 / 3)
+  })
+
+  it('debe retornar paginación vacía estructurada si la consulta de instituciones falla, sin 500', async () => {
+    firestoreMock.collection.mockImplementation((nombre: string) => {
+      if (nombre === 'perfilesExtendidos') {
+        return {
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+        }
+      }
+      if (nombre === 'interacciones') {
+        return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] }) }
+      }
+      return { where: jest.fn().mockReturnThis(), get: jest.fn().mockRejectedValue(new Error('FALLO_QUERY_INSTITUCIONES')) }
+    })
+
+    const resultado: any = await service.recomendaciones('u1')
+
+    expect(resultado.datos).toEqual([])
+    expect(resultado.paginacion).toEqual({ total: 0, pagina: 1, limite: 20, totalPaginas: 0 })
+  })
+
+  // ── verificarOnboarding ──────────────────────────────────────────────
+
+  describe('verificarOnboarding', () => {
+    it('debe retornar onboardingCompleto=false cuando faltan campos obligatorios', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ id: 'u1', nombreCompleto: 'Ana', rol: 'pcd' })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(false)
+      expect(resultado.camposFaltantes).toContain('fechaNacimiento')
+      expect(resultado.camposFaltantes).toContain('curp')
+      expect(resultado.camposFaltantes).toContain('perfilNecesidades')
+      expect(resultado.porcentaje).toBeGreaterThanOrEqual(0)
+    })
+
+    it('debe retornar onboardingCompleto=true cuando todos los campos están presentes', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({
+              id: 'u1', nombreCompleto: 'Ana', rol: 'pcd',
+              fechaNacimiento: '2015-03-15', curp: 'GAPL800101MCYRL093',
+              certificadoDiscapacidad: true
+            })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ data: () => ({ tiposDiscapacidad: '["tea"]', tieneDiagnostico: true }) }]
+            }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(true)
+      expect(resultado.camposFaltantes).toHaveLength(0)
+      expect(resultado.porcentaje).toBe(100)
+    })
+
+    it('debe verificar acreditación de tutor para rol padre_tutor', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({
+              id: 'u1', nombreCompleto: 'Carlos', rol: 'padre_tutor',
+              fechaNacimiento: '1985-01-01', curp: 'GAPL850101HDFRR500'
+            })
+          }) }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(false)
+      expect(resultado.camposFaltantes).toContain('acreditacionTutor')
+    })
+  })
+
+  // ── especialistasRecomendados ───────────────────────────────────────
+
+  describe('especialistasRecomendados', () => {
+    it('debe retornar especialistas ordenados por final_score', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ id: 'u1', nombreCompleto: 'Ana', rol: 'pcd', fechaNacimiento: '2015-03-15', ciudad: 'Mérida' })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ data: () => ({ tiposDiscapacidad: '["tea"]' }) }]
+            }) }
+        }
+        if (nombre === 'especialistas') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [
+            { id: 'esp-1', data: () => ({ nombre: 'Dra. López', especialidad: 'TEA', tiposDiscapacidad: ['tea', 'tdah'], edadMinima: 2, edadMaxima: 18, ciudad: 'Mérida', calificacionPromedio: 4.8, activo: true }) },
+            { id: 'esp-2', data: () => ({ nombre: 'Dr. García', especialidad: 'Motriz', tiposDiscapacidad: ['motriz'], edadMinima: 10, edadMaxima: 30, ciudad: 'Cancún', calificacionPromedio: 4.2, activo: true }) },
+          ] }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.especialistasRecomendados('u1')
+
+      expect(resultado.datos).toHaveLength(2)
+      // Dra. López should be first (matches tea, age 11 within 2-18, same city)
+      expect(resultado.datos[0].id).toBe('esp-1')
+      expect(resultado.datos[0].score_discapacidad).toBe(1)
+      expect(resultado.datos[0].score_edad).toBe(1)
+      expect(resultado.datos[0].final_score).toBeGreaterThan(0)
+      // Dr. García should be second (no disability match, age 11 outside 10-30... actually 11 is within)
+      expect(resultado.datos[1].id).toBe('esp-2')
+    })
+
+    it('debe retornar lista vacía si no hay especialistas', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true, data: () => ({ id: 'u1', rol: 'pcd' })
+          }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true }) }
+        }
+        if (nombre === 'especialistas') {
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.especialistasRecomendados('u1')
+
+      expect(resultado.datos).toHaveLength(0)
+      expect(resultado.paginacion.total).toBe(0)
+    })
+
+    it('debe retornar datos vacíos si el usuario no existe', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+        }
+        if (nombre === 'perfilesExtendidos') {
+          return { where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.especialistasRecomendados('u1')
+
+      expect(resultado.datos).toHaveLength(0)
+    })
+  })
+})

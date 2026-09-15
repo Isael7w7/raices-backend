@@ -1,17 +1,17 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
-import { IsInt, IsString, IsOptional, Min, Max } from 'class-validator'
-import { ApiProperty } from '@nestjs/swagger'
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger'
 import { ReviewsService } from './reviews.service'
+import { EnviarResenaDto } from './dto/enviar-resena.dto'
+import { ActualizarResenaDto } from './dto/actualizar-resena.dto'
+import { PaginacionDto } from '../../common/dto/paginacion.dto'
+import { PaginaResenasDto, ResenaGuardadaDto } from './dto/respuestas-resena.dto'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { FeatureGuard } from '../../common/guards/feature.guard'
+import { Feature } from '../../common/decorators/feature.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
-
-export class EnviarResenaDto {
-  @ApiProperty({ description: 'Calificación del 1 al 5', minimum: 1, maximum: 5, example: 4 })
-  @IsInt() @Min(1) @Max(5) calificacion: number
-  @ApiProperty({ description: 'Comentario opcional', required: false, example: 'Excelente servicio' })
-  @IsOptional() @IsString() comentario?: string
-}
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { UseETag } from '../../common/decorators/use-etag.decorator'
 
 @ApiTags('Reseñas')
 @Controller('resenas')
@@ -19,26 +19,61 @@ export class ReviewsController {
   constructor(private readonly svc: ReviewsService) {}
 
   @Get('institucion/:id')
-  @ApiOperation({ summary: 'Reseñas de una institución' })
+  @UseETag()
+  @ApiOperation({ summary: 'Reseñas de una institución', description: 'Retorna reseñas con paginación' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Lista de reseñas con nombre y avatar del autor' })
-  byInstitution(@Param('id') id: string) { return this.svc.findByInstitution(id) }
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiOkResponse({ type: PaginaResenasDto, description: 'Lista paginada de reseñas con nombre y avatar del autor' })
+  byInstitution(@Param('id') id: string, @Query() paginacion: PaginacionDto) { return this.svc.findByInstitution(id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
 
   @Get('mias')
+  @UseETag()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Mis reseñas', description: 'Retorna las reseñas del usuario autenticado con nombre de institución' })
-  @ApiResponse({ status: 200, description: 'Lista de reseñas propias' })
-  mine(@CurrentUser() user: any) { return this.svc.myReviews(user.id) }
+  @ApiOperation({ summary: 'Mis reseñas', description: 'Retorna las reseñas del usuario con paginación' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiOkResponse({ type: PaginaResenasDto, description: 'Lista paginada de reseñas propias' })
+  mine(@CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) { return this.svc.myReviews(user.id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar) }
+
+  @Put(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 ediciones por minuto
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Editar reseña', description: 'Actualiza calificación y/o comentario. Solo el autor. Recalcula promedio.' })
+  @ApiParam({ name: 'id', description: 'ID de la reseña' })
+  @ApiOkResponse({ type: ResenaGuardadaDto, description: 'Reseña actualizada' })
+  @ApiResponse({ status: 403, description: 'No eres el autor' })
+  @ApiResponse({ status: 404, description: 'Reseña no encontrada' })
+  update(@Param('id') id: string, @Body() dto: ActualizarResenaDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.update(id, user.id, dto)
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Eliminar reseña', description: 'Elimina la reseña y recalcula promedio. Solo el autor.' })
+  @ApiParam({ name: 'id', description: 'ID de la reseña' })
+  @ApiNoContentResponse({ description: 'Reseña eliminada' })
+  @ApiResponse({ status: 403, description: 'No eres el autor' })
+  @ApiResponse({ status: 404, description: 'Reseña no encontrada' })
+  remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.remove(id, user.id)
+  }
 
   @Post('institucion/:id')
-  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 reseñas por minuto
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('resenas')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Crear o actualizar reseña', description: 'Un usuario solo puede tener 1 reseña por institución (se actualiza si ya existe)' })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
-  @ApiResponse({ status: 200, description: 'Reseña guardada' })
+  @ApiCreatedResponse({ type: ResenaGuardadaDto, description: 'Reseña guardada' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de reseñas desactivada para tu cuenta' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  submit(@Param('id') id: string, @Body() dto: EnviarResenaDto, @CurrentUser() user: any) {
+  submit(@Param('id') id: string, @Body() dto: EnviarResenaDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.submit(user.id, id, dto.calificacion, dto.comentario ?? '')
   }
 }

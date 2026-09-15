@@ -8,7 +8,8 @@ import { getFirestore, Firestore } from 'firebase-admin/firestore'
 
 // ── Initialize Firebase Admin ─────────────────────────────────
 const projectId = process.env.FIREBASE_PROJECT_ID
-const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT
+// FIREBASE_CREDENTIALS es el nombre canónico; FIREBASE_SERVICE_ACCOUNT queda como alias
+const serviceAccountJson = process.env.FIREBASE_CREDENTIALS || process.env.FIREBASE_SERVICE_ACCOUNT
 
 if (!projectId) {
   console.error('❌ FIREBASE_PROJECT_ID is required in .env')
@@ -19,7 +20,7 @@ if (getApps().length === 0) {
   if (serviceAccountJson) {
     initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), projectId })
   } else {
-    console.warn('⚠️  No FIREBASE_SERVICE_ACCOUNT found. Using application default credentials.')
+    console.warn('⚠️  No FIREBASE_CREDENTIALS found. Using application default credentials.')
     initializeApp({ projectId })
   }
 }
@@ -101,7 +102,7 @@ async function main() {
   console.log('╚══════════════════════════════════════════════════════════╝')
   console.log('')
   console.log(`📋 Project: ${projectId}`)
-  console.log(`🔐 Mode: ${serviceAccountJson ? 'Service Account' : 'Application Default Credentials'}`)
+  console.log(`🔐 Mode: ${serviceAccountJson ? 'Service Account (FIREBASE_CREDENTIALS)' : 'Application Default Credentials'}`)
   console.log('')
 
   // List all collections

@@ -1,17 +1,16 @@
 import { Injectable, Inject } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { Subject } from 'rxjs'
-import { v4 as uuid } from 'uuid'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 
 @Injectable()
 export class NotificationsService {
-  private streams = new Map<string, Subject<any>>()
+  private streams = new Map<string, Subject<{ data: string }>>()
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  getStream(usuarioId: string): Subject<any> {
+  getStream(usuarioId: string): Subject<{ data: string }> {
     if (!this.streams.has(usuarioId)) {
       this.streams.set(usuarioId, new Subject())
     }
@@ -19,12 +18,12 @@ export class NotificationsService {
   }
 
   async crear(usuarioId: string, tipo: string, titulo: string, cuerpo: string, referenciaId?: string) {
-    const id = uuid()
-    await this.db.collection(COLECCIONES.notificaciones).doc(id).set({
-      id, usuarioId, tipo, titulo, cuerpo, referenciaId: referenciaId ?? null,
+    const ref = this.db.collection(COLECCIONES.notificaciones).doc()
+    await ref.set({
+      id: ref.id, usuarioId, tipo, titulo, cuerpo, referenciaId: referenciaId ?? null,
       leida: false, fechaCreacion: new Date().toISOString(),
     })
-    const notif = { id, usuarioId, tipo, titulo, cuerpo, referenciaId, leida: false, fechaCreacion: new Date().toISOString() }
+    const notif = { id: ref.id, usuarioId, tipo, titulo, cuerpo, referenciaId, leida: false, fechaCreacion: new Date().toISOString() }
     const stream = this.streams.get(usuarioId)
     if (stream) stream.next({ data: JSON.stringify(notif) })
     return notif
@@ -35,8 +34,8 @@ export class NotificationsService {
       .where('usuarioId', '==', usuarioId).get()
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const notificaciones = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    notificaciones.sort((a: any, b: any) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+    const notificaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as { id: string; fechaCreacion?: string }))
+    notificaciones.sort((a, b) => String(b.fechaCreacion ?? '').localeCompare(String(a.fechaCreacion ?? '')))
 
     // Limitar a 50 después de ordenar
     return notificaciones.slice(0, 50)
@@ -47,7 +46,6 @@ export class NotificationsService {
     if (doc.exists && doc.data()?.usuarioId === usuarioId) {
       await doc.ref.update({ leida: true })
     }
-    return { exito: true }
   }
 
   async markAllRead(usuarioId: string) {
@@ -59,6 +57,5 @@ export class NotificationsService {
       lote.update(doc.ref, { leida: true })
     }
     await lote.commit()
-    return { exito: true }
   }
 }

@@ -3,12 +3,31 @@
 .env.local
 .env.*.local
 .env.*
+# ...excepto la plantilla de ejemplo (sin valores reales)
+!.env.example
+
+# Service account / credential JSON files (nunca subir llaves)
+*service-account.json
+*service_account.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
+*-credentials.json
+*credentials.json
+google-application-credentials*.json
+
+# Llaves privadas
+*.pem
+*.key
+*.p12
 
 # Dependencies
 node_modules/
 
 # Build output
 dist/
+
+# Test coverage
+coverage/
 
 # OS files
 .DS_Store
@@ -26,3 +45,14 @@ uploads/
 
 # Debug logs
 npm-debug.log*
+firebase-debug.log
+
+# Reglas locales de agentes IA
+AGENTS.md
+.cursorrules
+CLINE_RULES.md
+opencode.json
+
+# Auditorías técnicas
+docs/AUDITORIA-TECNICA-COMPLETA.md
+docs/AUDITORIA.md
