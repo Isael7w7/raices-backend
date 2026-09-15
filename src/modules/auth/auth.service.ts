@@ -32,7 +32,7 @@ export class AuthService {
     this.secureTokenUrl = `https://securetoken.googleapis.com/v1/token?key=${this.firebaseApiKey}`
   }
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto, csfUrl?: string) {
     const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
     if (!snapshot.empty) throw new ConflictException('Email ya registrado')
@@ -54,6 +54,7 @@ export class AuthService {
 
     const uid = firebaseUser.uid
 
+    const esOrganizacion = ['institution', 'institucion', 'institucional', 'empresa'].includes(dto.rol)
     await this.db.collection(COLECCIONES.perfiles).doc(uid).set({
       id: uid,
       email: dto.email,
@@ -64,6 +65,8 @@ export class AuthService {
       urlAvatar: null,
       activo: true,
       verificado: false,
+      estadoVerificacion: esOrganizacion ? 'pendiente' : null,
+      documentoCsf: csfUrl ?? null,
       fechaCreacion: new Date().toISOString(),
     })
 
@@ -78,10 +81,8 @@ export class AuthService {
       idToken = signInResponse.data.idToken
       tokenRefresco = signInResponse.data.refreshToken
     } catch (e: any) {
-      this.logger.warn(`Sign-in after register failed: ${e?.message ?? e}. Generating custom token.`)
-      const customToken = await this.auth.createCustomToken(uid)
-      idToken = customToken
-      tokenRefresco = ''
+      this.logger.error(`Sign-in after register failed: ${e?.message ?? e}`)
+      throw new UnauthorizedException('No se pudo establecer la sesión después del registro.')
     }
 
     const usuario = {

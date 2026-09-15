@@ -4,6 +4,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { join } from "path";
+import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 
 async function bootstrap() {
@@ -40,6 +41,7 @@ async function bootstrap() {
     exposedHeaders: ["Content-Type", "ETag"],
   });
 
+  app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix("api");
 

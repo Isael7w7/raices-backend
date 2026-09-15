@@ -12,11 +12,17 @@ export class FirebaseAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest()
     const authHeader = request.headers['authorization']
 
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token de autenticación requerido')
+    // Accept Bearer token from Authorization header OR from httpOnly cookie
+    let token: string | undefined
+    if (authHeader?.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1]
+    } else if (request.cookies?.token_acceso) {
+      token = request.cookies.token_acceso
     }
 
-    const token = authHeader.split(' ')[1]
+    if (!token) {
+      throw new UnauthorizedException('Token de autenticación requerido')
+    }
 
     try {
       const decodedToken = await getAuth().verifyIdToken(token)
