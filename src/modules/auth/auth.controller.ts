@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { AuthService } from './auth.service'
-import { StorageService } from '../storage/storage.service'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
 import { RefreshTokenDto } from './dto/refresh-token.dto'
@@ -41,27 +40,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Registrar nuevo usuario', description: 'Crea una cuenta con rol pcd, tutor o institución. El registro no inicia sesión: devuelve el usuario con requiereInicioSesion: true y el cliente debe llamar a inicio-sesion para obtener los tokens.' })
   @ApiCreatedResponse({ type: RespuestaRegistroDto, description: 'Cuenta creada. Retorna el usuario y requiereInicioSesion: true (sin tokens). El cliente debe redirigir al inicio de sesión.' })
   @ApiResponse({ status: 409, description: 'Correo ya registrado' })
-  async register(
-    @Body() dto: RegisterDto,
-    @UploadedFile() documentoCsf?: Express.Multer.File,
-    @Res({ passthrough: true }) res?: Response,
-  ) {
-    let csfUrl: string | undefined
-
-    if (documentoCsf) {
-      csfUrl = await this.storage.upload(documentoCsf.buffer, documentoCsf.originalname, 'csf')
-    }
-
-    // Acepta el archivo (multipart, campo documentoCsf) o la URL de Storage
-    // enviada en el JSON del DTO. El contenido de la CSF NO se valida aquí.
-    const result = await this.authService.register(dto, csfUrl ?? dto.documentoCsf)
-
-    if (res) {
-      res.cookie('token_acceso', result.tokenAcceso, ACCESS_COOKIE_OPTS)
-      res.cookie('token_refresco', result.tokenRefresco, REFRESH_COOKIE_OPTS)
-    }
-
-    return { mensaje: 'Registro y login exitoso' }
+  async register(@Body() dto: RegisterDto) {
+    // El registro es JSON puro (sin multipart) y NO inicia sesión: se crea la
+    // cuenta y se devuelve el usuario, obligando al cliente a iniciar sesión
+    // explícitamente. La referencia opcional documentoCsf (URL de Storage)
+    // viaja en el JSON del DTO; el contenido de la CSF no se valida aquí.
+    return this.authService.register(dto)
   }
 
   @Post('inicio-sesion')

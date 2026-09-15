@@ -91,4 +91,12 @@ export class RegisterDto {
   @IsOptional()
   @IsIn(['formal', 'cercano', 'empatico', 'directo', 'infantil'])
   tonoContextual?: string
+
+  @ApiPropertyOptional({
+    description: 'URL o referencia de la Constancia de Situación Fiscal (CSF) cuando el cliente la sube a Storage por separado',
+    example: 'https://storage.googleapis.com/raices-bucket/csf/abc123.pdf',
+  })
+  @IsOptional()
+  @IsString()
+  documentoCsf?: string
 }
