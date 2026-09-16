@@ -348,7 +348,7 @@ describe('Security Suite (E2E)', () => {
     it('400: email inválido', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
-        .send({ email: 'no-es-email', password: 'test123', nombreCompleto: 'Test', rol: 'pcd' })
+        .send({ email: 'no-es-email', password: 'Password123!', nombreCompleto: 'Test', rol: 'pcd' })
       expect(res.status).toBe(400)
     })
 
@@ -362,21 +362,21 @@ describe('Security Suite (E2E)', () => {
     it('400: rol inválido', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
-        .send({ email: 'test@test.com', password: 'test123', nombreCompleto: 'Test', rol: 'superadmin' })
+        .send({ email: 'test@test.com', password: 'Password123!', nombreCompleto: 'Test', rol: 'superadmin' })
       expect(res.status).toBe(400)
     })
 
     it('400: institución sin categoría', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
-        .send({ email: 'inst@test.com', password: 'test123', nombreCompleto: 'Centro', rol: 'institucion' })
+        .send({ email: 'inst@test.com', password: 'Password123!', nombreCompleto: 'Centro', rol: 'institucion' })
       expect(res.status).toBe(400)
     })
 
     it('409: email ya registrado', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
-        .send({ email: 'pcd@test.com', password: 'test123', nombreCompleto: 'Duplicate', rol: 'pcd' })
+        .send({ email: 'pcd@test.com', password: 'Password123!', nombreCompleto: 'Duplicate', rol: 'pcd' })
       expect(res.status).toBe(409)
     })
   })

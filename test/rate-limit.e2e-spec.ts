@@ -157,7 +157,7 @@ describe('Rate Limiting (E2E) — ThrottlerGuard', () => {
         for (let i = 1; i <= 2; i++) {
           const res = await request(http)
             .put('/api/usuarios/perfil')
-            .send({ nombreCompleto: `Update ${i}` })
+            .send({ nombreCompleto: i === 1 ? 'Update Uno' : 'Update Dos' })
             .set('Authorization', token('uid-user'))
           expect(res.status).toBe(200)
         }
