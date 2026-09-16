@@ -40,7 +40,13 @@ export class AuthController {
   @ApiOperation({ summary: 'Registrar nuevo usuario', description: 'Crea una cuenta con rol pcd, tutor o institución. El registro no inicia sesión: devuelve el usuario con requiereInicioSesion: true y el cliente debe llamar a inicio-sesion para obtener los tokens.' })
   @ApiCreatedResponse({ type: RespuestaRegistroDto, description: 'Cuenta creada. Retorna el usuario y requiereInicioSesion: true (sin tokens). El cliente debe redirigir al inicio de sesión.' })
   @ApiResponse({ status: 409, description: 'Correo ya registrado' })
-  register(@Body() dto: RegisterDto) { return this.authService.register(dto) }
+  async register(@Body() dto: RegisterDto) {
+    // El registro es JSON puro (sin multipart) y NO inicia sesión: se crea la
+    // cuenta y se devuelve el usuario, obligando al cliente a iniciar sesión
+    // explícitamente. La referencia opcional documentoCsf (URL de Storage)
+    // viaja en el JSON del DTO; el contenido de la CSF no se valida aquí.
+    return this.authService.register(dto)
+  }
 
   @Post('inicio-sesion')
   @HttpCode(200)

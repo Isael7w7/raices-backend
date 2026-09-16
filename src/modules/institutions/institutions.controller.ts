@@ -9,6 +9,7 @@ import {
   ApiParam, ApiQuery, ApiBody, ApiConsumes,
 } from '@nestjs/swagger'
 import { InstitutionsService } from './institutions.service'
+import { CsfQrService } from './csf-qr.service'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { InstitucionDto, PaginaInstitucionesDto } from './dto/respuestas-institucion.dto'
@@ -19,7 +20,6 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
-import { CsfQrService } from './csf-qr.service'
 import { InstitucionVerificadaGuard } from '../../common/guards/institucion-verificada.guard'
 
 @ApiTags('Instituciones')

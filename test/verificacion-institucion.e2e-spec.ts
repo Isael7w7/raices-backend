@@ -44,7 +44,7 @@ describe('Verificación de Instituciones (E2E)', () => {
         .post('/api/autenticacion/registro')
         .send({
           email: 'inst@test.com',
-          password: '123456',
+          password: 'Password123!',
           nombreCompleto: 'Centro Terapéutico',
           rol: 'institucion',
           categoria: 'funcional',
@@ -59,7 +59,7 @@ describe('Verificación de Instituciones (E2E)', () => {
         .post('/api/autenticacion/registro')
         .send({
           email: 'inst@test.com',
-          password: '123456',
+          password: 'Password123!',
           nombreCompleto: 'Centro Terapéutico',
           rol: 'institucion',
           categoria: 'funcional',
@@ -75,7 +75,7 @@ describe('Verificación de Instituciones (E2E)', () => {
         .post('/api/autenticacion/registro')
         .send({
           email: 'tutor@test.com',
-          password: '123456',
+          password: 'Password123!',
           nombreCompleto: 'Tutor Test',
           rol: 'padre_tutor',
         })
@@ -89,7 +89,7 @@ describe('Verificación de Instituciones (E2E)', () => {
         .post('/api/autenticacion/registro')
         .send({
           email: 'pcd@test.com',
-          password: '123456',
+          password: 'Password123!',
           nombreCompleto: 'PCD Test',
           rol: 'pcd',
         })
@@ -103,7 +103,7 @@ describe('Verificación de Instituciones (E2E)', () => {
         .post('/api/autenticacion/registro')
         .send({
           email: 'inst@test.com',
-          password: '123456',
+          password: 'Password123!',
           nombreCompleto: 'Centro Terapéutico',
           rol: 'institucion',
           categoria: 'funcional',

@@ -4,7 +4,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { join } from "path";
-import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { obtenerOrigenesPermitidos } from "./common/utils/cors-origins";
 
@@ -41,31 +41,8 @@ async function bootstrap() {
     exposedHeaders: ["Content-Type", "ETag"],
   });
 
-  // Security headers via Helmet
-  // CSP: como es una API JSON, el CSP solo afecta a Swagger UI (/docs) y archivos estáticos.
-  // 'unsafe-inline' en styleSrc es necesario para Swagger UI. 'unsafe-eval' se eliminó
-  // porque Swagger no lo necesita. Si en el futuro se agregan pages HTML, reconsiderar.
-  app.use(helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        imgSrc: ["'self'", "data:", "https:"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      },
-    },
-    crossOriginEmbedderPolicy: false,
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-  }));
-
-  app.useGlobalPipes(new ValidationPipe({
-    whitelist: true,
-    transform: true,
-    transformOptions: {
-      enableImplicitConversion: true,
-    },
-  }));
+  app.use(cookieParser());
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.setGlobalPrefix("api");
 
   // Swagger configuration
