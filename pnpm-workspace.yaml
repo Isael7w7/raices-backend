@@ -12,6 +12,3 @@ allowBuilds:
   protobufjs: true
   puppeteer: true
   unrs-resolver: true
-
-overrides:
-  canvas: npm:@napi-rs/canvas@^0.1.100
