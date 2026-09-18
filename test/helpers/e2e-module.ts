@@ -11,6 +11,11 @@ import { HealthModule } from '../../src/modules/health/health.module'
 import { MessagesModule } from '../../src/modules/messages/messages.module'
 import { JobsModule } from '../../src/modules/jobs/jobs.module'
 import { CommunityModule } from '../../src/modules/community/community.module'
+import { CatalogsModule } from '../../src/modules/catalogs/catalogs.module'
+import { FavoritesModule } from '../../src/modules/favorites/favorites.module'
+import { NotificationsModule } from '../../src/modules/notifications/notifications.module'
+import { ReviewsModule } from '../../src/modules/reviews/reviews.module'
+import { RoutesModule } from '../../src/modules/routes/routes.module'
 
 /**
  * Módulo raíz de pruebas E2E: monta solo los módulos de negocio bajo prueba
@@ -36,6 +41,11 @@ import { CommunityModule } from '../../src/modules/community/community.module'
     MessagesModule,
     JobsModule,
     CommunityModule,
+    CatalogsModule,
+    FavoritesModule,
+    NotificationsModule,
+    ReviewsModule,
+    RoutesModule,
   ],
 })
 export class E2eTestModule {}

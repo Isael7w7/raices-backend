@@ -1,7 +1,7 @@
 import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger'
 import { RoutesService } from './routes.service'
-import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto, RutaDesarrolloDto, PasoRutaDto, ResumenRutasDto } from './dto/ruta-desarrollo.dto'
+import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto, RutaDesarrolloDto, PasoRutaDto, ResumenRutasDto, RutaPersonalizadaResponseDto, MiRutaResponseDto } from './dto/ruta-desarrollo.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
@@ -39,6 +39,18 @@ export class RoutesController {
   @ApiOkResponse({ type: ResumenRutasDto, description: 'Resumen de rutas' })
   resumenRutas(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.resumenRutas(user.id)
+  }
+
+  @Get('mi-ruta')
+  @UseETag()
+  @ApiOperation({
+    summary: 'Mi ruta activa con entidades locales',
+    description: 'Devuelve la ruta activa del usuario con su progreso, paso actual, y entidades locales relevantes (instituciones cercanas, vacantes de empleo si el paso es laboral).',
+  })
+  @ApiOkResponse({ type: MiRutaResponseDto, description: 'Ruta activa con entidades asociadas de la zona' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  async obtenerMiRuta(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.obtenerMiRuta(user.id)
   }
 
   @Get(':id')
@@ -81,6 +93,23 @@ export class RoutesController {
   @ApiResponse({ status: 404, description: 'Ruta no encontrada' })
   eliminarRuta(@CurrentUser() user: CurrentUserPayload, @Param('id') id: string) {
     return this.svc.eliminarRuta(user.id, id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Generación personalizada (Día Cero + Algoritmo Evolutivo)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Post('generar-personalizada')
+  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 generaciones por minuto
+  @HttpCode(201)
+  @ApiOperation({
+    summary: 'Generar ruta personalizada',
+    description: 'Genera o retorna la ruta activa del usuario. Usa contexto de expertos (Día Cero) y algoritmo de similaridad con perfiles de la comunidad (Fase Evolutiva). Si ya existe una ruta activa, la retorna con sus pasos.',
+  })
+  @ApiOkResponse({ type: RutaPersonalizadaResponseDto, description: 'Ruta personalizada generada o existente' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  async generarRutaPersonalizada(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.generarRutaPersonalizada(user.id)
   }
 
   // ═══════════════════════════════════════════════════════════════════

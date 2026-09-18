@@ -3,6 +3,9 @@ import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto } from './dto/ruta-desarrollo.dto'
+import { KnowledgeBaseService } from './knowledge-base.service'
+import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import type { PerfilExtendidoDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
 
 /** Ruta de desarrollo de la colección `rutasDesarrollo`. */
 interface RutaDoc {
@@ -25,7 +28,10 @@ interface PasoDoc {
 export class RoutesService {
   private readonly logger = new Logger('RoutesService')
 
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly knowledgeBase: KnowledgeBaseService,
+  ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
 
@@ -324,6 +330,180 @@ export class RoutesService {
       ...paso,
       completado: false,
       fechaCompletado: null,
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Generación personalizada de rutas (Día Cero + Algoritmo Evolutivo)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Genera una ruta personalizada para el usuario.
+   *
+   * Flujo:
+   * 1. Día Cero: Si el usuario es nuevo (sin rutas previas), genera una ruta
+   *    experta por defecto basada en su tipo de discapacidad.
+   * 2. Fase Evolutiva: Si hay perfiles similares con rutas completadas,
+   *    mejora los pasos usando la sabiduría comunitaria.
+   * 3. Siempre incluye entidades locales (instituciones, vacantes) relevantes.
+   */
+  async generarRutaPersonalizada(usuarioId: string) {
+    // 1. Cargar perfil del usuario
+    const [perfilSnap, registroSnap] = await Promise.all([
+      this.col(COLECCIONES.perfilesExtendidos)
+        .where('usuarioId', '==', usuarioId).limit(1).get(),
+      this.col(COLECCIONES.perfiles).doc(usuarioId).get(),
+    ])
+
+    const perfil = perfilSnap.empty ? null : (perfilSnap.docs[0].data() as PerfilExtendidoDoc)
+    const registro = registroSnap.data() as PerfilDoc | undefined
+
+    // 2. Verificar si ya tiene una ruta activa generada automáticamente
+    const rutasExistentes = await this.col(COLECCIONES.rutasDesarrollo)
+      .where('usuarioId', '==', usuarioId)
+      .where('estado', '==', 'activa')
+      .get()
+
+    if (!rutasExistentes.empty) {
+      // Ya tiene ruta activa: retornar la primera con sus pasos
+      const rutaExistente = rutasExistentes.docs[0]
+      return this.obtenerRuta(usuarioId, rutaExistente.id)
+    }
+
+    // 3. Obtener tipos de discapacidad del usuario
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
+      : []
+
+    // 4. Obtener ruta experta base (Día Cero)
+    const rutaExperta = this.knowledgeBase.obtenerRutaExperta(tiposDiscapacidad)
+
+    // 5. Buscar perfiles similares (Fase Evolutiva)
+    const perfilesSimilares = perfil && registro
+      ? await this.knowledgeBase.buscarPerfilesSimilares(usuarioId, perfil, registro)
+      : []
+
+    // 6. Mejorar pasos con sabiduría comunitaria si hay evidencia
+    const pasosFinales = perfilesSimilares.length >= 2
+      ? this.knowledgeBase.mejorarPasosConComunidad(rutaExperta.pasos, perfilesSimilares)
+      : rutaExperta.pasos
+
+    // 7. Crear la ruta en Firestore
+    const refRuta = this.col(COLECCIONES.rutasDesarrollo).doc()
+    const ruta = {
+      id: refRuta.id,
+      usuarioId,
+      areaInteres: rutaExperta.areaInteres,
+      nombre: rutaExperta.nombre,
+      descripcion: rutaExperta.descripcion,
+      metaFinal: 'Completar todos los pasos de la ruta de desarrollo',
+      estado: 'activa',
+      prioridad: 'alta' as const,
+      totalPasos: pasosFinales.length,
+      pasosCompletados: 0,
+      porcentajeProgreso: 0,
+      fechaLimite: null,
+      fechaCreacion: new Date().toISOString(),
+      fechaActualizacion: new Date().toISOString(),
+      origen: perfilesSimilares.length >= 2 ? 'comunidad' : 'experto',
+      perfilesSimilaresUsados: perfilesSimilares.map(p => p.usuarioId),
+    }
+
+    await refRuta.set(ruta)
+
+    // 8. Crear los pasos
+    for (const paso of pasosFinales) {
+      const refPaso = this.col(COLECCIONES.pasosRuta).doc()
+      await refPaso.set({
+        id: refPaso.id,
+        rutaId: refRuta.id,
+        titulo: paso.titulo,
+        descripcion: paso.descripcion,
+        orden: paso.orden,
+        completado: false,
+        fechaCompletado: null,
+        fechaCreacion: new Date().toISOString(),
+      })
+    }
+
+    this.logger.log(`Ruta personalizada generada para ${usuarioId}: ${rutaExperta.nombre} (${pasosFinales.length} pasos, origen: ${ruta.origen})`)
+
+    return this.obtenerRuta(usuarioId, refRuta.id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Mi Ruta (con entidades locales)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene la ruta activa del usuario con entidades asociadas de su zona.
+   * Incluye instituciones cercanas y vacantes relevantes para el paso actual.
+   */
+  async obtenerMiRuta(usuarioId: string) {
+    // Buscar la ruta activa más reciente
+    const rutasSnap = await this.col(COLECCIONES.rutasDesarrollo)
+      .where('usuarioId', '==', usuarioId)
+      .where('estado', '==', 'activa')
+      .get()
+
+    if (rutasSnap.empty) {
+      return {
+        ruta: null,
+        pasos: [],
+        entidadesLocales: { instituciones: [], vacantes: [] },
+        mensaje: 'No tienes una ruta activa. Genera una ruta personalizada para comenzar.',
+      }
+    }
+
+    // Tomar la ruta más reciente
+    const rutaDocs = rutasSnap.docs.map(d => ({
+      id: d.id,
+      datos: d.data() as Record<string, unknown>,
+    }))
+    rutaDocs.sort((a, b) => String(b.datos.fechaCreacion ?? '').localeCompare(String(a.datos.fechaCreacion ?? '')))
+    const rutaDoc = rutaDocs[0]
+
+    const ruta = { id: rutaDoc.id, ...rutaDoc.datos } as unknown as RutaDoc
+
+    // Obtener pasos
+    const pasosSnap = await this.col(COLECCIONES.pasosRuta)
+      .where('rutaId', '==', rutaDoc.id)
+      .get()
+
+    const pasos = pasosSnap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Record<string, unknown>))
+      .sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0))
+
+    // Encontrar el paso actual (primero no completado)
+    const pasoActual = pasos.find(p => !p.completado)
+
+    // Cargar perfil para ciudad y discapacidades
+    const perfilSnap = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+    const perfil = perfilSnap.empty ? null : (perfilSnap.docs[0].data() as PerfilExtendidoDoc)
+    const registroDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    const registro = registroDoc.data() as PerfilDoc | undefined
+
+    const ciudad = registro?.ciudad ?? ''
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
+      : []
+
+    // Obtener entidades locales relevantes
+    const [instituciones, vacantes] = await Promise.all([
+      this.knowledgeBase.obtenerInstitucionesCercanas(ciudad, tiposDiscapacidad),
+      pasoActual?.categoria === 'laboral'
+        ? this.knowledgeBase.obtenerVacantesRelevantes(ciudad, tiposDiscapacidad)
+        : Promise.resolve([]),
+    ])
+
+    return {
+      ruta,
+      pasos,
+      pasoActual: pasoActual ?? null,
+      entidadesLocales: { instituciones, vacantes },
+      origen: ruta.origen ?? 'experto',
+      perfilesSimilaresUsados: ruta.perfilesSimilaresUsados ?? [],
     }
   }
 
