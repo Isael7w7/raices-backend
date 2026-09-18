@@ -168,12 +168,40 @@ export class KnowledgeBaseService {
 
   /**
    * Obtiene la ruta experta por defecto para un usuario según su tipo de discapacidad.
-   * Día Cero: cuando el usuario no tiene rutas ni interacciones significativas.
+   * Intenta leer de Firestore (colección `rutasExpertos`) primero;
+   * si no existe o falla, usa las plantillas hardcodeadas como fallback.
    */
-  obtenerRutaExperta(tiposDiscapacidad: string[]): RutaExperta {
+  async obtenerRutaExperta(tiposDiscapacidad: string[]): Promise<RutaExperta> {
     if (tiposDiscapacidad.length === 0) return RUTA_GENERICA
 
-    // Buscar la primera coincidencia en el catálogo de rutas expertas
+    // Intentar leer de Firestore
+    try {
+      for (const tipo of tiposDiscapacidad) {
+        const normalizado = tipo.toLowerCase().trim()
+        const doc = await this.col('rutasExpertos').doc(normalizado).get()
+        if (doc.exists) {
+          const data = doc.data() as Record<string, unknown>
+          const pasos = Array.isArray(data.pasos) ? data.pasos : []
+          return {
+            nombre: String(data.nombre ?? ''),
+            descripcion: String(data.descripcion ?? ''),
+            areaInteres: String(data.areaInteres ?? 'general'),
+            pasos: pasos
+              .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+              .map((p, i) => ({
+                titulo: String(p.titulo ?? ''),
+                descripcion: String(p.descripcion ?? ''),
+                categoria: String(p.categoria ?? 'general'),
+                orden: typeof p.orden === 'number' ? p.orden : i + 1,
+              })),
+          }
+        }
+      }
+    } catch (err: unknown) {
+      this.logger.warn(`obtenerRutaExperta: Firestore falló (${err instanceof Error ? err.message : String(err)}) — usando plantilla en memoria`)
+    }
+
+    // Fallback: plantillas hardcodeadas
     for (const tipo of tiposDiscapacidad) {
       const normalizado = tipo.toLowerCase().trim()
       if (RUTAS_EXPERTAS_POR_DISCAPACIDAD[normalizado]) {

@@ -159,6 +159,7 @@ async function seed() {
     COLECCIONES.instituciones,
     COLECCIONES.vacantes,
     COLECCIONES.configuraciones,
+    'rutasExpertos',
     // Colecciones antiguas en inglés (eliminar residuos)
     "users",
     "profiles",
@@ -1026,6 +1027,115 @@ async function seed() {
   console.log(
     `⚙️  ${configuraciones.length} configuraciones de plataforma creadas`,
   );
+
+  // ── Rutas expertas (Knowledge Base) ───────────────────────────
+  const rutasExpertas = [
+    {
+      id: 'habla',
+      discapacidad: 'habla',
+      nombre: 'Desarrollo de Comunicación y Habla',
+      descripcion: 'Ruta progresiva para fortalecer habilidades de comunicación, desde evaluación inicial hasta integración social y laboral.',
+      areaInteres: 'terapia',
+      pasos: [
+        { titulo: 'Evaluación inicial del habla', descripcion: 'Programar evaluación con un especialista en terapia del habla para identificar áreas de mejora.', categoria: 'habla', orden: 1 },
+        { titulo: 'Sesiones de terapia del habla', descripcion: 'Asistir a sesiones regulares de terapia enfocadas en pronunciación, fluidez y vocabulario.', categoria: 'habla', orden: 2 },
+        { titulo: 'Práctica en entornos seguros', descripcion: 'Practicar habilidades comunicativas en grupos de apoyo o sesiones de conversation club.', categoria: 'habla', orden: 3 },
+        { titulo: 'Integración social progresiva', descripcion: 'Participar en actividades comunitarias donde se requiera comunicación oral.', categoria: 'social', orden: 4 },
+        { titulo: 'Preparación para entorno laboral', descripcion: 'Desarrollar habilidades de comunicación profesional: presentaciones, entrevistas, trabajo en equipo.', categoria: 'laboral', orden: 5 },
+        { titulo: 'Búsqueda de empleo inclusivo', descripcion: 'Explorar vacantes en empresas inclusivas que valoren la diversidad comunicativa.', categoria: 'laboral', orden: 6 },
+      ],
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: 'motricidad',
+      discapacidad: 'motricidad',
+      nombre: 'Fortalecimiento Motricidad y Movilidad',
+      descripcion: 'Ruta de desarrollo motor progresivo: desde evaluación física hasta autonomía en la vida diaria y laboral.',
+      areaInteres: 'funcional',
+      pasos: [
+        { titulo: 'Evaluación motora integral', descripcion: 'Evaluación con fisioterapeuta u occupational therapist para definir plan personalizado.', categoria: 'motricidad', orden: 1 },
+        { titulo: 'Programa de fisioterapia', descripcion: 'Sesiones regulares de fortalecimiento, estiramientos y coordinación motora.', categoria: 'motricidad', orden: 2 },
+        { titulo: 'Terapia ocupacional', descripcion: 'Ejercicios para mejorar habilidades de la vida diaria: vestirse, comer, escribir.', categoria: 'motricidad', orden: 3 },
+        { titulo: 'Adaptación del entorno', descripcion: 'Identificar y solicitar adaptaciones en el hogar, escuela o trabajo para facilitar la movilidad.', categoria: 'funcional', orden: 4 },
+        { titulo: 'Actividad física adaptada', descripcion: 'Participar en deportes o actividades físicas adaptadas para mantener condición general.', categoria: 'motricidad', orden: 5 },
+        { titulo: 'Inserción laboral inclusiva', descripcion: 'Buscar oportunidades en entornos laborales que ofrezcan adaptaciones razonables.', categoria: 'laboral', orden: 6 },
+      ],
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: 'visual',
+      discapacidad: 'visual',
+      nombre: 'Independencia Visual y Accesibilidad',
+      descripcion: 'Ruta para desarrollar habilidades de navegación independiente y acceso a tecnología asistiva.',
+      areaInteres: 'funcional',
+      pasos: [
+        { titulo: 'Evaluación y diagnóstico visual', descripcion: 'Consulta con especialista para determinar nivel de visión residual y opciones de apoyo.', categoria: 'visual', orden: 1 },
+        { titulo: 'Entrenamiento en movilidad', descripcion: 'Aprender técnicas de orientación y movilidad con bastón o guía.', categoria: 'visual', orden: 2 },
+        { titulo: 'Tecnología asistiva', descripcion: 'Conocer y usar herramientas: lectores de pantalla, apps de acceso, Braille digital.', categoria: 'visual', orden: 3 },
+        { titulo: 'Acceso a educación inclusiva', descripcion: 'Explorar opciones educativas con materiales accesibles y adaptaciones curriculares.', categoria: 'educacion', orden: 4 },
+        { titulo: 'Desarrollo de habilidades profesionales', descripcion: 'Capacitación en habilidades laborales con herramientas accesibles.', categoria: 'laboral', orden: 5 },
+        { titulo: 'Búsqueda de empleo inclusivo', descripcion: 'Postularse a empresas con programas de inclusión laboral para personas con discapacidad visual.', categoria: 'laboral', orden: 6 },
+      ],
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: 'auditiva',
+      discapacidad: 'auditiva',
+      nombre: 'Comunicación Auditiva e Inclusión',
+      descripcion: 'Ruta para desarrollar estrategias de comunicación, acceso a educación y empleo inclusivo.',
+      areaInteres: 'educacion',
+      pasos: [
+        { titulo: 'Evaluación audiológica', descripcion: 'Evaluación con audiólogo para determinar nivel de pérdida y opciones de apoyo.', categoria: 'auditiva', orden: 1 },
+        { titulo: 'Adaptación de tecnología auditiva', descripcion: 'Obtener y adaptar audífonos, implantes cocleares u otros dispositivos.', categoria: 'auditiva', orden: 2 },
+        { titulo: 'Aprendizaje de lengua de señas', descripcion: 'Iniciar clases de LSM para mejorar la comunicación bilingüe.', categoria: 'auditiva', orden: 3 },
+        { titulo: 'Acceso a educación inclusiva', descripcion: 'Explorar opciones con intérprete de LSM, subtitulado y material visual.', categoria: 'educacion', orden: 4 },
+        { titulo: 'Habilidades sociales y comunitarias', descripcion: 'Participar en grupos de la comunidad sorda para fortalecer identidad y redes de apoyo.', categoria: 'social', orden: 5 },
+        { titulo: 'Inserción laboral inclusiva', descripcion: 'Buscar empleo en entornos con adaptaciones comunicativas (intérprete, alertas visuales).', categoria: 'laboral', orden: 6 },
+      ],
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: 'tea',
+      discapacidad: 'tea',
+      nombre: 'Desarrollo Social y Habilidades de Vida',
+      descripcion: 'Ruta estructurada para fortalecer interacción social, comunicación y autonomía.',
+      areaInteres: 'funcional',
+      pasos: [
+        { titulo: 'Evaluación del perfil TEA', descripcion: 'Evaluación integral para identificar fortalezas y áreas de apoyo.', categoria: 'tea', orden: 1 },
+        { titulo: 'Intervención conductual', descripcion: 'Sesiones de terapia enfocadas en habilidades sociales, comunicación y regulación emocional.', categoria: 'tea', orden: 2 },
+        { titulo: 'Entrenamiento en habilidades sociales', descripcion: 'Práctica estructurada de interacción social: conversación, empatía, amistad.', categoria: 'social', orden: 3 },
+        { titulo: 'Desarrollo de rutinas de vida independiente', descripcion: 'Establecer rutinas de autocuidado, organización y gestión del tiempo.', categoria: 'funcional', orden: 4 },
+        { titulo: 'Exploración de intereses y talentos', descripcion: 'Identificar fortalezas especiales para orientar educación y empleo.', categoria: 'educacion', orden: 5 },
+        { titulo: 'Inserción laboral con apoyo', descripcion: 'Buscar empleo en entornos que ofrezcan mentoría y adaptaciones para TEA.', categoria: 'laboral', orden: 6 },
+      ],
+      activa: true,
+      fechaCreacion: ahora,
+    },
+    {
+      id: 'cognitiva',
+      discapacidad: 'cognitiva',
+      nombre: 'Desarrollo Cognitivo y Educativo',
+      descripcion: 'Ruta para fortalecer habilidades cognitivas, acceso a educación adaptada y vida independiente.',
+      areaInteres: 'educacion',
+      pasos: [
+        { titulo: 'Evaluación cognitiva integral', descripcion: 'Evaluación con neuropsicólogo para mapear fortalezas y áreas de desarrollo.', categoria: 'cognitiva', orden: 1 },
+        { titulo: 'Estimulación cognitiva', descripcion: 'Programa de actividades para mejorar memoria, atención, resolución de problemas.', categoria: 'cognitiva', orden: 2 },
+        { titulo: 'Acceso a educación adaptada', descripcion: 'Explorar opciones con adaptaciones curriculares, apoyo pedagógico y materiales accesibles.', categoria: 'educacion', orden: 3 },
+        { titulo: 'Desarrollo de habilidades de vida', descripcion: 'Práctica de habilidades prácticas: manejo de dinero, transporte, seguridad personal.', categoria: 'funcional', orden: 4 },
+        { titulo: 'Habilidades sociales y emocionales', descripcion: 'Participar en grupos de habilidades sociales para mejorar la interacción interpersonal.', categoria: 'social', orden: 5 },
+        { titulo: 'Orientación vocacional y laboral', descripcion: 'Identificar intereses laborales y explorar opciones de empleo inclusivo.', categoria: 'laboral', orden: 6 },
+      ],
+      activa: true,
+      fechaCreacion: ahora,
+    },
+  ];
+
+  await insertarLote('rutasExpertos', rutasExpertas);
+  console.log(`🧠 ${rutasExpertas.length} rutas expertas (knowledge base) insertadas`);
 
   // ── Resumen final ──────────────────────────────────────────────
   const tiempoTotal = ((Date.now() - t0) / 1000).toFixed(1);

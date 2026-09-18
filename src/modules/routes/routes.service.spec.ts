@@ -109,6 +109,22 @@ function buildFirestore(opts: {
   return { firestoreMock, rutasRefs, pasosRefs, rutasCol, pasosCol, nuevaRutaRef, nuevoPasoRef, batch };
 }
 
+const configMock = {
+  get: jest.fn((key: string) => {
+    if (key === 'VERTEX_AI_PROJECT_ID') return undefined // No AI in tests
+    if (key === 'FIREBASE_PROJECT_ID') return undefined
+    if (key === 'VERTEX_AI_LOCATION') return 'us-central1'
+    if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
+    return undefined
+  }),
+};
+
+const analyticsMock = {
+  registrarCompletadoPaso: jest.fn().mockResolvedValue(undefined),
+  registrarGeneracionRuta: jest.fn().mockResolvedValue(undefined),
+  obtenerResumen: jest.fn().mockResolvedValue({ totalRutas: 0, rutasCompletadas: 0, tasaCompletado: 0, progresoPromedio: 0, porDiscapacidad: {}, pasosMasSaltados: [], tiempoPromedioDias: 0 }),
+};
+
 const knowledgeBaseMock = {
   obtenerRutaExperta: jest.fn().mockReturnValue({
     nombre: 'Ruta de prueba',
@@ -130,6 +146,8 @@ async function crearService(firestoreMock: any) {
       RoutesService,
       { provide: FIRESTORE, useValue: firestoreMock },
       { provide: KnowledgeBaseService, useValue: knowledgeBaseMock },
+      { provide: require('@nestjs/config').ConfigService, useValue: configMock },
+      { provide: require('./routes-analytics.service').RoutesAnalyticsService, useValue: analyticsMock },
     ],
   }).compile();
   return module.get<RoutesService>(RoutesService);

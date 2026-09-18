@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuard
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger'
 import { RoutesService } from './routes.service'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto, RutaDesarrolloDto, PasoRutaDto, ResumenRutasDto, RutaPersonalizadaResponseDto, MiRutaResponseDto } from './dto/ruta-desarrollo.dto'
+import { RoutesAnalyticsService } from './routes-analytics.service'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
@@ -13,7 +14,10 @@ import { UseETag } from '../../common/decorators/use-etag.decorator'
 @UseGuards(JwtAuthGuard)
 @Controller('rutas-desarrollo')
 export class RoutesController {
-  constructor(private readonly svc: RoutesService) {}
+  constructor(
+    private readonly svc: RoutesService,
+    private readonly analytics: RoutesAnalyticsService,
+  ) {}
 
   // ═══════════════════════════════════════════════════════════════════
   // Rutas
@@ -98,6 +102,14 @@ export class RoutesController {
   // ═══════════════════════════════════════════════════════════════════
   // Generación personalizada (Día Cero + Algoritmo Evolutivo)
   // ═══════════════════════════════════════════════════════════════════
+
+  @Get('analytics')
+  @UseETag()
+  @ApiOperation({ summary: 'Analytics de rutas', description: 'Resumen de métricas: tasas de completado por discapacidad, pasos más completados, tiempo promedio.' })
+  @ApiOkResponse({ description: 'Resumen de analytics' })
+  async obtenerAnalytics() {
+    return this.analytics.obtenerResumen()
+  }
 
   @Post('generar-personalizada')
   @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 generaciones por minuto

@@ -12,6 +12,39 @@ import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import type { PerfilDoc, InstitucionDoc, DocumentoIdentidadDoc, AlertaRiesgo } from '../../common/interfaces/firestore-documents.interface'
 
+/** Documento de reseña Firestore (campos usados en admin). */
+interface ResenaFirestore {
+  id: string
+  usuarioId?: string
+  institucionId?: string
+  calificacion?: number
+  comentario?: string
+  fechaCreacion?: string
+}
+
+/** Documento de sesión analítica Firestore. */
+interface SesionAnalitica {
+  timestamp?: string
+  fechaCreacion?: string
+  [key: string]: unknown
+}
+
+/** Documento de institución con campos de sort. */
+interface InstitucionSort {
+  id: string
+  nombre?: string
+  categoria?: string
+  ciudad?: string
+  calificacionPromedio?: number
+  cantidadCalificaciones?: number
+  verificada?: boolean
+  fechaCreacion?: string
+  usuarioId?: string
+  creadoPor?: string
+  activa?: boolean
+  tiposDiscapacidad?: string[] | string
+}
+
 const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
   tea: 'TEA / Autismo', motriz: 'Motriz', intelectual: 'Intelectual',
   visual: 'Visual', auditiva: 'Auditiva', multiple: 'Múltiple', psicosocial: 'Psicosocial',
@@ -136,7 +169,7 @@ export class AdminService {
 
     const mejoresInstituciones = instituciones
       .filter(i => i.verificada)
-      .sort((a: any, b: any) => (b.calificacionPromedio ?? 0) - (a.calificacionPromedio ?? 0) || (b.cantidadCalificaciones ?? 0) - (a.cantidadCalificaciones ?? 0))
+      .sort((a, b) => ((b as InstitucionSort).calificacionPromedio ?? 0) - ((a as InstitucionSort).calificacionPromedio ?? 0) || ((b as InstitucionSort).cantidadCalificaciones ?? 0) - ((a as InstitucionSort).cantidadCalificaciones ?? 0))
       .slice(0, 5)
       .map(i => ({ id: i.id, nombre: i.nombre, categoria: i.categoria, calificacionPromedio: i.calificacionPromedio, cantidadCalificaciones: i.cantidadCalificaciones, verificada: i.verificada }))
 
@@ -302,7 +335,7 @@ export class AdminService {
 
     // Enriquecer con estado de validación de identidad del representante
     const usuarioIds = [...new Set(
-      instituciones.map((i: any) => i.usuarioId ?? i.creadoPor).filter(Boolean)
+      instituciones.map((i: InstitucionSort) => i.usuarioId ?? i.creadoPor).filter(Boolean)
     )] as string[]
 
     const mapaPerfiles = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
@@ -315,9 +348,9 @@ export class AdminService {
       mapaDocsIdentidad.set(uid, docsSnap.docs.map(d => d.data()))
     }
 
-    instituciones = instituciones.map((inst: any) => {
-      const usuarioId = inst.usuarioId ?? inst.creadoPor
-      const perfil = mapaPerfiles.get(usuarioId)
+    instituciones = instituciones.map((inst: InstitucionSort) => {
+      const usuarioId = inst.usuarioId ?? inst.creadoPor ?? ''
+      const perfil = usuarioId ? mapaPerfiles.get(usuarioId) : undefined
       const docsIdentidad = mapaDocsIdentidad.get(usuarioId) ?? []
 
       const tieneCurp = docsIdentidad.some(d => d.tipo === 'curp')
@@ -342,7 +375,7 @@ export class AdminService {
       }
     })
 
-    instituciones.sort((a: any, b: any) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
+    instituciones.sort((a, b) => ((a as InstitucionSort).fechaCreacion ?? '').localeCompare((b as InstitucionSort).fechaCreacion ?? ''))
     return instituciones
   }
 
@@ -638,10 +671,10 @@ export class AdminService {
 
   async getReviews(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
     const revSnap = await this.col(COLECCIONES.resenas).orderBy('fechaCreacion', 'desc').get()
-    const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResenaFirestore))
 
-    const usuariosIds = [...new Set(resenas.map(r => r.usuarioId))]
-    const instIds = [...new Set(resenas.map(r => r.institucionId))]
+    const usuariosIds = [...new Set(resenas.map(r => r.usuarioId).filter((id): id is string => typeof id === 'string'))]
+    const instIds = [...new Set(resenas.map(r => r.institucionId).filter((id): id is string => typeof id === 'string'))]
 
     // Batch lookups en lugar de N+1 queries
     const [mapaUsuarios, mapaInst] = await Promise.all([
@@ -651,9 +684,9 @@ export class AdminService {
 
     let todos = resenas.map(r => ({
       id: r.id, calificacion: r.calificacion, comentario: r.comentario, fechaCreacion: r.fechaCreacion,
-      nombreUsuario: mapaUsuarios.get(r.usuarioId)?.nombreCompleto ?? null,
-      emailUsuario: mapaUsuarios.get(r.usuarioId)?.email ?? null,
-      nombreInstitucion: mapaInst.get(r.institucionId)?.nombre ?? null,
+      nombreUsuario: r.usuarioId ? mapaUsuarios.get(r.usuarioId)?.nombreCompleto ?? null : null,
+      emailUsuario: r.usuarioId ? mapaUsuarios.get(r.usuarioId)?.email ?? null : null,
+      nombreInstitucion: r.institucionId ? mapaInst.get(r.institucionId)?.nombre ?? null : null,
     }))
 
     if (buscar) {
@@ -730,9 +763,9 @@ export class AdminService {
         const UN_DIA = 24 * 60 * 60 * 1000
         const UNA_SEMANA = 7 * UN_DIA
 
-        const sesiones = analiticasSnap.docs.map(d => d.data() as any)
+        const sesiones = analiticasSnap.docs.map(d => d.data() as SesionAnalitica)
         const timestamps = sesiones
-          .map(s => new Date(s.timestamp ?? s.fechaCreacion).getTime())
+          .map(s => new Date(s.timestamp ?? s.fechaCreacion ?? 0).getTime())
           .filter(t => !isNaN(t))
 
         const live = timestamps.filter(t => ahora - t < CINCO_MIN).length
@@ -801,9 +834,9 @@ export class AdminService {
       this.col(COLECCIONES.perfiles).limit(1000).get(),
       this.col(COLECCIONES.resenas).limit(500).get(),
     ])
-    const todasInsts = todasInstsSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
-    const todosUsuarios = todosUsuariosSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
-    const todasResenas = todasResenasSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const todasInsts = todasInstsSnap.docs.map(d => ({ id: d.id, ...d.data() } as InstitucionSort))
+    const todosUsuarios = todosUsuariosSnap.docs.map(d => ({ id: d.id, ...d.data() } as PerfilDoc))
+    const todasResenas = todasResenasSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResenaFirestore))
 
     const instsActivas = todasInsts.filter(i => i.activa)
 
@@ -880,7 +913,7 @@ export class AdminService {
       })
     }
 
-    const nuevosSemana = todosUsuarios.filter(u => (u.fechaCreacion ?? '') >= hace7Dias).length
+    const nuevosSemana = todosUsuarios.filter(u => ((u as Record<string, unknown>).fechaCreacion ?? '') >= hace7Dias).length
     if (nuevosSemana > 0) {
       alertas.push({
         id: 'new-registrations-week', severidad: 'info', tipo: 'growth',
