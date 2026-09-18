@@ -214,3 +214,103 @@ export class ResumenRutasDto {
   @ApiProperty({ example: 45, description: 'Promedio de progreso de todas las rutas activas' })
   progresoPromedio!: number
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// DTOs para generación personalizada de rutas (Día Cero + Evolutivo)
+// ═══════════════════════════════════════════════════════════════════
+
+/** Entidad local sugerida (institución o vacante) */
+export class EntidadLocalDto {
+  @ApiProperty({ example: 'inst-uid' })
+  id!: string
+
+  @ApiProperty({ example: 'Centro de Terapia' })
+  nombre!: string
+
+  @ApiProperty({ example: 'funcional' })
+  categoria!: string
+
+  @ApiProperty({ example: 'en tu ciudad' })
+  distancia!: string
+}
+
+/** Vacante relevante para el paso actual */
+export class VacanteRelevanteDto {
+  @ApiProperty({ example: 'vac-uid' })
+  id!: string
+
+  @ApiProperty({ example: 'Asistente Administrativo' })
+  titulo!: string
+
+  @ApiProperty({ example: 'presencial' })
+  modalidad!: string
+
+  @ApiProperty({ example: 'Mérida' })
+  ciudad!: string
+}
+
+/** Respuesta de la ruta personalizada */
+export class RutaPersonalizadaResponseDto {
+  @ApiProperty({ example: 'ruta-uid' })
+  id!: string
+
+  @ApiProperty({ example: 'usuario-uid' })
+  usuarioId!: string
+
+  @ApiProperty({ example: 'educacion' })
+  areaInteres!: string
+
+  @ApiProperty({ example: 'Desarrollo de Comunicación y Habla' })
+  nombre!: string
+
+  @ApiProperty({ example: 'Ruta progresiva para fortalecer habilidades de comunicación' })
+  descripcion!: string
+
+  @ApiProperty({ example: 'activa' })
+  estado!: string
+
+  @ApiProperty({ example: 'alta' })
+  prioridad!: string
+
+  @ApiProperty({ example: 6 })
+  totalPasos!: number
+
+  @ApiProperty({ example: 0 })
+  pasosCompletados!: number
+
+  @ApiProperty({ example: 0 })
+  porcentajeProgreso!: number
+
+  @ApiProperty({ example: 'experto', description: 'Origen de la ruta: experto o comunidad' })
+  origen!: string
+
+  @ApiProperty({ type: [PasoRutaDto], description: 'Pasos de la ruta' })
+  pasos!: PasoRutaDto[]
+}
+
+/** Respuesta de mi ruta con entidades locales */
+export class MiRutaResponseDto {
+  @ApiProperty({ type: RutaDesarrolloDto, nullable: true })
+  ruta!: RutaDesarrolloDto | null
+
+  @ApiProperty({ type: [PasoRutaDto] })
+  pasos!: PasoRutaDto[]
+
+  @ApiProperty({ type: PasoRutaDto, nullable: true, description: 'Primer paso no completado' })
+  pasoActual!: PasoRutaDto | null
+
+  @ApiProperty({ description: 'Entidades locales relevantes para el paso actual' })
+  entidadesLocales!: {
+    instituciones: EntidadLocalDto[]
+    vacantes: VacanteRelevanteDto[]
+  }
+
+  @ApiProperty({ example: 'experto', description: 'Origen de la ruta' })
+  origen!: string
+
+  @ApiProperty({ type: [String], description: 'IDs de perfiles similares usados' })
+  perfilesSimilaresUsados!: string[]
+
+  @ApiProperty({ example: 'No tienes una ruta activa.', required: false })
+  mensaje?: string
+}

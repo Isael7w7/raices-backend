@@ -5,6 +5,25 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { VacanteDoc, InstitucionDoc, PerfilDoc, PostulacionDoc } from '../../common/interfaces/firestore-documents.interface'
+
+/** Documento de vacanta con id siempre presente (desde Firestore). */
+interface VacanteFirestore extends Omit<VacanteDoc, 'id'> {
+  id: string
+  institucionId: string
+  titulo: string
+  activa: boolean
+  ciudad?: string
+  modalidad?: string
+  fechaCreacion?: string
+}
+/** Documento de postulación con id siempre presente. */
+interface PostulacionFirestore extends Omit<PostulacionDoc, 'id'> {
+  id: string
+  vacanteId: string
+  usuarioId: string
+  estado: string
+  fechaCreacion?: string
+}
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
@@ -27,13 +46,13 @@ export class JobsService {
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
     const snap = await q.get()
-    let vacantes = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    let vacantes = snap.docs.map(d => ({ id: d.id, ...d.data() } as VacanteFirestore))
 
     // Ordenar en memoria por fecha de creación descendente
     vacantes.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     // Batch lookup de instituciones en lugar de N+1 queries
-    const instIds = [...new Set(vacantes.map(v => v.institucionId))]
+    const instIds = [...new Set(vacantes.map(v => v.institucionId).filter((id): id is string => typeof id === 'string'))]
     const mapaInstRaw = await obtenerDocumentosPorIds<InstitucionDoc>(this.db, COLECCIONES.instituciones, instIds)
     const mapaInst = new Map<string, InstitucionDoc & { id: string }>()
     mapaInstRaw.forEach((data, id) => mapaInst.set(id, { id, ...data }))
@@ -81,7 +100,7 @@ export class JobsService {
   async findOne(id: string) {
     const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
-    const vacante = { id: doc.id, ...doc.data() } as any
+    const vacante = { id: doc.id, ...doc.data() } as VacanteFirestore
 
     const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(vacante.institucionId).get()
     const inst = instDoc.data() ?? {}
@@ -119,11 +138,11 @@ export class JobsService {
   async actualizarEstadoPostulacion(postulacionId: string, user: CurrentUserPayload, dto: ActualizarEstadoPostulacionDto) {
     const postDoc = await this.db.collection(COLECCIONES.postulaciones).doc(postulacionId).get()
     if (!postDoc.exists) throw new NotFoundException('Postulación no encontrada')
-    const postulacion = postDoc.data() as any
+    const postulacion = postDoc.data() as PostulacionFirestore
 
     const vacanteDoc = await this.db.collection(COLECCIONES.vacantes).doc(postulacion.vacanteId).get()
     if (!vacanteDoc.exists) throw new NotFoundException('Vacante no encontrada')
-    const vacante = vacanteDoc.data() as any
+    const vacante = vacanteDoc.data() as VacanteFirestore
 
     // Solo la institución dueña de la vacante (o admin) puede cambiar el estado
     if (user.rol !== 'admin') {
@@ -165,7 +184,7 @@ export class JobsService {
       .where('usuarioId', '==', usuarioId).get()
 
     // Quitamos .orderBy() de Firestore para evitar error de índice compuesto
-    const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostulacionFirestore))
     postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     // Batch lookups de vacantes e instituciones en lugar de N+1 queries
@@ -233,19 +252,19 @@ export class JobsService {
     // Vacantes de la institución
     const vacantesSnap = await this.db.collection(COLECCIONES.vacantes)
       .where('institucionId', '==', institucionId).get()
-    const vacantes = vacantesSnap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const vacantes = vacantesSnap.docs.map(d => ({ id: d.id, ...d.data() } as VacanteFirestore))
     if (vacantes.length === 0) return paginar([], 0, pagina, limite)
     const mapaVacantes = new Map(vacantes.map(v => [v.id, v]))
 
     // Postulaciones de esas vacantes (consultas `in` en lotes de 30)
     const idsVacantes = [...mapaVacantes.keys()]
-    const postulaciones: PostulacionDoc[] = []
+    const postulaciones: PostulacionFirestore[] = []
     for (let i = 0; i < idsVacantes.length; i += 30) {
       const lote = idsVacantes.slice(i, i + 30)
       const snap = await this.db.collection(COLECCIONES.postulaciones)
         .where('vacanteId', 'in', lote)
         .get()
-      postulaciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as PostulacionDoc)))
+      postulaciones.push(...snap.docs.map(d => ({ id: d.id, ...d.data() } as PostulacionFirestore)))
     }
     // Ordenar en memoria por fecha de creación descendente
     postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
@@ -256,7 +275,7 @@ export class JobsService {
 
     let todos = postulaciones.map(p => {
       const vacante = mapaVacantes.get(p.vacanteId) ?? ({} as VacanteDoc)
-      const perfil = mapaUsuarios.get(p.usuarioId ?? '') ?? ({} as PerfilDoc)
+      const perfil = mapaUsuarios.get(p.usuarioId) ?? ({} as PerfilDoc)
       return {
         id: p.id,
         vacanteId: p.vacanteId,
@@ -311,7 +330,7 @@ export class JobsService {
     // Verificar que la vacante exista
     const vacanteDoc = await this.db.collection(COLECCIONES.vacantes).doc(vacanteId).get()
     if (!vacanteDoc.exists) throw new NotFoundException('Vacante no encontrada')
-    const vacante = vacanteDoc.data() as any
+    const vacante = vacanteDoc.data() as VacanteFirestore
 
     // Verificar que el usuario tenga permiso (dueño de institución o admin)
     if (user.rol !== 'admin') {
@@ -325,7 +344,7 @@ export class JobsService {
     // Obtener postulaciones de la vacante
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('vacanteId', '==', vacanteId).get()
-    const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as any))
+    const postulaciones = snap.docs.map(d => ({ id: d.id, ...d.data() } as PostulacionFirestore))
     postulaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
 
     // Enriquecer con datos del postulante
@@ -333,7 +352,7 @@ export class JobsService {
     const mapaUsuarios = await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, usuarioIds)
 
     let todos = postulaciones.map(p => {
-      const perfil = mapaUsuarios.get(p.usuarioId ?? '') ?? ({} as PerfilDoc)
+      const perfil = mapaUsuarios.get(p.usuarioId) ?? ({} as PerfilDoc)
       return {
         id: p.id,
         vacanteId: p.vacanteId,
@@ -430,7 +449,7 @@ export class JobsService {
   async update(id: string, user: CurrentUserPayload, dto: ActualizarVacanteDto) {
     const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
-    const vacante = doc.data() as any
+    const vacante = doc.data() as VacanteFirestore
 
     // Validar que la vacante pertenezca a la institución del usuario
     if (user.rol !== 'admin') {
@@ -461,7 +480,7 @@ export class JobsService {
   async remove(id: string, user: CurrentUserPayload) {
     const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
-    const vacante = doc.data() as any
+    const vacante = doc.data() as VacanteFirestore
 
     // Validar propiedad o rol admin
     if (user.rol !== 'admin') {

@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  canvas: npm:@napi-rs/canvas@^0.1.100
-
 importers:
 
   .:

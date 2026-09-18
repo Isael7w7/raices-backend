@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { RoutesService } from './routes.service';
+import { KnowledgeBaseService } from './knowledge-base.service';
 import { FIRESTORE } from '../../database/firebase.provider';
 import { COLECCIONES } from '../../database/firestore.constants';
 
@@ -108,9 +109,46 @@ function buildFirestore(opts: {
   return { firestoreMock, rutasRefs, pasosRefs, rutasCol, pasosCol, nuevaRutaRef, nuevoPasoRef, batch };
 }
 
+const configMock = {
+  get: jest.fn((key: string) => {
+    if (key === 'VERTEX_AI_PROJECT_ID') return undefined // No AI in tests
+    if (key === 'FIREBASE_PROJECT_ID') return undefined
+    if (key === 'VERTEX_AI_LOCATION') return 'us-central1'
+    if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
+    return undefined
+  }),
+};
+
+const analyticsMock = {
+  registrarCompletadoPaso: jest.fn().mockResolvedValue(undefined),
+  registrarGeneracionRuta: jest.fn().mockResolvedValue(undefined),
+  obtenerResumen: jest.fn().mockResolvedValue({ totalRutas: 0, rutasCompletadas: 0, tasaCompletado: 0, progresoPromedio: 0, porDiscapacidad: {}, pasosMasSaltados: [], tiempoPromedioDias: 0 }),
+};
+
+const knowledgeBaseMock = {
+  obtenerRutaExperta: jest.fn().mockReturnValue({
+    nombre: 'Ruta de prueba',
+    descripcion: 'Descripción de prueba',
+    areaInteres: 'educacion',
+    pasos: [
+      { titulo: 'Paso 1', descripcion: 'Desc 1', categoria: 'general', orden: 1 },
+    ],
+  }),
+  buscarPerfilesSimilares: jest.fn().mockResolvedValue([]),
+  mejorarPasosConComunidad: jest.fn().mockImplementation((pasos) => pasos),
+  obtenerInstitucionesCercanas: jest.fn().mockResolvedValue([]),
+  obtenerVacantesRelevantes: jest.fn().mockResolvedValue([]),
+};
+
 async function crearService(firestoreMock: any) {
   const module: TestingModule = await Test.createTestingModule({
-    providers: [RoutesService, { provide: FIRESTORE, useValue: firestoreMock }],
+    providers: [
+      RoutesService,
+      { provide: FIRESTORE, useValue: firestoreMock },
+      { provide: KnowledgeBaseService, useValue: knowledgeBaseMock },
+      { provide: require('@nestjs/config').ConfigService, useValue: configMock },
+      { provide: require('./routes-analytics.service').RoutesAnalyticsService, useValue: analyticsMock },
+    ],
   }).compile();
   return module.get<RoutesService>(RoutesService);
 }
@@ -491,6 +529,161 @@ describe('RoutesService', () => {
 
       expect(fx.pasosRefs['p1'].update).not.toHaveBeenCalled();
       expect(result.completado).toBe(false);
+    });
+  });
+
+  // ── generarRutaPersonalizada ─────────────────────────────────────────────
+
+  describe('generarRutaPersonalizada', () => {
+    it('should create a Day Zero route when user has no existing active route', async () => {
+      const fx = buildFirestore({ rutas: {}, pasos: [] });
+      // Mock Firestore for perfil and registro queries
+      const perfilCol = {
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          empty: false,
+          docs: [{ data: () => ({ tiposDiscapacidad: '["habla"]', etapaVida: 'infancia' }) }],
+        }),
+      };
+      const registroDoc = {
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          data: () => ({ ciudad: 'Mérida', fechaNacimiento: '2015-01-01' }),
+        }),
+      };
+      const rutasActivasCol = {
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      };
+      const nuevaRutaRef = crearRef('ruta-nueva', null, false);
+      const rutasColExtend = {
+        ...fx.rutasCol,
+        doc: jest.fn((id?: string) => {
+          if (!id) return nuevaRutaRef;
+          return fx.rutasRefs[id] ?? crearRef(id, null, false);
+        }),
+      };
+      const pasosColExtend = {
+        doc: jest.fn(() => crearRef('paso-nuevo', null, false)),
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      };
+      const firestoreExtended = {
+        collection: jest.fn((nombre: string) => {
+          if (nombre === COLECCIONES.perfilesExtendidos) return perfilCol;
+          if (nombre === COLECCIONES.perfiles) return { doc: jest.fn(() => registroDoc) };
+          if (nombre === COLECCIONES.rutasDesarrollo) return rutasColExtend;
+          if (nombre === COLECCIONES.pasosRuta) return pasosColExtend;
+          return fx.rutasCol;
+        }),
+      };
+
+      const service = await crearService(firestoreExtended);
+      // Mock obtenerRuta to avoid nested queries
+      service.obtenerRuta = jest.fn().mockResolvedValue({
+        id: 'ruta-nueva', nombre: 'Desarrollo de Comunicación y Habla', estado: 'activa', pasos: [],
+      });
+
+      const result: any = await service.generarRutaPersonalizada('user1');
+
+      expect(result.id).toBe('ruta-nueva');
+      expect(result.nombre).toBe('Desarrollo de Comunicación y Habla');
+    });
+
+    it('should return existing active route if user already has one', async () => {
+      const fx = buildFirestore({
+        rutas: { 'ruta-activa': { ...rutaBase, estado: 'activa' } },
+      });
+      const perfilCol = {
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      };
+      const registroDoc = {
+        get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }),
+      };
+      const rutasActivasCol = {
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          empty: false,
+          docs: [{
+            id: 'ruta-activa',
+            exists: true,
+            data: () => ({ ...rutaBase, estado: 'activa' }),
+            ref: crearRef('ruta-activa', rutaBase),
+          }],
+        }),
+      };
+      const pasosCol = {
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      };
+      const firestoreExtended = {
+        collection: jest.fn((nombre: string) => {
+          if (nombre === COLECCIONES.perfilesExtendidos) return perfilCol;
+          if (nombre === COLECCIONES.perfiles) return { doc: jest.fn(() => registroDoc) };
+          if (nombre === COLECCIONES.rutasDesarrollo) return {
+            ...fx.rutasCol,
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{
+                id: 'ruta-activa',
+                exists: true,
+                data: () => ({ ...rutaBase, estado: 'activa' }),
+                ref: crearRef('ruta-activa', rutaBase),
+              }],
+            }),
+          };
+          if (nombre === COLECCIONES.pasosRuta) return pasosCol;
+          return fx.rutasCol;
+        }),
+      };
+
+      const service = await crearService(firestoreExtended);
+      service.obtenerRuta = jest.fn().mockResolvedValue({
+        id: 'ruta-activa', nombre: 'Ruta de prueba', pasos: [],
+      });
+
+      const result: any = await service.generarRutaPersonalizada('user1');
+
+      // Should return existing route, not create new one
+      expect(result.id).toBe('ruta-activa');
+      expect(service.obtenerRuta).toHaveBeenCalledWith('user1', 'ruta-activa');
+    });
+  });
+
+  // ── obtenerMiRuta ──────────────────────────────────────────────────────
+
+  describe('obtenerMiRuta', () => {
+    it('should return null ruta when user has no active routes', async () => {
+      const firestoreExtended = {
+        collection: jest.fn((nombre: string) => {
+          if (nombre === COLECCIONES.rutasDesarrollo) return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+          };
+          if (nombre === COLECCIONES.perfilesExtendidos) return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+          };
+          if (nombre === COLECCIONES.perfiles) return {
+            doc: jest.fn(() => ({
+              get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }),
+            })),
+          };
+          return { where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] }) };
+        }),
+      };
+
+      const service = await crearService(firestoreExtended);
+      const result: any = await service.obtenerMiRuta('user1');
+
+      expect(result.ruta).toBeNull();
+      expect(result.pasos).toEqual([]);
+      expect(result.mensaje).toContain('No tienes una ruta activa');
     });
   });
 

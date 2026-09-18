@@ -1,8 +1,14 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
+import { GoogleGenAI } from '@google/genai'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto } from './dto/ruta-desarrollo.dto'
+import { KnowledgeBaseService } from './knowledge-base.service'
+import { RoutesAnalyticsService } from './routes-analytics.service'
+import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
+import type { PerfilExtendidoDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
 
 /** Ruta de desarrollo de la colección `rutasDesarrollo`. */
 interface RutaDoc {
@@ -24,8 +30,70 @@ interface PasoDoc {
 @Injectable()
 export class RoutesService {
   private readonly logger = new Logger('RoutesService')
+  private ai: GoogleGenAI | null = null
+  private modelName: string = 'gemini-2.0-flash'
 
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly knowledgeBase: KnowledgeBaseService,
+    private readonly config: ConfigService,
+    private readonly analytics: RoutesAnalyticsService,
+  ) {
+    this.initializeAi()
+  }
+
+  private initializeAi(): void {
+    const project = this.config.get<string>('VERTEX_AI_PROJECT_ID') ?? this.config.get<string>('FIREBASE_PROJECT_ID')
+    const location = this.config.get<string>('VERTEX_AI_LOCATION') ?? 'us-central1'
+    this.modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
+
+    if (!project) {
+      this.logger.warn('RoutesService: Vertex AI no configurado — generará rutas con plantillas expertas')
+      return
+    }
+
+    try {
+      this.ai = new GoogleGenAI({ vertexai: true, project, location })
+      this.logger.log('RoutesService: Vertex AI disponible para generación personalizada')
+    } catch (e: unknown) {
+      this.logger.warn(`RoutesService: Vertex AI no disponible (${e instanceof Error ? e.message : String(e)})`)
+      this.ai = null
+    }
+  }
+
+  /** Extrae texto de la respuesta de Gemini de forma segura. */
+  private extractText(result: unknown): string {
+    const r = (typeof result === 'object' && result !== null) ? result as Record<string, unknown> : {}
+    const legacy = (typeof r.response === 'object' && r.response !== null) ? r.response as Record<string, unknown> : {}
+    const candidates = (r.candidates ?? legacy.candidates) as unknown[] | undefined
+    if (!Array.isArray(candidates) || candidates.length === 0) return ''
+
+    const first = candidates[0]
+    if (typeof first !== 'object' || first === null) return ''
+    const firstObj = first as Record<string, unknown>
+    const content = (typeof firstObj.content === 'object' && firstObj.content !== null) ? firstObj.content as Record<string, unknown> : {}
+    if (!Array.isArray(content.parts)) return ''
+
+    return (content.parts as unknown[])
+      .filter((p): p is { text: string } => typeof p === 'object' && p !== null && 'text' in p && typeof (p as Record<string, unknown>).text === 'string')
+      .map(p => p.text)
+      .join('')
+  }
+
+  /** Parsea JSON tolerando bloques ```json. */
+  private parseJsonResponse(text: string): unknown {
+    let cleaned = text.trim()
+    const fence = cleaned.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
+    if (fence) cleaned = fence[1].trim()
+    return JSON.parse(cleaned) as unknown
+  }
+
+  /** Lista valores de un campo JSON que puede ser array o string serializado. */
+  private listarValoresJson(valor: string | undefined | null): string[] {
+    if (!valor) return []
+    const parsed: unknown = parsearCampoJson(valor)
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  }
 
   private col(nombre: string) { return this.db.collection(nombre) }
 
@@ -264,6 +332,11 @@ export class RoutesService {
       fechaActualizacion: new Date().toISOString(),
     })
 
+    // Registrar en analytics
+    const pasoTitulo = typeof paso.titulo === 'string' ? paso.titulo : ''
+    this.analytics.registrarCompletadoPaso(usuarioId, rutaId, pasoId, pasoTitulo)
+      .catch(() => {}) // fire-and-forget
+
     return {
       id: pasoId,
       ...paso,
@@ -325,6 +398,280 @@ export class RoutesService {
       completado: false,
       fechaCompletado: null,
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Generación personalizada de rutas (Día Cero + Algoritmo Evolutivo)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Genera una ruta personalizada para el usuario.
+   *
+   * Flujo:
+   * 1. Día Cero: Si el usuario es nuevo (sin rutas previas), genera una ruta
+   *    experta por defecto basada en su tipo de discapacidad.
+   * 2. Fase Evolutiva: Si hay perfiles similares con rutas completadas,
+   *    mejora los pasos usando la sabiduría comunitaria.
+   * 3. Siempre incluye entidades locales (instituciones, vacantes) relevantes.
+   */
+  async generarRutaPersonalizada(usuarioId: string) {
+    // 1. Cargar perfil del usuario
+    const [perfilSnap, registroSnap] = await Promise.all([
+      this.col(COLECCIONES.perfilesExtendidos)
+        .where('usuarioId', '==', usuarioId).limit(1).get(),
+      this.col(COLECCIONES.perfiles).doc(usuarioId).get(),
+    ])
+
+    const perfil = perfilSnap.empty ? null : (perfilSnap.docs[0].data() as PerfilExtendidoDoc)
+    const registro = registroSnap.data() as PerfilDoc | undefined
+
+    // 2. Verificar si ya tiene una ruta activa generada automáticamente
+    const rutasExistentes = await this.col(COLECCIONES.rutasDesarrollo)
+      .where('usuarioId', '==', usuarioId)
+      .where('estado', '==', 'activa')
+      .get()
+
+    if (!rutasExistentes.empty) {
+      // Ya tiene ruta activa: retornar la primera con sus pasos
+      const rutaExistente = rutasExistentes.docs[0]
+      return this.obtenerRuta(usuarioId, rutaExistente.id)
+    }
+
+    // 3. Obtener tipos de discapacidad del usuario
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
+      : []
+
+    // 4. Obtener ruta experta base (Día Cero)
+    const rutaExperta = await this.knowledgeBase.obtenerRutaExperta(tiposDiscapacidad)
+
+    // 5. Buscar perfiles similares (Fase Evolutiva)
+    const perfilesSimilares = perfil && registro
+      ? await this.knowledgeBase.buscarPerfilesSimilares(usuarioId, perfil, registro)
+      : []
+
+    // 6. Intentar generar pasos personalizados con Gemini (Vertex AI)
+    let pasosBase = rutaExperta.pasos
+    let origen: string = perfilesSimilares.length >= 2 ? 'comunidad' : 'experto'
+
+    if (this.ai && perfil) {
+      try {
+        const pasosIa = await this.generarPasosConIa(perfil, registro, tiposDiscapacidad)
+        if (pasosIa.length > 0) {
+          pasosBase = pasosIa
+          origen = 'ia'
+          this.logger.log(`Gemini generó ${pasosIa.length} pasos personalizados para ${usuarioId}`)
+        }
+      } catch (e: unknown) {
+        this.logger.warn(`Gemini falló al generar pasos (${e instanceof Error ? e.message : String(e)}) — usando plantilla experta`)
+      }
+    }
+
+    // 7. Mejorar pasos con sabiduría comunitaria si hay evidencia
+    const pasosFinales = perfilesSimilares.length >= 2
+      ? this.knowledgeBase.mejorarPasosConComunidad(pasosBase, perfilesSimilares)
+      : pasosBase
+
+    // 8. Crear la ruta en Firestore
+    const refRuta = this.col(COLECCIONES.rutasDesarrollo).doc()
+    const ruta = {
+      id: refRuta.id,
+      usuarioId,
+      areaInteres: rutaExperta.areaInteres,
+      nombre: rutaExperta.nombre,
+      descripcion: rutaExperta.descripcion,
+      metaFinal: 'Completar todos los pasos de la ruta de desarrollo',
+      estado: 'activa',
+      prioridad: 'alta' as const,
+      totalPasos: pasosFinales.length,
+      pasosCompletados: 0,
+      porcentajeProgreso: 0,
+      fechaLimite: null,
+      fechaCreacion: new Date().toISOString(),
+      fechaActualizacion: new Date().toISOString(),
+      origen,
+      perfilesSimilaresUsados: perfilesSimilares.map(p => p.usuarioId),
+    }
+
+    await refRuta.set(ruta)
+
+    // 9. Crear los pasos
+    for (const paso of pasosFinales) {
+      const refPaso = this.col(COLECCIONES.pasosRuta).doc()
+      await refPaso.set({
+        id: refPaso.id,
+        rutaId: refRuta.id,
+        titulo: paso.titulo,
+        descripcion: paso.descripcion,
+        orden: paso.orden,
+        completado: false,
+        fechaCompletado: null,
+        fechaCreacion: new Date().toISOString(),
+      })
+    }
+
+    this.logger.log(`Ruta personalizada generada para ${usuarioId}: ${rutaExperta.nombre} (${pasosFinales.length} pasos, origen: ${origen})`)
+
+    // Registrar en analytics
+    this.analytics.registrarGeneracionRuta(usuarioId, refRuta.id, origen, tiposDiscapacidad.join(','))
+      .catch(() => {}) // fire-and-forget
+
+    return this.obtenerRuta(usuarioId, refRuta.id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Mi Ruta (con entidades locales)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene la ruta activa del usuario con entidades asociadas de su zona.
+   * Incluye instituciones cercanas y vacantes relevantes para el paso actual.
+   */
+  async obtenerMiRuta(usuarioId: string) {
+    // Buscar la ruta activa más reciente
+    const rutasSnap = await this.col(COLECCIONES.rutasDesarrollo)
+      .where('usuarioId', '==', usuarioId)
+      .where('estado', '==', 'activa')
+      .get()
+
+    if (rutasSnap.empty) {
+      return {
+        ruta: null,
+        pasos: [],
+        entidadesLocales: { instituciones: [], vacantes: [] },
+        mensaje: 'No tienes una ruta activa. Genera una ruta personalizada para comenzar.',
+      }
+    }
+
+    // Tomar la ruta más reciente
+    const rutaDocs = rutasSnap.docs.map(d => ({
+      id: d.id,
+      datos: d.data() as Record<string, unknown>,
+    }))
+    rutaDocs.sort((a, b) => String(b.datos.fechaCreacion ?? '').localeCompare(String(a.datos.fechaCreacion ?? '')))
+    const rutaDoc = rutaDocs[0]
+
+    const ruta = { id: rutaDoc.id, ...rutaDoc.datos } as unknown as RutaDoc
+
+    // Obtener pasos
+    const pasosSnap = await this.col(COLECCIONES.pasosRuta)
+      .where('rutaId', '==', rutaDoc.id)
+      .get()
+
+    const pasos = pasosSnap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Record<string, unknown>))
+      .sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0))
+
+    // Encontrar el paso actual (primero no completado)
+    const pasoActual = pasos.find(p => !p.completado)
+
+    // Cargar perfil para ciudad y discapacidades
+    const perfilSnap = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+    const perfil = perfilSnap.empty ? null : (perfilSnap.docs[0].data() as PerfilExtendidoDoc)
+    const registroDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
+    const registro = registroDoc.data() as PerfilDoc | undefined
+
+    const ciudad = registro?.ciudad ?? ''
+    const tiposDiscapacidad = perfil?.tiposDiscapacidad
+      ? parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
+      : []
+
+    // Obtener entidades locales relevantes
+    const [instituciones, vacantes] = await Promise.all([
+      this.knowledgeBase.obtenerInstitucionesCercanas(ciudad, tiposDiscapacidad),
+      pasoActual?.categoria === 'laboral'
+        ? this.knowledgeBase.obtenerVacantesRelevantes(ciudad, tiposDiscapacidad)
+        : Promise.resolve([]),
+    ])
+
+    return {
+      ruta,
+      pasos,
+      pasoActual: pasoActual ?? null,
+      entidadesLocales: { instituciones, vacantes },
+      origen: ruta.origen ?? 'experto',
+      perfilesSimilaresUsados: ruta.perfilesSimilaresUsados ?? [],
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Generación con Vertex AI (Gemini)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Genera pasos personalizados usando Gemini basándose en el perfil completo del usuario.
+   * Retorna los pasos generados o lanza error para que el caller use el fallback.
+   */
+  private async generarPasosConIa(
+    perfil: PerfilExtendidoDoc,
+    registro: PerfilDoc | undefined,
+    tiposDiscapacidad: string[],
+  ): Promise<{ titulo: string; descripcion: string; categoria: string; orden: number }[]> {
+    if (!this.ai) throw new Error('Vertex AI no disponible')
+
+    const escalasVida = perfil.escalasVida
+      ? `Autonomía=${perfil.escalasVida.autonomia}, Independencia=${perfil.escalasVida.independencia}, Comunicación=${perfil.escalasVida.comunicacion}, Comprensión=${perfil.escalasVida.comprension}, Energía=${perfil.escalasVida.energia}, Movilidad=${perfil.escalasVida.movilidad}, Social=${perfil.escalasVida.social}, Emocional=${perfil.escalasVida.emocional}`
+      : 'no completadas'
+
+    const discapacidades = tiposDiscapacidad.length > 0 ? tiposDiscapacidad.join(', ') : 'no especificadas'
+    const metas = this.listarValoresJson(perfil.metasActuales).join(', ') || 'no especificadas'
+    const areas = this.listarValoresJson(perfil.areasInteres).join(', ') || 'no especificadas'
+
+    const prompt = [
+      'Eres el diseñador de rutas de desarrollo de Raíces para Florecer, plataforma de apoyo para personas con discapacidad en México.',
+      '',
+      'PERFIL DEL USUARIO:',
+      '- Discapacidades: ' + discapacidades,
+      '- Etapa de vida: ' + (perfil.etapaVida ?? 'no especificada'),
+      '- Ciudad: ' + (registro?.ciudad ?? 'no especificada') + ', ' + (registro?.estado ?? ''),
+      '- Metas actuales: ' + metas,
+      '- Áreas de interés: ' + areas,
+      '- Nivel de apoyo: ' + (perfil.nivelApoyo ?? 'no especificado'),
+      '- Escalas de vida: ' + escalasVida,
+      '- Viabilidad económica: ' + (perfil.viabilidadEconomica ?? 'no especificada'),
+      '- Diagnóstico: ' + (perfil.tieneDiagnostico ? 'Sí' : 'No'),
+      '',
+      'Genera EXACTAMENTE 5-7 pasos concretos y accionables para una ruta de desarrollo personalizada.',
+      'Cada paso debe ser específico, realista y adaptado al contexto de México.',
+      'El último paso debe estar orientado a integración social o laboral.',
+      '',
+      'Responde SOLO con JSON válido:',
+      '{"pasos":[{"titulo":"título del paso","descripcion":"descripción concreta y accionable","categoria":"habla|motricidad|visual|auditiva|tea|cognitiva|educacion|laboral|social|general"}]}',
+      '',
+      'REGLAS:',
+      '- 5 a 7 pasos máximo',
+      '- Cada paso: ≤100 caracteres en título, ≤200 en descripción',
+      '- NO incluyas diagnósticos médicos',
+      '- Sé empático y práctico',
+    ].join('\n')
+
+    const result = await this.ai.models.generateContent({
+      model: this.modelName,
+      contents: prompt,
+      config: { maxOutputTokens: 1000, responseMimeType: 'application/json' },
+    })
+
+    const text = this.extractText(result)
+    if (!text) throw new Error('Respuesta vacía de Gemini')
+
+    const parsed: unknown = this.parseJsonResponse(text)
+    const obj = (typeof parsed === 'object' && parsed !== null) ? parsed as Record<string, unknown> : {}
+    const pasosRaw = Array.isArray(obj.pasos) ? obj.pasos : []
+
+    const pasos = pasosRaw
+      .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+      .filter(p => typeof p.titulo === 'string' && typeof p.descripcion === 'string')
+      .slice(0, 7)
+      .map((p, i) => ({
+        titulo: String(p.titulo).slice(0, 200),
+        descripcion: String(p.descripcion).slice(0, 500),
+        categoria: typeof p.categoria === 'string' ? p.categoria : 'general',
+        orden: i + 1,
+      }))
+
+    if (pasos.length === 0) throw new Error('Gemini no generó pasos válidos')
+    return pasos
   }
 
   // ═══════════════════════════════════════════════════════════════════
