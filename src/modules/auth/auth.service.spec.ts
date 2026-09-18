@@ -289,8 +289,6 @@ describe('AuthService', () => {
         ciudad: 'Mérida', estado: 'Yucatán', categoria: 'funcional',
         descripcion: 'Terapias físicas y ocupacionales', telefono: '9999990001',
         tiposDiscapacidad: ['tea', 'motriz'],
-        // La CURP del representante legal es obligatoria para instituciones
-        curp: 'GAPL800101MCYRL093',
       }
       const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
       const batchSet = jest.fn()
@@ -365,12 +363,28 @@ describe('AuthService', () => {
       expect(authMock.createUser).not.toHaveBeenCalled()
     })
 
-    it('should throw BadRequestException when registering an institution without CURP', async () => {
+    it('should register an institution without CURP (la verificación es vía CSF/documentos)', async () => {
       const dtoInst = { ...dto, rol: 'institucion' as const, categoria: 'funcional' }
-      await expect(service.register(dtoInst)).rejects.toThrow(
-        'La CURP del representante legal es obligatoria para registrar una institución',
-      )
-      expect(authMock.createUser).not.toHaveBeenCalled()
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      const batchSet = jest.fn()
+      const batchCommit = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.batch.mockReturnValue({ set: batchSet, commit: batchCommit })
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(emailCheckSnap),
+            doc: jest.fn().mockReturnValue({ ref: 'perfil-ref' }),
+          }
+        }
+        if (name === 'instituciones') return { doc: jest.fn().mockReturnValue({ ref: 'inst-ref' }) }
+        return {}
+      })
+
+      const result = await service.register(dtoInst)
+      expect(result.usuario.rol).toBe('institucion')
+      expect(authMock.createUser).toHaveBeenCalled()
     })
 
   })

@@ -1,7 +1,9 @@
-import { Controller, Post, Get, Body, HttpCode, UseGuards, Res, Req, Logger, BadRequestException, ForbiddenException } from '@nestjs/common'
+import { Controller, Post, Get, Body, HttpCode, UseGuards, Res, Req, Logger, BadRequestException, ForbiddenException, UseInterceptors, UploadedFile } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { csfDocumentFileFilter } from '../../common/utils/image-filter'
 import { Request, Response } from 'express'
 import { ConfigService } from '@nestjs/config'
-import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth, ApiConsumes } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
 import { AuthService } from './auth.service'
 import { RegisterDto } from './dto/register.dto'
@@ -37,15 +39,23 @@ export class AuthController {
 
   @Post('registro')
   @Throttle({ default: { limit: 3, ttl: 3600000 } }) // 3 registros por hora
-  @ApiOperation({ summary: 'Registrar nuevo usuario', description: 'Crea una cuenta con rol pcd, tutor o institución. El registro no inicia sesión: devuelve el usuario con requiereInicioSesion: true y el cliente debe llamar a inicio-sesion para obtener los tokens.' })
+  @UseInterceptors(FileInterceptor('csf', {
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: csfDocumentFileFilter,
+  }))
+  @ApiOperation({ summary: 'Registrar nuevo usuario', description: 'Crea una cuenta con rol pcd, tutor, institución o empresa. Acepta application/json o multipart/form-data. En multipart, el campo opcional "csf" (PDF/imagen, máx 10MB) adjunta la Constancia de Situación Fiscal: se sube a Storage y se guarda como documentoCsf para verificación del administrador. El registro no inicia sesión: devuelve el usuario con requiereInicioSesion: true y el cliente debe llamar a inicio-sesion para obtener los tokens.' })
+  @ApiConsumes('application/json', 'multipart/form-data')
   @ApiCreatedResponse({ type: RespuestaRegistroDto, description: 'Cuenta creada. Retorna el usuario y requiereInicioSesion: true (sin tokens). El cliente debe redirigir al inicio de sesión.' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o archivo CSF inválido (solo PDF/imágenes, máx 10MB)' })
   @ApiResponse({ status: 409, description: 'Correo ya registrado' })
-  async register(@Body() dto: RegisterDto) {
-    // El registro es JSON puro (sin multipart) y NO inicia sesión: se crea la
-    // cuenta y se devuelve el usuario, obligando al cliente a iniciar sesión
-    // explícitamente. La referencia opcional documentoCsf (URL de Storage)
-    // viaja en el JSON del DTO; el contenido de la CSF no se valida aquí.
-    return this.authService.register(dto)
+  async register(@Body() dto: RegisterDto, @UploadedFile() csf?: Express.Multer.File) {
+    // El registro NO inicia sesión: se crea la cuenta y se devuelve el
+    // usuario, obligando al cliente a iniciar sesión explícitamente.
+    // Acepta JSON puro o multipart (campo opcional "csf" con la Constancia
+    // de Situación Fiscal). Con multipart, multer solo procesa los campos
+    // de texto como strings y el archivo queda en csf; con JSON el archivo
+    // llega undefined y el flujo es idéntico al de antes.
+    return this.authService.registerWithCsf(dto, csf)
   }
 
   @Post('inicio-sesion')

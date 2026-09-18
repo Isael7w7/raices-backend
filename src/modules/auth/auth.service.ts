@@ -11,6 +11,7 @@ import { registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../c
 import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
 import { ValidationService } from '../ai/validation.service'
+import { StorageService } from '../storage/storage.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 
 @Injectable()
@@ -29,6 +30,7 @@ export class AuthService {
     @Optional() private readonly analytics?: FirebaseAnalyticsService,
     // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
     @Optional() private readonly validation?: ValidationService,
+    @Optional() private readonly storage?: StorageService,
   ) {
     // SECURITY: la API key de Firebase Auth se lee de ConfigService (secreto
     // montado desde GCP Secret Manager en Cloud Run). Sin valores hardcodeados.
@@ -38,6 +40,30 @@ export class AuthService {
     }
     this.identityToolkitUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${this.firebaseApiKey}`
     this.secureTokenUrl = `https://securetoken.googleapis.com/v1/token?key=${this.firebaseApiKey}`
+  }
+
+  /**
+   * Punto de entrada del registro. Si el cliente envió multipart con el
+   * campo opcional "csf" (Constancia de Situación Fiscal), la sube a Storage
+   * y guarda la URL como documentoCsf antes de crear la cuenta. La CSF es
+   * el documento que el administrador revisa para verificar la institución,
+   * en lugar de exigir la CURP en el alta.
+   */
+  async registerWithCsf(dto: RegisterDto, csf?: Express.Multer.File) {
+    let documentoCsf: string | undefined
+    if (csf && this.storage) {
+      try {
+        documentoCsf = await this.storage.upload(
+          csf.buffer,
+          csf.originalname || 'csf.pdf',
+          'csf',
+        )
+      } catch (e: unknown) {
+        this.logger.error(`No se pudo subir la CSF del registro: ${e instanceof Error ? e.message : String(e)}`)
+        throw new BadRequestException('No se pudo guardar la CSF. Intenta de nuevo.')
+      }
+    }
+    return this.register({ ...dto, ...(documentoCsf && { documentoCsf }) })
   }
 
   async register(dto: RegisterDto) {
@@ -60,12 +86,10 @@ export class AuthService {
       throw new BadRequestException('La categoría es obligatoria para registrar una institución')
     }
 
-    // La CURP es obligatoria para instituciones: es el documento principal
-    // de identidad del representante legal y se valida antes de permitir
-    // que la institución opere en la plataforma.
-    if (dto.rol === 'institucion' && !dto.curp) {
-      throw new BadRequestException('La CURP del representante legal es obligatoria para registrar una institución')
-    }
+    // NOTA: la CURP del representante legal ya NO es obligatoria para el
+    // registro de instituciones. La verificación de identidad se hace con la
+    // CSF adjunta (documentoCsf, revisada por un admin) y, si aplica, con la
+    // CURP/INE que el representante suba después vía /usuarios/documento-identidad.
 
     const snapshot = await this.db.collection(COLECCIONES.perfiles)
       .where('email', '==', dto.email).limit(1).get()
@@ -140,6 +164,9 @@ export class AuthService {
         // Vínculo explícito institución ↔ usuario (permite buscar por dueño)
         creadoPor: uid,
         usuarioId: uid,
+        // CSF adjunta al registro: el admin la revisa para verificar la
+        // institución (sustituye la exigencia de CURP en el alta).
+        ...(dto.documentoCsf && { documentoCsf: dto.documentoCsf }),
         fechaCreacion: new Date().toISOString(),
       }
     }

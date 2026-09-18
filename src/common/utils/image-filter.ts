@@ -66,10 +66,46 @@ export function multimediaFileFilter(
 ): void {
   if (MULTIMEDIA_MIMES.includes(file.mimetype)) {
     callback(null, true)
+  } else {      callback(
+        new Error(
+          `Tipo de archivo no permitido: "${file.mimetype}". Solo se aceptan imágenes o videos.`,
+        ),
+        false,
+      )
+  }
+}
+
+/**
+ * FileFilter para Multer que acepta PDF o imágenes (documentos).
+ * Se usa en el endpoint de registro para el campo opcional "csf"
+ * (Constancia de Situación Fiscal).
+ *
+ * @example
+ * ```ts
+ * @UseInterceptors(FileInterceptor('csf', {
+ *   limits: { fileSize: 10 * 1024 * 1024 },
+ *   fileFilter: csfDocumentFileFilter,
+ * }))
+ * ```
+ */
+const CSF_DOCUMENT_MIMES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]
+
+export function csfDocumentFileFilter(
+  req: Request,
+  file: { fieldname: string; originalname: string; encoding: string; mimetype: string; size: number; destination: string; filename: string; path: string; buffer: Buffer },
+  callback: (error: Error | null, acceptFile: boolean) => void,
+): void {
+  if (CSF_DOCUMENT_MIMES.includes(file.mimetype)) {
+    callback(null, true)
   } else {
     callback(
       new Error(
-        `Tipo de archivo no permitido: "${file.mimetype}". Solo se aceptan imágenes o videos.`,
+        `Tipo de archivo no permitido: "${file.mimetype}". Solo se acepta PDF o imágenes (JPEG, PNG, WebP).`,
       ),
       false,
     )
