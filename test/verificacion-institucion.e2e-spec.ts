@@ -1,5 +1,5 @@
 import { crearAppE2E } from './helpers/app.e2e'
-import { limpiarDb, sembrarPerfil, sembrarInstitucion, token } from './helpers/fixtures'
+import { leerDoc, limpiarDb, sembrarPerfil, sembrarInstitucion, token } from './helpers/fixtures'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 
@@ -9,7 +9,7 @@ import request from 'supertest'
  * ══════════════════════════════════════════════════════════════════════════════
  *
  * Pruebas del flujo de verificación de instituciones:
- *  1. Registro: CURP obligatoria para rol "institucion"
+ *  1. Registro: CURP NO obligatoria para "institucion"/"empresa" (verificación vía CSF)
  *  2. Guard: instituciones no verificadas no pueden crear vacantes
  *  3. Guard: instituciones verificadas SÍ pueden crear vacantes
  *  4. Guard: otros roles (tutor, pcd) no se ven afectados
@@ -35,11 +35,11 @@ describe('Verificación de Instituciones (E2E)', () => {
   })
 
   // ══════════════════════════════════════════════════════════════════════════
-  // 1. Registro: CURP obligatoria para instituciones
+  // 1. Registro: CURP no obligatoria para instituciones/empresas (verificación vía CSF)
   // ══════════════════════════════════════════════════════════════════════════
 
-  describe('POST /api/autenticacion/registro — CURP obligatoria para instituciones', () => {
-    it('400: registro institución sin CURP', async () => {
+  describe('POST /api/autenticacion/registro — CURP no obligatoria para instituciones/empresas', () => {
+    it('201: registro institución sin CURP (la verificación es vía CSF)', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
         .send({
@@ -50,11 +50,44 @@ describe('Verificación de Instituciones (E2E)', () => {
           categoria: 'funcional',
         })
 
-      expect(res.status).toBe(400)
-      expect(res.body.message).toContain('CURP')
+      expect(res.status).toBe(201)
+      expect(res.body.usuario.rol).toBe('institucion')
+      expect(res.body.requiereInicioSesion).toBe(true)
     })
 
-    it('201: registro institución con CURP válida', async () => {
+    it('201: registro empresa sin CURP', async () => {
+      const res = await request(http)
+        .post('/api/autenticacion/registro')
+        .send({
+          email: 'empresa@test.com',
+          password: 'Password123!',
+          nombreCompleto: 'Empresa Inclusiva',
+          rol: 'empresa',
+        })
+
+      expect(res.status).toBe(201)
+      expect(res.body.usuario.rol).toBe('empresa')
+    })
+
+    it('201: registro institución con CSF adjunta guarda documentoCsf', async () => {
+      const res = await request(http)
+        .post('/api/autenticacion/registro')
+        .field('email', 'inst-csf@test.com')
+        .field('password', 'Password123!')
+        .field('nombreCompleto', 'Centro Con CSF')
+        .field('rol', 'institucion')
+        .field('categoria', 'funcional')
+        .attach('csf', Buffer.from('%PDF-1.4 fake csf'), { filename: 'csf.pdf', contentType: 'application/pdf' })
+
+      expect(res.status).toBe(201)
+      expect(res.body.usuario.rol).toBe('institucion')
+
+      // La CSF adjunta quedó registrada en el documento de la institución
+      const inst = await leerDoc('instituciones', res.body.usuario.id)
+      expect(inst?.documentoCsf).toBeDefined()
+    })
+
+    it('201: registro institución con CURP válida (opcional, se acepta si viene)', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
         .send({
@@ -98,11 +131,11 @@ describe('Verificación de Instituciones (E2E)', () => {
       expect(res.body.usuario.rol).toBe('pcd')
     })
 
-    it('400: CURP inválida en registro de institución', async () => {
+    it('400: CURP inválida en registro de institución (si se envía, debe ser válida)', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
         .send({
-          email: 'inst@test.com',
+          email: 'inst-curp-invalida@test.com',
           password: 'Password123!',
           nombreCompleto: 'Centro Terapéutico',
           rol: 'institucion',
