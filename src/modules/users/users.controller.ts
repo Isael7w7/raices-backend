@@ -52,7 +52,7 @@ export class UsersController {
 
   @Get('perfil-pcd/:pcdUserId')
   @UseETag()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor', 'institucion', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
@@ -170,7 +170,7 @@ export class UsersController {
     schema: {
       type: 'object',
       properties: {
-        tipo: { type: 'string', enum: ['curp', 'identificacion_oficial'], description: 'Tipo de documento' },
+        tipo: { type: 'string', enum: ['curp', 'identificacion_oficial', 'certificado_discapacidad'], description: 'Tipo de documento' },
         numeroCurp: { type: 'string', description: 'Número de CURP (solo si tipo=curp)' },
         documento: { type: 'string', format: 'binary', description: 'Archivo del documento (JPEG, PNG, WebP o PDF, max 10MB)' },
       },
@@ -239,7 +239,7 @@ export class UsersController {
 
   @Get('dependientes/:dependienteId/permisos')
   @UseETag()
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Permisos de dependiente', description: 'Retorna los permisos (features) de un dependiente plano o cuenta PCD vinculada. Solo el tutor dueño o un administrador pueden consultarlos.' })
@@ -286,7 +286,7 @@ export class UsersController {
 
   @Post('vincular-pcd')
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 vinculaciones por minuto
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Vincular PCD a tutor', description: 'Vincula una cuenta PCD existente a la cuenta del tutor autenticado utilizando el correo electrónico.' })
@@ -296,11 +296,16 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'No se encontró un usuario PCD asociado a ese correo' })
   linkPcdToTutor(@CurrentUser() user: CurrentUserPayload, @Body('email') email: string) {
     const normalizedEmail = email?.trim().toLowerCase()
+    // Sin esta validación, un body vacío llegaría a Firestore como consulta
+    // con valor undefined y terminaría en un error 500 en lugar de un 400.
+    if (!normalizedEmail) {
+      throw new BadRequestException('El campo "email" es obligatorio para vincular una cuenta PCD')
+    }
     return this.svc.linkPcdToTutor(user.id, normalizedEmail)
   }
 
   @Patch('dependientes/:dependienteId/features')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Actualizar features de dependiente (PATCH)', description: 'Actualiza parcialmente el mapa features de un dependiente plano. Valida que el dependiente pertenezca al tutor autenticado.' })
@@ -313,7 +318,7 @@ export class UsersController {
   }
 
   @Patch('dependientes/:dependienteId/permisos')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Guardar permisos de dependiente', description: 'Alias de PATCH /dependientes/:dependienteId/features: actualiza los switches de permisos (chat, postulaciones, comunidad, reseñas, etc.) de un dependiente plano. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
@@ -326,7 +331,7 @@ export class UsersController {
   }
 
   @Patch('vincular-pcd/:pcdId/features')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Actualizar features de PCD vinculada (PATCH)', description: 'Actualiza parcialmente el objeto features del perfil real de una cuenta PCD vinculada al tutor autenticado.' })
@@ -342,7 +347,7 @@ export class UsersController {
   // ── Alias deprecados (compatibilidad): usa PATCH /dependientes/:dependienteId/features
 
   @Put('dependientes/:id/features')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Configurar features de dependiente (deprecado)', description: 'DEPRECADO — usa PATCH /dependientes/:dependienteId/features. Activa/desactiva funcionalidades para un dependiente plano.' })
@@ -355,7 +360,7 @@ export class UsersController {
   }
 
   @Put('pcd-vinculado/:pcdUserId/features')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Configurar features de PCD vinculada (deprecado)', description: 'DEPRECADO — usa PATCH /vincular-pcd/:pcdId/features. Activa/desactiva funcionalidades para una cuenta PCD vinculada al tutor.' })
@@ -370,7 +375,7 @@ export class UsersController {
 
   @Delete('pcd-vinculado/:pcdUserId/desvincular')
   @HttpCode(200)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Desvincular PCD de tutor', description: 'Desvincula una cuenta PCD de su tutor de forma atómica: limpia tutorId del perfil y elimina las relaciones en dependientes. Solo el tutor dueño o un administrador.' })

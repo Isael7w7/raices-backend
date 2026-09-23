@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { RequestMethod } from '@nestjs/common'
+import { BadRequestException, RequestMethod } from '@nestjs/common'
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants'
 import { UsersController } from './users.controller'
 import { UsersService } from './users.service'
@@ -16,6 +16,7 @@ describe('UsersController', () => {
     getDependentPermissions: jest.fn(),
     updateDependentFeatures: jest.fn(),
     deleteAccount: jest.fn(),
+    linkPcdToTutor: jest.fn(),
   }
 
   beforeEach(async () => {
@@ -93,6 +94,23 @@ describe('UsersController', () => {
 
     expect(mockSvc.updateDependentFeatures).toHaveBeenCalledWith('tutor-1', 'dep1', dto)
     expect(result.features.chat).toBe(false)
+  })
+
+  it('rechaza POST vincular-pcd sin email con 400 (sin llamar al servicio)', async () => {
+    const user = { id: 'tutor-1', email: 't@test.com', rol: 'padre_tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
+
+    expect(() => controller.linkPcdToTutor(user as any, undefined as any)).toThrow(BadRequestException)
+    expect(() => controller.linkPcdToTutor(user as any, '   ')).toThrow(BadRequestException)
+    expect(mockSvc.linkPcdToTutor).not.toHaveBeenCalled()
+  })
+
+  it('normaliza el email (trim + minúsculas) al vincular PCD', async () => {
+    mockSvc.linkPcdToTutor.mockResolvedValue({ vinculado: true, pcdUserId: 'pcd-1', tutorId: 'tutor-1' })
+    const user = { id: 'tutor-1', email: 't@test.com', rol: 'padre_tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
+
+    await controller.linkPcdToTutor(user as any, '  PCD@Test.com ')
+
+    expect(mockSvc.linkPcdToTutor).toHaveBeenCalledWith('tutor-1', 'pcd@test.com')
   })
 
   it('registra DELETE cuenta con FirebaseAuthGuard y delega al servicio limpiando cookies', async () => {
