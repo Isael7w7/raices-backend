@@ -8,9 +8,14 @@ import request from 'supertest'
  * VALIDACIÓN AUTOMÁTICA DE USUARIOS POR IA — E2E Tests
  * ══════════════════════════════════════════════════════════════════════════════
  *
- * El entorno E2E no tiene Vertex AI configurado, así que la validación corre
- * por el mecanismo de fallback `validarPorReglas` (fuente: 'reglas'). Se
- * verifican:
+ * Estos tests corren contra Gemini REAL vía ADC cuando está disponible
+ * (fuente: 'gemini', tipo de registro: 'automatica') y contra el fallback
+ * `validarPorReglas` (fuente: 'reglas', tipo: 'fallback') cuando la IA no lo
+ * está. Como la confianza que devuelve el modelo varía entre llamadas, los
+ * tests validan el CONTRATO determinista del backend — fuente coherente con
+ * el tipo de registro y decisión (aprobado / revisión manual / rechazo)
+ * calculada con `decisionEsperada` a partir de la confianza y los criterios —
+ * en vez de valores exactos de confianza. Se verifican:
  *  1. POST /api/ia/validar-usuario/:id  (validación manual, solo admin)
  *  2. PATCH /api/ia/validar-usuario/:id/override (decisión del admin)
  *  3. GET /api/ia/validar-usuario/:id/historial
@@ -37,6 +42,28 @@ async function esperarHasta(cond: () => Promise<boolean>, intentos = 40, esperaM
 async function contarValidaciones(usuarioId: string): Promise<number> {
   const snap = await dbE2E().collection('validacionesIA').where('usuarioId', '==', usuarioId).get()
   return snap.size
+}
+
+/**
+ * Replica las reglas de decisión deterministas de ValidationService.decidir():
+ * el modelo propone confianza y criterios, pero el backend decide.
+ *  - confianza >= 80 y criterios clave → aprobado, sin revisión manual
+ *  - confianza 50-79 → requiere revisión manual
+ *  - confianza < 50 → rechazado sin revisión
+ * Si el perfil no tiene CURP, el criterio curpCoherente no es clave.
+ */
+function decisionEsperada(
+  confianza: number,
+  detalles: { nombreCoherente: boolean; emailCoherente: boolean; rolCoherente: boolean; curpCoherente: boolean },
+  tieneCurp: boolean,
+): { aprobado: boolean; requiereRevisionManual: boolean } {
+  const criteriosClave = detalles.nombreCoherente
+    && detalles.emailCoherente
+    && detalles.rolCoherente
+    && (!tieneCurp || detalles.curpCoherente)
+  if (confianza >= 80 && criteriosClave) return { aprobado: true, requiereRevisionManual: false }
+  if (confianza >= 50) return { aprobado: false, requiereRevisionManual: true }
+  return { aprobado: false, requiereRevisionManual: false }
 }
 
 describe('Validación automática de usuarios por IA (E2E)', () => {
@@ -101,7 +128,7 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
       expect(res.status).toBe(404)
     })
 
-    it('200: perfil coherente con CURP válida y documento → aprobado (fuente reglas)', async () => {
+    it('200: perfil coherente con CURP válida y documento → decisión determinista (gemini o reglas)', async () => {
       // Documento CURP pendiente subido previamente (+15 pts de confianza)
       await dbE2E().collection('documentosIdentidad').doc('doc-curp-1').set({
         id: 'doc-curp-1', usuarioId: 'uid-usuario', tipo: 'curp', estado: 'pendiente',
@@ -112,22 +139,29 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
         .set('Authorization', token('uid-admin'))
 
       expect(res.status).toBe(200)
-      // En E2E no hay Vertex AI → mecanismo de fallback por reglas
-      expect(res.body.fuente).toBe('reglas')
-      expect(res.body.confianza).toBeGreaterThanOrEqual(80)
-      expect(res.body.aprobado).toBe(true)
-      expect(res.body.requiereRevisionManual).toBe(false)
-      expect(res.body.detalles.nombreCoherente).toBe(true)
-      expect(res.body.detalles.emailCoherente).toBe(true)
-      expect(res.body.detalles.curpCoherente).toBe(true)
+      // Con Gemini disponible la fuente es 'gemini'; si la IA cae, 'reglas'
+      expect(['gemini', 'reglas']).toContain(res.body.fuente)
+      expect(res.body.confianza).toBeGreaterThanOrEqual(0)
+      expect(res.body.confianza).toBeLessThanOrEqual(100)
+
+      // Los criterios son la opinión del modelo (con respaldo por reglas): se
+      // exige que sean booleanos; los documentos salen del cálculo por reglas.
+      expect(typeof res.body.detalles.nombreCoherente).toBe('boolean')
+      expect(typeof res.body.detalles.emailCoherente).toBe('boolean')
+      expect(typeof res.body.detalles.curpCoherente).toBe('boolean')
       expect(res.body.detalles.documentosPresentes).toContain('curp')
+
+      // El backend decide con reglas deterministas sobre la confianza devuelta
+      const esperado = decisionEsperada(res.body.confianza, res.body.detalles, true)
+      expect(res.body.aprobado).toBe(esperado.aprobado)
+      expect(res.body.requiereRevisionManual).toBe(esperado.requiereRevisionManual)
 
       // validarUsuario solo evalúa: NO aplica el resultado al perfil
       const perfil = await leerDoc('perfiles', 'uid-usuario')
       expect(perfil.verificado).toBe(false)
-    })
+    }, 60000)
 
-    it('200: perfil sin documentos ni CURP → requiereRevisionManual (revisión humana como último recurso)', async () => {
+    it('200: perfil sin documentos ni CURP → nunca se auto-aprueba (confianza < 80)', async () => {
       await sembrarPerfil({
         id: 'uid-usuario',
         email: 'usuario@test.com',
@@ -141,11 +175,21 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
         .set('Authorization', token('uid-admin'))
 
       expect(res.status).toBe(200)
-      expect(res.body.confianza).toBeGreaterThanOrEqual(50)
+      expect(['gemini', 'reglas']).toContain(res.body.fuente)
+      expect(res.body.detalles.documentosPresentes).toEqual([])
+
+      // Regla del prompt: sin CURP ni documentos la confianza no debe llegar
+      // a 80 (datos sin verificar) — la cuenta nunca se auto-verifica. Dentro
+      // de ese techo, la decisión final (revisión manual o rechazo) depende
+      // de la confianza real que devuelva Gemini en cada llamada.
+      expect(res.body.confianza).toBeGreaterThanOrEqual(0)
       expect(res.body.confianza).toBeLessThan(80)
       expect(res.body.aprobado).toBe(false)
-      expect(res.body.requiereRevisionManual).toBe(true)
-    })
+
+      const esperado = decisionEsperada(res.body.confianza, res.body.detalles, false)
+      expect(res.body.aprobado).toBe(esperado.aprobado)
+      expect(res.body.requiereRevisionManual).toBe(esperado.requiereRevisionManual)
+    }, 60000)
 
     it('200: CURP con formato inválido → rechazado sin revisión manual (problema grave)', async () => {
       await sembrarPerfil({
@@ -283,7 +327,7 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
   // ══════════════════════════════════════════════════════════════════════════
 
   describe('Validación automática en background', () => {
-    it('registro: valida en background y deja la cuenta en revisión manual (sin documentos)', async () => {
+    it('registro: valida en background y registra una decisión coherente (gemini o fallback)', async () => {
       const res = await request(http)
         .post('/api/autenticacion/registro')
         .send({ email: 'nuevo@test.com', password: 'Secreta123', nombreCompleto: 'Nueva Persona', rol: 'pcd' })
@@ -292,22 +336,31 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
       const uid = res.body.usuario.id
       expect(uid).toBe('uid-nuevo@test.com')
 
-      // La validación corre en background: esperar a que el registro aparezca
-      const ok = await esperarHasta(async () => (await contarValidaciones(uid)) > 0)
+      // La validación corre en background: una llamada a Gemini puede tardar
+      // varios segundos, así que se espera hasta 20s a que aparezca el registro.
+      const ok = await esperarHasta(async () => (await contarValidaciones(uid)) > 0, 100, 200)
       expect(ok).toBe(true)
 
-      // Sin documentos ni CURP no se auto-verifica: revisión manual del admin
-      const perfil = await leerDoc('perfiles', uid)
-      expect(perfil.verificado).toBe(false)
-
       const snap = await dbE2E().collection('validacionesIA').where('usuarioId', '==', uid).get()
+      expect(snap.size).toBe(1)
       const registro = snap.docs[0].data()
-      expect(registro.tipo).toBe('fallback')
-      expect(registro.fuente).toBe('reglas')
-      expect(registro.requiereRevisionManual).toBe(true)
-    })
 
-    it('subida de documento: re-evalúa y verifica la cuenta automáticamente', async () => {
+      // Fuente y tipo de registro son coherentes: gemini↔automatica, reglas↔fallback
+      expect(['gemini', 'reglas']).toContain(registro.fuente)
+      expect(registro.tipo).toBe(registro.fuente === 'gemini' ? 'automatica' : 'fallback')
+
+      // Cuenta registrada sin CURP ni documentos: la decisión se calcula con
+      // las reglas deterministas sobre la confianza registrada.
+      const esperado = decisionEsperada(registro.confianza, registro.detalles, false)
+      expect(registro.aprobado).toBe(esperado.aprobado)
+      expect(registro.requiereRevisionManual).toBe(esperado.requiereRevisionManual)
+
+      // El perfil solo queda verificado si la decisión fue aprobada sin revisión
+      const perfil = await leerDoc('perfiles', uid)
+      expect(perfil.verificado).toBe(registro.aprobado && !registro.requiereRevisionManual)
+    }, 60000)
+
+    it('subida de documento: re-evalúa en background y aplica la decisión de forma atómica', async () => {
       const res = await request(http)
         .post('/api/usuarios/documento-identidad')
         .set('Authorization', token('uid-usuario'))
@@ -316,23 +369,43 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
         .attach('documento', crearPdfFake(), { filename: 'curp.pdf', contentType: 'application/pdf' })
       expect(res.status).toBe(201)
 
-      // Re-evaluación en background: nombre, email, CURP válida y documento → aprobado
-      const ok = await esperarHasta(async () => (await leerDoc('perfiles', 'uid-usuario'))?.verificado === true)
+      // El registro de auditoría y el perfil se actualizan en el MISMO batch:
+      // basta con esperar a que aparezca el registro (la llamada a Gemini en
+      // background puede tardar varios segundos → hasta 30s de espera).
+      const ok = await esperarHasta(async () => (await contarValidaciones('uid-usuario')) > 0, 150, 200)
       expect(ok).toBe(true)
 
+      const snap = await dbE2E().collection('validacionesIA').where('usuarioId', '==', 'uid-usuario').get()
+      expect(snap.size).toBe(1)
+      const registro = snap.docs[0].data()
       const perfil = await leerDoc('perfiles', 'uid-usuario')
-      expect(perfil.metodoVerificacion).toBe('ia')
-      expect(perfil.estadoValidacionIdentidad).toBe('aprobado')
 
-      // El documento CURP queda aprobado por la IA (sin intervención del admin)
+      // Fuente y tipo coherentes; la decisión sigue las reglas deterministas
+      // (el perfil sí tiene CURP válida y documento, así que curp cuenta).
+      expect(['gemini', 'reglas']).toContain(registro.fuente)
+      expect(registro.tipo).toBe(registro.fuente === 'gemini' ? 'automatica' : 'fallback')
+      const esperado = decisionEsperada(registro.confianza, registro.detalles, true)
+      expect(registro.aprobado).toBe(esperado.aprobado)
+      expect(registro.requiereRevisionManual).toBe(esperado.requiereRevisionManual)
+
+      // El perfil y los documentos quedan consistentes con la decisión aplicada
+      expect(perfil.verificado).toBe(registro.aprobado && !registro.requiereRevisionManual)
+      expect(perfil.estadoValidacionIdentidad).toBe(registro.aprobado ? 'aprobado' : 'pendiente')
+
       const docsSnap = await dbE2E().collection('documentosIdentidad')
         .where('usuarioId', '==', 'uid-usuario').get()
-      expect(docsSnap.docs[0].data().estado).toBe('aprobado')
-      expect(docsSnap.docs[0].data().revisadoPor).toBe('ia')
-
-      // Quedó registro en el historial
-      expect(await contarValidaciones('uid-usuario')).toBe(1)
-    })
+      expect(docsSnap.docs.length).toBe(1)
+      const doc = docsSnap.docs[0].data()
+      if (registro.aprobado) {
+        // Aprobación por IA: el documento CURP se aprueba sin intervención del admin
+        expect(perfil.metodoVerificacion).toBe('ia')
+        expect(doc.estado).toBe('aprobado')
+        expect(doc.revisadoPor).toBe('ia')
+      } else {
+        // Revisión manual o rechazo: el documento queda pendiente del admin
+        expect(doc.estado).toBe('pendiente')
+      }
+    }, 60000)
 
     it('validacionIAHabilitada=false: el registro no genera validaciones ni verifica', async () => {
       await dbE2E().collection('configuraciones').doc('validacionIAHabilitada')
