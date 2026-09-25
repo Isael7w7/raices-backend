@@ -560,9 +560,10 @@ export class AdminService {
       }
     }
 
-    // Si el usuario eliminado es una institución, eliminar en cascada su(s)
-    // documento(s) en 'instituciones' y las vacantes asociadas (evita huérfanos).
-    const esInstitucion = perfil.rol === 'institucion' || perfil.rol === 'institution'
+    // Si el usuario eliminado es una institución (o una empresa, subtipo de
+    // la entidad), eliminar en cascada su(s) documento(s) en 'instituciones'
+    // y las vacantes asociadas (evita huérfanos).
+    const esInstitucion = perfil.rol === 'institucion' || perfil.rol === 'institution' || perfil.rol === 'empresa'
 
     // 2. Eliminar datos relacionados en paralelo
     await Promise.all([

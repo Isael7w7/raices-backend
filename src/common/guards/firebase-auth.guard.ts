@@ -81,8 +81,12 @@ export class FirebaseAuthGuard implements CanActivate {
       }
 
       // Normalizar rol legacy 'institution' (inglés) → 'institucion' (canónico)
+      // y 'empresa' → 'institucion': las empresas son un SUBTIPO de la entidad
+      // institución (mismo documento en 'instituciones', campo `tipo: 'empresa'`),
+      // así que se autorizan con los mismos @Roles/guards. El perfil en Firestore
+      // conserva rol 'empresa' para que el cliente siga distinguiendo el subtipo.
       const rolCrudo = perfil.rol ?? 'user'
-      const rol = rolCrudo === 'institution' ? 'institucion' : rolCrudo
+      const rol = rolCrudo === 'institution' || rolCrudo === 'empresa' ? 'institucion' : rolCrudo
 
       request.user = {
         id: decodedToken.uid,

@@ -51,6 +51,10 @@ export class DiscoveryService {
     // Parsear tiposDiscapacidad de forma segura
     filas = filas.map(f => ({ ...f, tiposDiscapacidad: parsearTiposDiscapacidad(f.tiposDiscapacidad) }))
 
+    // Las empresas (subtipo 'empresa' de la entidad institución) no son
+    // servicios de apoyo: no forman parte del descubrimiento.
+    filas = filas.filter(f => f.tipo !== 'empresa')
+
     // Ordenar en memoria por calificación promedio
     filas.sort((a, b) => (b.calificacionPromedio ?? 0) - (a.calificacionPromedio ?? 0))
 

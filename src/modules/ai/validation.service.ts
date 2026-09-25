@@ -174,7 +174,9 @@ export class ValidationService {
     const documentos = docsSnap.docs.map(d => d.data() as DocumentoIdentidadDoc)
 
     let institucion: InstitucionDoc | null = null
-    if (perfil.rol === 'institucion') {
+    // Las empresas (subtipo 'empresa' de la entidad institución) también tienen
+    // documento en 'instituciones' con su CSF: se recopilan para validarlos.
+    if (perfil.rol === 'institucion' || perfil.rol === 'empresa') {
       const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(usuarioId).get()
       if (instDoc.exists) institucion = instDoc.data() as InstitucionDoc
     }
@@ -262,9 +264,12 @@ export class ValidationService {
           .join('\n')
       : '- Sin documentos de identidad subidos'
 
-    const institucionTexto = perfil.rol === 'institucion' && institucion
+    // Las empresas (rol 'empresa' en el perfil) comparten la entidad
+    // institución: se describen al validador con los mismos datos.
+    const esEntidad = perfil.rol === 'institucion' || perfil.rol === 'empresa'
+    const institucionTexto = esEntidad && institucion
       ? `\nDATOS DE LA INSTITUCIÓN:\n- Nombre: ${institucion.nombre ?? 'no especificado'}\n- Categoría: ${institucion.categoria ?? 'no especificada'}\n- Ciudad: ${institucion.ciudad ?? 'no especificada'}\n- Email de contacto: ${institucion.emailContacto ?? 'no especificado'}\n- Verificada: ${institucion.verificada ? 'Sí' : 'No'}`
-      : perfil.rol === 'institucion'
+      : esEntidad
         ? '\nDATOS DE LA INSTITUCIÓN:\n- No existe el documento de institución asociado a esta cuenta'
         : ''
 
@@ -289,7 +294,7 @@ CRITERIOS A EVALUAR (devuelve un booleano por criterio):
 2. emailCoherente: formato válido y coherente con el nombre o la institución.
 3. curpCoherente: la CURP registrada cumple el formato oficial mexicano de 18 caracteres y es consistente con el nombre y la fecha de nacimiento. Si NO hay CURP registrada, evalúa true salvo datos contradictorios.
 4. rolCoherente: el rol es válido y consistente con el resto de los datos.
-5. institucionCoherente: (solo si rol=institucion) la institución tiene datos básicos completos y coincidentes con el perfil. Para otros roles evalúa true.
+5. institucionCoherente: (solo si rol=institucion o rol=empresa) la institución tiene datos básicos completos y coincidentes con el perfil. Para otros roles evalúa true.
 
 REGLAS DE DECISIÓN OBLIGATORIAS (aplícalas exactamente):
 - Confianza >= 80 y todos los criterios clave (nombre, email, rol y CURP si existe) pasan → aprobado: true, requiereRevisionManual: false.
@@ -491,10 +496,12 @@ Responde SOLO con JSON válido:
     // Perfil extendido (5 pts): más contexto de la persona.
     if (perfilExtendido) confianza += 5
 
-    // Institución (10 pts, solo rol institucion): datos básicos completos.
+    // Institución (10 pts, solo rol institucion/empresa): datos básicos completos.
+    // Las empresas no llevan categoría (no es obligatoria en su registro).
     let institucionCoherente = true
-    if (perfil.rol === 'institucion') {
-      institucionCoherente = !!institucion && !!institucion.nombre && !!institucion.categoria
+    if (perfil.rol === 'institucion' || perfil.rol === 'empresa') {
+      const exigeCategoria = perfil.rol === 'institucion'
+      institucionCoherente = !!institucion && !!institucion.nombre && (!exigeCategoria || !!institucion.categoria)
       if (institucionCoherente) {
         confianza += 10
       } else {

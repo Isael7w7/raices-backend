@@ -315,7 +315,10 @@ mejorarPasosConComunidad(pasosBase: PasoExperto[], perfilesSimilares: PerfilSimi
         .get()
 
       const instituciones = snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as { id: string; nombre?: string; categoria?: string; tiposDiscapacidad?: unknown }))
+        .map(d => ({ id: d.id, ...d.data() } as { id: string; nombre?: string; categoria?: string; tiposDiscapacidad?: unknown; tipo?: string }))
+        // Las empresas (subtipo 'empresa' de la entidad institución) no son
+        // servicios de apoyo: no se sugieren como paso de apoyo en las rutas.
+        .filter(inst => inst.tipo !== 'empresa')
         .filter(inst => {
           if (tiposDiscapacidad.length === 0) return true
           const tiposInst = parsearTiposDiscapacidad(inst.tiposDiscapacidad)

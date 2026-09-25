@@ -176,7 +176,10 @@ export class RecommendationsService {
   private async obtenerInstitucionesActivas(): Promise<(InstitucionDoc & { id: string })[]> {
     try {
       const snap = await this.col(COLECCIONES.instituciones).where('activa', '==', true).get()
-      return snap.docs.map(d => ({ id: d.id, ...d.data() })) as (InstitucionDoc & { id: string })[]
+      const filas = snap.docs.map(d => ({ id: d.id, ...d.data() })) as (InstitucionDoc & { id: string })[]
+      // Las empresas (subtipo 'empresa' de la entidad institución) no son
+      // servicios de apoyo: no entran al feed de recomendaciones.
+      return filas.filter(f => f.tipo !== 'empresa')
     } catch (err: unknown) {
       this.logger.warn(`obtenerInstitucionesActivas falló: ${err instanceof Error ? err.message : String(err)}`)
       return []

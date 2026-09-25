@@ -71,7 +71,7 @@ export class UsersService {
     // Para usuarios institución, adjuntar los datos básicos de su institución.
     // Se busca primero el documento canónico (id = UID) y, si no existe,
     // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
-    if (perfil.rol === 'institucion') {
+    if (perfil.rol === 'institucion' || perfil.rol === 'empresa') {
       let instDoc: DocumentSnapshot<DocumentData> | null = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
       if (!instDoc.exists) {
         const porCreador = await this.col(COLECCIONES.instituciones)
@@ -186,7 +186,7 @@ export class UsersService {
     const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
     if (!perfilDoc.exists) return
     const rol = perfilDoc.data()?.rol
-    if (rol !== 'institucion' && rol !== 'institution') return
+    if (rol !== 'institucion' && rol !== 'institution' && rol !== 'empresa') return
 
     const canonico = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
     if (canonico.exists) {

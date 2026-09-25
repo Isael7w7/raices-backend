@@ -8,6 +8,7 @@
     "start:dev": "nodemon --watch src --ext ts --exec ts-node src/main.ts",
     "seed": "ts-node src/database/seed/seed.ts",
     "db:scan": "ts-node scripts/read-db-structure.ts",
+    "db:migrar-empresas": "ts-node src/database/migrations/migrar-empresas.ts",
     "dev": "pnpm run start:dev",
     "test": "jest",
     "test:watch": "jest --watch",

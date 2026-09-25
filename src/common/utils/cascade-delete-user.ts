@@ -76,7 +76,9 @@ export async function ejecutarEliminacionPermanenteUsuario(
     }
   }
 
-  const esInstitucion = perfil.rol === 'institucion' || perfil.rol === 'institution'
+  // Las empresas (subtipo 'empresa' de la entidad institución) también tienen
+  // documento en 'instituciones' y vacantes que limpiar en cascada.
+  const esInstitucion = perfil.rol === 'institucion' || perfil.rol === 'institution' || perfil.rol === 'empresa'
 
   // 2. Eliminar datos relacionados en paralelo
   await Promise.all([
