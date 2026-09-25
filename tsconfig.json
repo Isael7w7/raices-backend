@@ -16,7 +16,10 @@
     "emitDecoratorMetadata": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "types": ["jest", "node"]
+    // "multer" es necesario: registra la augmentación global Express.Multer.File.
+    // Sin él, ts-node (compilación lazy) falla en controladores con @UploadedFile
+    // aunque tsc (programa completo) pase, porque nadie cargó @types/multer aún.
+    "types": ["jest", "node", "multer"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

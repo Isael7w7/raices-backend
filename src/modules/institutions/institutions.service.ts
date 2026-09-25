@@ -31,6 +31,12 @@ export class InstitutionsService {
     const snap = await q.get()
     let filas = snap.docs.map(d => this.parsear({ id: d.id, ...d.data() } as InstitucionConId))
 
+    // Las empresas comparten la colección (subtipo `tipo: 'empresa'`) pero no
+    // forman parte del directorio público de instituciones. Se filtra en
+    // memoria para no exigir un índice compuesto y para que los documentos
+    // legados sin el campo `tipo` sigan apareciendo.
+    filas = filas.filter(f => f.tipo !== 'empresa')
+
     // Filtrar en memoria para campos que Firestore no indexa bien
     if (filtros.ciudad) {
       const termino = filtros.ciudad.toLowerCase()

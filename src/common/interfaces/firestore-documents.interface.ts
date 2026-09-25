@@ -90,6 +90,13 @@ export interface InstitucionDoc {
   estado?: string
   urlLogo?: string
   fechaCreacion?: string
+  /**
+   * Subtipo de la entidad: `'empresa'` cuando la cuenta se registró con rol
+   * 'empresa' (misma colección que las instituciones, pero se oculta de las
+   * vistas de directorio/descubrimiento/recomendaciones). Ausente en
+   * instituciones y documentos legados.
+   */
+  tipo?: string
 }
 
 /**

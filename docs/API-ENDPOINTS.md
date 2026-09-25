@@ -57,6 +57,17 @@
 }
 ```
 
+**Campos para empresa** (subtipo de institución — misma entidad en `instituciones/` con `tipo: "empresa"`, sin `categoria` obligatoria):
+```json
+{
+  "email": "empresa@ejemplo.com",
+  "password": "MiPassword123",
+  "nombreCompleto": "Empresa Inclusiva SA",
+  "rol": "empresa"
+}
+```
+El registro crea el documento en `instituciones` con `tipo: "empresa"` (activa, pendiente de verificación) y pasa por la misma cola de aprobación del administrador que las instituciones.
+
 **Response (201):**
 ```json
 {
@@ -72,7 +83,7 @@
 
 **Errores:**
 - `400` - Email o contraseña inválidos
-- `400` - Categoría obligatoria para instituciones
+- `400` - Categoría obligatoria para instituciones (solo `rol: institucion`; las empresas no la exigen)
 - `409` - Email ya registrado
 
 ---
@@ -294,7 +305,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ## 🏢 Instituciones
 
 ### GET `/instituciones`
-**Descripción:** Listar instituciones (público, solo verificadas)  
+**Descripción:** Listar instituciones (público, solo `activa` y `verificada`; excluye las empresas — `tipo: 'empresa'`)  
 **Autenticación:** No requerida
 
 **Query Params:**
@@ -414,7 +425,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ## 💼 Empleo
 
 ### GET `/empleo`
-**Descripción:** Listar vacantes (público, solo de instituciones verificadas)  
+**Descripción:** Listar vacantes (público, solo de entidades verificadas — incluye vacantes de empresas verificadas)  
 **Autenticación:** No requerida
 
 **Query Params:**
@@ -460,7 +471,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ### POST `/empleo`
 **Descripción:** Crear nueva vacante  
-**Autenticación:** Bearer Token requerido (rol: institución o admin)  
+**Autenticación:** Bearer Token requerido (rol: institución o admin — las cuentas `empresa` pasan este rol vía normalización del guard)  
 **Feature Guard:** `@Feature('postulaciones')`
 
 **Request Body:**
@@ -1297,6 +1308,9 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ---
 
 ## 🔑 Autenticación en Endpoints
+
+### Rol de las empresas (subtipo de institución)
+Las cuentas registradas con `rol: "empresa"` se autorizan como `institucion`: el `FirebaseAuthGuard` normaliza `'empresa' → 'institucion'` al poblar `request.user`, por lo que **todos** los endpoints con `@Roles('institucion', ...)` (empleo, instituciones, postulantes) las aceptan sin cambios. El perfil y las respuestas de la API conservan `rol: "empresa"` para que el cliente distinga el subtipo, y su entidad en `instituciones` lleva `tipo: "empresa"` (oculta del directorio público y del descubrimiento).
 
 ### Header de Autenticación
 Todos los endpoints protegidos requieren el header:

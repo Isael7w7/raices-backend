@@ -18,7 +18,7 @@ export class RespuestaResumenDto {
   resumenTresParrafos!: { quienEres: string; contexto: string; intereses: string }
 
   @ApiProperty({
-    description: 'true si la respuesta es simulada (sin Vertex AI o fallo)',
+    description: 'true si la respuesta es simulada (sin Gemini o fallo)',
     example: false,
   })
   simulado!: boolean

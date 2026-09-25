@@ -124,14 +124,14 @@ function crearFirestoreMock(datos: DatosMock = {}) {
   return { db, batch, registrosIa }
 }
 
-/** Config con Vertex AI configurado (usa Gemini real mockeado). */
-function configConVertex(): { get: jest.Mock } {
+/** Config con Gemini configurado (GoogleGenAI mockeado). */
+function configConGemini(): { get: jest.Mock } {
   return {
     get: jest.fn((key: string) => {
       const vars: Record<string, string> = {
-        VERTEX_AI_PROJECT_ID: 'test-project',
-        VERTEX_AI_LOCATION: 'us-central1',
-        VERTEX_AI_MODEL: 'gemini-2.0-flash',
+        GEMINI_PROJECT_ID: 'test-project',
+        GEMINI_LOCATION: 'us-central1',
+        GEMINI_MODEL: 'gemini-3.1-flash-lite',
       }
       return vars[key]
     }),
@@ -139,7 +139,7 @@ function configConVertex(): { get: jest.Mock } {
 }
 
 /** Config sin proyecto → la IA queda en null y se usa el fallback por reglas. */
-function configSinVertex(): { get: jest.Mock } {
+function configSinGemini(): { get: jest.Mock } {
   return { get: jest.fn(() => undefined) }
 }
 
@@ -220,7 +220,7 @@ describe('ValidationService', () => {
     }))
 
     fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE } })
-    svc = await crearServicio(fs.db, configConVertex())
+    svc = await crearServicio(fs.db, configConGemini())
   })
 
   // ── validarUsuario: reglas de decisión ──────────────────────────────────
@@ -281,7 +281,7 @@ describe('ValidationService', () => {
 
     it('problema grave determinista: CURP con formato inválido fija confianza <= 40 y rechaza aunque Gemini diga 95', async () => {
       fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE, curp: 'GAPL800101HXXRLAA9' } }) // XX: entidad inválida
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       mockGenerateContent.mockResolvedValue(
         geminiResponse(JSON.stringify(respuestaGemini({ confianza: 95, aprobado: true }))),
@@ -349,7 +349,7 @@ describe('ValidationService', () => {
         perfil: { ...PERFIL_BASE },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }, { tipo: 'identificacion_oficial', estado: 'pendiente' }],
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       mockGenerateContent.mockResolvedValue(
         geminiResponse(JSON.stringify(respuestaGemini({ confianza: 95 }))),
@@ -366,7 +366,7 @@ describe('ValidationService', () => {
         perfil: { ...PERFIL_BASE, rol: 'institucion' },
         institucion: { nombre: 'Instituto Vida', categoria: 'funcional', ciudad: 'Mérida' },
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       mockGenerateContent.mockResolvedValue(
         geminiResponse(JSON.stringify(respuestaGemini({ confianza: 90 }))),
@@ -383,19 +383,32 @@ describe('ValidationService', () => {
 
     it('lanza NotFoundException cuando el usuario no existe', async () => {
       fs = crearFirestoreMock({ perfil: null })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       await expect(svc.validarUsuario('user-1')).rejects.toThrow(NotFoundException)
       expect(mockGenerateContent).not.toHaveBeenCalled()
+    })
+
+    it('envía thinkingLevel MINIMAL y headroom de tokens (requisito Gemini 3.x)', async () => {
+      mockGenerateContent.mockResolvedValue(
+        geminiResponse(JSON.stringify(respuestaGemini({ confianza: 92, aprobado: true }))),
+      )
+
+      await svc.validarUsuario('user-1')
+
+      const configArg = mockGenerateContent.mock.calls[0][0].config
+      expect(configArg.thinkingConfig).toEqual({ thinkingLevel: 'MINIMAL' })
+      expect(configArg.maxOutputTokens).toBeGreaterThan(800)
+      expect(configArg.responseMimeType).toBe('application/json')
     })
   })
 
   // ── Mecanismo de fallback: validarPorReglas ─────────────────────────────
 
   describe('fallback validarPorReglas', () => {
-    it('usa reglas de código cuando Vertex AI no está configurado (fuente: reglas)', async () => {
+    it('usa reglas de código cuando Gemini no está configurado (fuente: reglas)', async () => {
       fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE } })
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const res = await svc.validarUsuario('user-1')
 
@@ -404,7 +417,7 @@ describe('ValidationService', () => {
     })
 
     it('usa reglas de código cuando Gemini falla (la app no se detiene)', async () => {
-      mockGenerateContent.mockRejectedValue(new Error('Vertex AI down'))
+      mockGenerateContent.mockRejectedValue(new Error('Gemini down'))
 
       const res = await svc.validarUsuario('user-1')
 
@@ -424,7 +437,7 @@ describe('ValidationService', () => {
         perfilExtendido: { usuarioId: 'user-1', etapaVida: 'adulto' },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }],
       })
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const res = await svc.validarUsuario('user-1')
 
@@ -436,7 +449,7 @@ describe('ValidationService', () => {
 
     it('sin CURP ni documentos → confianza 50-79 → revisión manual (no se auto-aprueba)', async () => {
       fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE, curp: undefined } })
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const res = await svc.validarUsuario('user-1')
 
@@ -449,7 +462,7 @@ describe('ValidationService', () => {
 
     it('CURP inválida → rechazado (problema grave)', async () => {
       fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE, curp: 'INVALIDA' } })
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const res = await svc.validarUsuario('user-1')
 
@@ -461,7 +474,7 @@ describe('ValidationService', () => {
 
     it('nombre sin apellido o con caracteres extraños → no se auto-aprueba', async () => {
       fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE, nombreCompleto: 'Xx' } })
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const res = await svc.validarUsuario('user-1')
 
@@ -471,7 +484,7 @@ describe('ValidationService', () => {
 
     it('email con formato inválido → no se auto-aprueba', async () => {
       fs = crearFirestoreMock({ perfil: { ...PERFIL_BASE, email: 'no-es-un-email' } })
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const res = await svc.validarUsuario('user-1')
 
@@ -516,7 +529,7 @@ describe('ValidationService', () => {
         perfil: { ...PERFIL_BASE },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }, { tipo: 'identificacion_oficial', estado: 'aprobado' }],
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
       mockGenerateContent.mockResolvedValue(
         geminiResponse(JSON.stringify(respuestaGemini({ confianza: 92, aprobado: true }))),
       )
@@ -563,7 +576,7 @@ describe('ValidationService', () => {
     })
 
     it('usa tipo "fallback" cuando la fuente son las reglas (IA caída)', async () => {
-      svc = await crearServicio(fs.db, configSinVertex())
+      svc = await crearServicio(fs.db, configSinGemini())
 
       const registro = await svc.validarYAplicar('user-1')
 
@@ -576,7 +589,7 @@ describe('ValidationService', () => {
         perfil: { ...PERFIL_BASE },
         configuraciones: { validacionIAHabilitada: 'false' },
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       const registro = await svc.validarYAplicar('user-1')
 
@@ -626,7 +639,7 @@ describe('ValidationService', () => {
         perfil: { ...PERFIL_BASE },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }],
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       const registro = await svc.overrideValidacion('user-1', true, 'admin-1', 'Doc revisado a mano')
 
@@ -644,7 +657,7 @@ describe('ValidationService', () => {
         perfil: { ...PERFIL_BASE },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }],
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
       mockGenerateContent.mockResolvedValue(
         geminiResponse(JSON.stringify(respuestaGemini({ confianza: 92, aprobado: true }))),
       )
@@ -658,7 +671,7 @@ describe('ValidationService', () => {
 
     it('lanza NotFoundException cuando el usuario no existe', async () => {
       fs = crearFirestoreMock({ perfil: null })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       await expect(svc.overrideValidacion('user-1', true, 'admin-1')).rejects.toThrow(NotFoundException)
     })
@@ -691,7 +704,7 @@ describe('ValidationService', () => {
         }
         return { doc: jest.fn(() => ({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) })) }
       })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       const historial = await svc.obtenerHistorial('user-1')
 
@@ -702,7 +715,7 @@ describe('ValidationService', () => {
 
     it('lanza NotFoundException cuando el usuario no existe', async () => {
       fs = crearFirestoreMock({ perfil: null })
-      svc = await crearServicio(fs.db, configConVertex())
+      svc = await crearServicio(fs.db, configConGemini())
 
       await expect(svc.obtenerHistorial('user-1')).rejects.toThrow(NotFoundException)
     })

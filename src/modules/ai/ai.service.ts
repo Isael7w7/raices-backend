@@ -1,11 +1,23 @@
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { GoogleGenAI } from '@google/genai'
+import type { ThinkingLevel } from '@google/genai'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
 import type { PerfilDoc, PerfilExtendidoDoc, InstitucionDoc, DependienteDoc } from '../../common/interfaces/firestore-documents.interface'
+
+/**
+ * Nivel de thinking para modelos Gemini 3.x (valor de cable del enum ThinkingLevel).
+ *
+ * Los modelos Gemini 3 activan thinking dinámico por defecto (nivel HIGH) y esos
+ * tokens de razonamiento CONSUMEN maxOutputTokens, lo que truncaría/vaciaría las
+ * respuestas JSON con límites de 300-800 tokens. Flash-Lite usa MINIMAL como
+ * nivel por defecto del modelo: mínima latencia, sin costo de razonamiento.
+ * (No se usa thinkingBudget: combinar ambos parámetros devuelve HTTP 400.)
+ */
+const NIVEL_THINKING = 'MINIMAL' as unknown as ThinkingLevel
 
 const RESPUESTAS_MOCK = [
   'Entiendo tu consulta. Basándome en tu perfil, te recomiendo explorar las instituciones de la categoría funcional en tu ciudad. ¿Quieres que te muestre opciones específicas?',
@@ -68,12 +80,13 @@ interface HistorialUsuario {
 }
 
 /**
- * Configuración de Gemini via Google Gen AI SDK (reemplaza @google-cloud/vertexai).
+ * Configuración de Gemini via Google Gen AI SDK sobre Gemini Enterprise Agent
+ * Platform (antes Vertex AI; el SDK sigue usando la bandera `vertexai: true`).
  * Los valores se leen de variables de entorno montadas desde GCP Secret Manager:
  *
- * - VERTEX_AI_PROJECT_ID  (fallback: FIREBASE_PROJECT_ID)
- * - VERTEX_AI_LOCATION    (default: us-central1)
- * - VERTEX_AI_MODEL       (default: gemini-2.0-flash)
+ * - GEMINI_PROJECT_ID  (fallbacks: VERTEX_AI_PROJECT_ID → FIREBASE_PROJECT_ID)
+ * - GEMINI_LOCATION    (fallbacks: VERTEX_AI_LOCATION → global)
+ * - GEMINI_MODEL       (fallbacks: VERTEX_AI_MODEL → gemini-3.1-flash-lite)
  *
  * Autenticación: el SDK usa Application Default Credentials (ADC).
  */
@@ -81,7 +94,7 @@ interface HistorialUsuario {
 export class AiService {
   private readonly logger = new Logger('AiService')
   private ai: GoogleGenAI | null = null
-  private modelName: string = 'gemini-2.0-flash'
+  private modelName: string = 'gemini-3.1-flash-lite'
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
@@ -91,21 +104,45 @@ export class AiService {
   }
 
   private initializeModel(): void {
-    const project = this.config.get<string>('VERTEX_AI_PROJECT_ID') ?? this.config.get<string>('FIREBASE_PROJECT_ID')
-    const location = this.config.get<string>('VERTEX_AI_LOCATION') ?? 'us-central1'
-    this.modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
+    // GEMINI_* (nuevo) con fallback a VERTEX_AI_* (legacy) para migrar sin
+    // cambiar las variables de entorno existentes.
+    const project = this.config.get<string>('GEMINI_PROJECT_ID')
+      ?? this.config.get<string>('VERTEX_AI_PROJECT_ID')
+      ?? this.config.get<string>('FIREBASE_PROJECT_ID')
+    const location = this.config.get<string>('GEMINI_LOCATION')
+      ?? this.config.get<string>('VERTEX_AI_LOCATION')
+      ?? 'global'
+    this.modelName = this.config.get<string>('GEMINI_MODEL')
+      ?? this.config.get<string>('VERTEX_AI_MODEL')
+      ?? 'gemini-3.1-flash-lite'
 
     if (!project) {
-      this.logger.warn('Vertex AI: VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID no configurado — usando respuestas mock')
+      this.logger.warn('Gemini: GEMINI_PROJECT_ID/VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID no configurado — usando respuestas mock')
       return
     }
 
     try {
+      // `vertexai: true` = backend de Gemini Enterprise Agent Platform (antes
+      // Vertex AI) con autenticación ADC; es la bandera vigente en @google/genai.
       this.ai = new GoogleGenAI({ vertexai: true, project, location })
-      this.logger.log(`✅ Vertex AI inicializado: project=${project}, location=${location}, model=${this.modelName}`)
+      this.logger.log(`✅ Gemini inicializado: project=${project}, location=${location}, model=${this.modelName}`)
     } catch (e: unknown) {
-      this.logger.warn(`⚠️  Vertex AI no disponible (${mensajeError(e)}) — usando respuestas mock`)
+      this.logger.warn(`⚠️  Gemini no disponible (${mensajeError(e)}) — usando respuestas mock`)
       this.ai = null
+    }
+  }
+
+  /**
+   * Config de generación común para modelos Gemini 3.x.
+   *
+   * - thinkingLevel MINIMAL: evita que el thinking dinámico (HIGH por defecto)
+   *   consuma maxOutputTokens y trunca el JSON de respuesta.
+   * - maxOutputTokens con headroom para el JSON (el costo real depende del uso).
+   */
+  private configGeneracion(maxOutputTokens: number): { maxOutputTokens: number; thinkingConfig: { thinkingLevel: ThinkingLevel } } {
+    return {
+      maxOutputTokens,
+      thinkingConfig: { thinkingLevel: NIVEL_THINKING },
     }
   }
 
@@ -224,7 +261,7 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
       const chat = await this.ai.chats.create({
         model: this.modelName,
         config: {
-          maxOutputTokens: 300,
+          ...this.configGeneracion(1024),
           systemInstruction: sistema,
         },
         history: historial.slice(-6).map((m) => ({
@@ -234,10 +271,10 @@ NUNCA des diagnósticos médicos. Respuestas ≤150 palabras. Sé empático y di
       })
       const result = await chat.sendMessage({ message: mensaje })
       const respuesta = this.extractText(result)
-      if (!respuesta) throw new Error('Respuesta vacía de Vertex AI')
+      if (!respuesta) throw new Error('Respuesta vacía de Gemini')
       return { respuesta, simulado: false }
     } catch (e: unknown) {
-      this.logger.warn(`Vertex AI chat falló (${this.mensajeError(e)}) — usando respuestas mock`)
+      this.logger.warn(`Gemini chat falló (${this.mensajeError(e)}) — usando respuestas mock`)
       await new Promise((r) => setTimeout(r, 600))
       const respuesta = RESPUESTAS_MOCK[Math.floor(Math.random() * RESPUESTAS_MOCK.length)]
       return { respuesta, simulado: true }
@@ -331,12 +368,12 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
       const result = await this.ai.models.generateContent({
         model: this.modelName,
         contents: prompt,
-        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+        config: { ...this.configGeneracion(2048), responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
       return { ...this.normalizarRecomendaciones(this.parseJsonResponse(text)), simulado: false }
     } catch (e: unknown) {
-      this.logger.warn(`Vertex AI recommend falló (${this.mensajeError(e)}) — mostrando sugerencias generales`)
+      this.logger.warn(`Gemini recommend falló (${this.mensajeError(e)}) — mostrando sugerencias generales`)
       return {
         proximosPasos: ['Explora instituciones cercanas', 'Completa tu historial', 'Únete a la comunidad'],
         razonamiento: 'Error al procesar — mostrando sugerencias generales', sugerenciasInstitucion: [], simulado: true,
@@ -393,7 +430,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
       const result = await this.ai.models.generateContent({
         model: this.modelName,
         contents: prompt,
-        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+        config: { ...this.configGeneracion(2048), responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
       const parsed: unknown = this.parseJsonResponse(text)
@@ -404,7 +441,7 @@ Responde SOLO con JSON válido: {"proximosPasos":["paso1","paso2","paso3"],"razo
         simulado: false,
       }
     } catch (e: unknown) {
-      this.logger.warn(`Vertex AI recommendForDependent falló (${this.mensajeError(e)}) — mostrando sugerencias generales`)
+      this.logger.warn(`Gemini recommendForDependent falló (${this.mensajeError(e)}) — mostrando sugerencias generales`)
       return {
         proximosPasos: [
           `Busca instituciones de ${discapacidades} cerca de ti`,
@@ -513,7 +550,7 @@ Responde SOLO con JSON válido:
       const result = await this.ai.models.generateContent({
         model: this.modelName,
         contents: prompt,
-        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+        config: { ...this.configGeneracion(2048), responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
       return { ...this.normalizarResumen(this.parseJsonResponse(text)), simulado: false }

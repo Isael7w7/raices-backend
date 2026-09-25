@@ -131,8 +131,9 @@ export class AuthService {
       ...(dto.rol === 'padre_tutor' && { estadoAcreditacionTutor: 'pendiente' }),
       ...(dto.profesion && { profesion: dto.profesion }),
       ...(dto.bio && { bio: dto.bio }),
-      // Vínculo explícito institución ↔ usuario: el perfil guarda el ID de su institución
-      ...(dto.rol === 'institucion' && { institucionId: uid }),
+      // Vínculo explícito institución ↔ usuario: el perfil guarda el ID de su
+      // institución. Las empresas comparten la entidad (subtipo 'empresa').
+      ...((dto.rol === 'institucion' || dto.rol === 'empresa') && { institucionId: uid }),
       // ── Campos requeridos por Spec MVP Raíces ──
       ...(dto.destinatarioRegistro && { destinatarioRegistro: dto.destinatarioRegistro }),
       ...(dto.curp && { curp: dto.curp.toUpperCase() }),
@@ -143,13 +144,18 @@ export class AuthService {
       ...(dto.domicilio && { domicilio: dto.domicilio }),
     }
 
-    // Si el rol es 'institucion', crear también el documento en la colección
-    // 'instituciones' (mismo ID que el UID) para que aparezca en el directorio.
+    // Si el rol es 'institucion' o 'empresa', crear también el documento en la
+    // colección 'instituciones' (mismo ID que el UID). Las empresas son un
+    // subtipo de la entidad institución: se marcan con `tipo: 'empresa'` para
+    // autorizar con los mismos guards y ocultarlas de las vistas de instituciones.
     let institucionData: Record<string, unknown> | null = null
-    if (dto.rol === 'institucion') {
+    if (dto.rol === 'institucion' || dto.rol === 'empresa') {
       institucionData = {
         id: uid,
         nombre: dto.nombreCompleto,
+        // Subtipo: presente solo en empresas (los docs de instituciones y los
+        // legados no lo llevan, así que siguen visibles en el directorio).
+        ...(dto.rol === 'empresa' && { tipo: 'empresa' }),
         emailContacto: dto.email,
         ciudad: dto.ciudad ?? null,
         estado: dto.estado ?? null,
@@ -204,7 +210,7 @@ export class AuthService {
       rol: dto.rol,
       nombreCompleto: dto.nombreCompleto,
       tutorId: dto.tutorId ?? null,
-      institucionId: dto.rol === 'institucion' ? uid : null,
+      institucionId: dto.rol === 'institucion' || dto.rol === 'empresa' ? uid : null,
       features,
     }
 
@@ -356,10 +362,11 @@ export class AuthService {
       estadoAcreditacionTutor: d.estadoAcreditacionTutor ?? null,
     }
 
-    // Para usuarios institución, adjuntar los datos básicos de su institución.
-    // Se busca primero el documento canónico (id = UID) y, si no existe,
-    // se cae a 'creadoPor' (instituciones legacy creadas con ID aleatorio).
-    if (d.rol === 'institucion') {
+    // Para usuarios institución (y empresas, subtipo de la entidad), adjuntar
+    // los datos básicos de su institución. Se busca primero el documento
+    // canónico (id = UID) y, si no existe, se cae a 'creadoPor'
+    // (instituciones legacy creadas con ID aleatorio).
+    if (d.rol === 'institucion' || d.rol === 'empresa') {
       let instDoc: DocumentSnapshot<DocumentData> | null = await this.db.collection(COLECCIONES.instituciones).doc(userId).get()
       if (!instDoc.exists) {
         const porCreador = await this.db.collection(COLECCIONES.instituciones)

@@ -2,7 +2,7 @@
 
 **Fecha:** 3 de septiembre de 2026  
 **Versión:** 1.0.0  
-**Stack:** NestJS 10 + Firebase (Firestore + Auth + Storage) + Vertex AI (Gemini)  
+**Stack:** NestJS 10 + Firebase (Firestore + Auth + Storage) + Gemini (Google Cloud)  
 **Autor:** Equipo de Desarrollo — Generado con Codebuff 🤖
 
 ---
@@ -28,7 +28,7 @@
 
 ## 1. Resumen Ejecutivo
 
-**Raíces para Florecer** es un ecosistema digital diseñado para personas con discapacidad (PCD) en México. El backend es una API RESTful construida con **NestJS** que se comunica con **Firebase Firestore** como base de datos, **Firebase Auth** para autenticación, **Firebase Cloud Storage** para archivos, y **Google Vertex AI (Gemini)** para funcionalidades de inteligencia artificial.
+**Raíces para Florecer** es un ecosistema digital diseñado para personas con discapacidad (PCD) en México. El backend es una API RESTful construida con **NestJS** que se comunica con **Firebase Firestore** como base de datos, **Firebase Auth** para autenticación, **Firebase Cloud Storage** para archivos, y **Google Gemini** (Gemini Enterprise Agent Platform, antes Vertex AI) para funcionalidades de inteligencia artificial.
 
 ### Capacidad Actual
 
@@ -90,7 +90,7 @@
           ┌───────────────┼───────────────┐
           ▼               ▼               ▼
    ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
-   │  Firestore  │ │Cloud Storage│ │ Vertex AI   │
+   │  Firestore  │ │Cloud Storage│ │   Gemini    │
    │  (BD)       │ │(Archivos)   │ │ (Gemini)    │
    └─────────────┘ └─────────────┘ └─────────────┘
 ```
@@ -102,7 +102,7 @@
 - **Base de datos:** NoSQL (Firestore) — documentos planos, sin joins
 - **Autenticación:** Firebase Auth (REST API + Admin SDK)
 - **Almacenamiento:** Firebase Cloud Storage con fallback local
-- **IA:** Google Gen AI SDK (`@google/genai`) con Vertex AI
+- **IA:** Google Gen AI SDK (`@google/genai`) con Gemini Enterprise Agent Platform (antes Vertex AI)
 
 ---
 
@@ -116,7 +116,7 @@
 | Base de datos | Firebase Firestore | SDK Admin v14 |
 | Autenticación | Firebase Auth | SDK Admin v14 |
 | Almacenamiento | Firebase Cloud Storage | @google-cloud/storage 7.21 |
-| IA | Google Gen AI (Gemini) | @google/genai 2.19 |
+| IA | Google Gen AI (Gemini 3.1 Flash-Lite) | @google/genai 2.19 |
 | Validación | class-validator + class-transformer | 0.14 / 0.5 |
 | Documentación API | Swagger (@nestjs/swagger) | 7.4 |
 | Rate Limiting | @nestjs/throttler | 6.5 |
@@ -340,8 +340,8 @@
 | `/api/ia/recomendaciones` | POST | Recomendaciones personalizadas | ✅ | 10/hora |
 | `/api/ia/resumen` | POST | Resumen narrativo del perfil | ✅ | 5/hora |
 
-**Motor:** Google Gemini vía Vertex AI (`@google/genai` con `vertexai: true`)  
-**Fallback:** Respuestas mock si Vertex AI no está configurado o falla.
+**Motor:** Google Gemini 3.1 Flash-Lite (`@google/genai` con `vertexai: true`)  
+**Fallback:** Respuestas mock si Gemini no está configurado o falla.
 
 ---
 
@@ -458,7 +458,7 @@ Utilizado por Docker y Cloud Run como healthcheck. Excluido de rate limiting (`@
 | `perfiles` | Perfiles de usuario (id = UID de Firebase Auth) | → perfilesExtendidos, dependientes |
 | `perfilesExtendidos` | Datos extendidos (discapacidad, necesidades, escalas) | ← perfiles |
 | `dependientes` | Dependientes de tutores (planos + cuentas PCD vinculadas) | ← perfiles |
-| `instituciones` | Directorio de instituciones | ← perfiles (creadoPor) |
+| `instituciones` | Directorio de instituciones y empresas (subtipo `tipo: 'empresa'`, ocultas del directorio público) | ← perfiles (creadoPor) |
 | `favoritos` | Instituciones guardadas por usuario | ← perfiles, instituciones |
 | `resenas` | Reseñas de instituciones | ← perfiles, instituciones |
 | `publicaciones` | Publicaciones de comunidad | ← perfiles, grupos |
@@ -486,7 +486,7 @@ Utilizado por Docker y Cloud Run como healthcheck. Excluido de rate limiting (`@
   "id": "uid-firebase",
   "email": "usuario@email.com",
   "nombreCompleto": "Juan Pérez",
-  "rol": "pcd | padre_tutor | institucion | admin",
+  "rol": "pcd | padre_tutor | institucion | especialista | empresa | institucional | admin",
   "activo": true,
   "verificado": false,
   "ciudad": "Ciudad de México",
@@ -553,7 +553,7 @@ Utilizado por Docker y Cloud Run como healthcheck. Excluido de rate limiting (`@
 
 | Guard | Función |
 |-------|---------|
-| `JwtAuthGuard` | Verifica JWT (cookie httpOnly o header Bearer) |
+| `JwtAuthGuard` | Verifica JWT (cookie httpOnly o header Bearer) y normaliza el rol (`'institution'`/`'empresa'` → `'institucion'`) |
 | `RolesGuard` | Valida roles (`@Roles('admin')`) |
 | `FeatureGuard` | Valida feature flags (`@Feature('comunidad')`) |
 | `LimitDependientesGuard` | Valida límite de dependientes por tutor |
@@ -605,8 +605,8 @@ El backend acepta el token JWT de dos formas:
 
 ### 8.1 Configuración
 
-- **Proveedor:** Google Vertex AI
-- **Modelo:** Gemini 2.0 Flash (configurable con `VERTEX_AI_MODEL`)
+- **Proveedor:** Google Gemini Enterprise Agent Platform (antes Vertex AI)
+- **Modelo:** Gemini 3.1 Flash-Lite (`gemini-3.1-flash-lite`, configurable con `GEMINI_MODEL`)
 - **SDK:** `@google/genai` con `vertexai: true`
 - **Autenticación:** Application Default Credentials (ADC) — sin API key embebida
 
@@ -620,7 +620,7 @@ El backend acepta el token JWT de dos formas:
 
 ### 8.3 Fallback
 
-Si Vertex AI no está configurado o falla, el sistema retorna respuestas mock con `simulado: true` para no romper la experiencia del usuario.
+Si Gemini no está configurado o falla, el sistema retorna respuestas mock con `simulado: true` para no romper la experiencia del usuario.
 
 ---
 
@@ -714,9 +714,9 @@ pnpm db:scan                # Escanear estructura de Firestore
 | `THROTTLE_TTL` | 60000 | Ventana de rate limiting (ms) |
 | `THROTTLE_LIMIT` | 60 | Límite de peticiones por ventana |
 | `ETAG_CACHE_TTL_MS` | 30000 | TTL de caché ETag |
-| `VERTEX_AI_PROJECT_ID` | — | Proyecto para Vertex AI |
-| `VERTEX_AI_LOCATION` | us-central1 | Región de Vertex AI |
-| `VERTEX_AI_MODEL` | gemini-2.0-flash | Modelo Gemini |
+| `GEMINI_PROJECT_ID` | — | Proyecto para Gemini (fallbacks: `VERTEX_AI_PROJECT_ID`, `FIREBASE_PROJECT_ID`) |
+| `GEMINI_LOCATION` | us-central1 | Región de Gemini Enterprise Agent Platform (antes Vertex AI) |
+| `GEMINI_MODEL` | gemini-3.1-flash-lite | Modelo Gemini 3.x |
 | `COOKIE_SAMESITE` | lax | SameSite para cookies |
 | `FIREBASE_API_KEY` | — | API Key Firebase Auth |
 | `RESEND_API_KEY` | — | API Key Resend |
@@ -822,7 +822,7 @@ El proyecto tiene **56 archivos de test** detectados, incluyendo:
 - **Swagger interactivo:** Disponible en `/docs` con todos los endpoints documentados.
 - **Monitorización:** Health check en `/api/health`, analytics en admin.
 - **Escalabilidad:** Firestore escala automáticamente. Rate limiting protege contra abuso.
-- **Costos:** Vertex AI cobra por token. El sistema tiene fallback mock para desarrollo.
+- **Costos:** Gemini cobra por token (Flash-Lite es el modelo más económico de la familia Gemini 3). El sistema tiene fallback mock para desarrollo.
 - **Seguridad:** Todos los secretos en GCP Secret Manager. Nunca en código o Docker images.
 
 ### 14.3 Checklist de Entrega

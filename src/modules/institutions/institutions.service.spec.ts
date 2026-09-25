@@ -76,6 +76,23 @@ describe('InstitutionsService', () => {
       expect(result.paginacion.limite).toBe(10)
     })
 
+    it('should exclude empresas (tipo: empresa) but keep legacy docs without tipo', async () => {
+      const institutions = [
+        { id: '1', nombre: 'Centro A', activa: true, verificada: true, calificacionPromedio: 4.5 },
+        { id: '2', nombre: 'Empresa X', activa: true, verificada: true, calificacionPromedio: 5.0, tipo: 'empresa' },
+        { id: '3', nombre: 'Doc legado sin tipo', activa: true, verificada: true, calificacionPromedio: 4.0 },
+      ]
+      const docs = institutions.map(i => ({ id: i.id, data: () => i }))
+
+      firestoreMock.collection.mockReturnValue(mockCollection({ empty: false, docs }))
+
+      const result: any = await service.findAll()
+
+      // La empresa se oculta del directorio; los docs legados siguen visibles
+      expect(result.datos.map((f: any) => f.id)).toEqual(['1', '3'])
+      expect(result.paginacion.total).toBe(2)
+    })
+
     it('should filter by busqueda', async () => {
       const institutions = [
         { id: '1', nombre: 'Centro Rehabilitación', ciudad: 'Mérida', activa: true, calificacionPromedio: 4.5 },

@@ -110,6 +110,33 @@ describe('FirebaseAuthGuard', () => {
       })
     })
 
+    it('should normalize rol "empresa" to "institucion" (subtipo de la entidad institución)', async () => {
+      const perfil = {
+        email: 'empresa@test.com',
+        rol: 'empresa',
+        nombreCompleto: 'Empresa Inclusiva',
+        activo: true,
+        verificado: false,
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc(perfil, true)),
+          }),
+        })
+
+      const context = mockExecutionContext('Bearer valid-token-123')
+      const result = await guard.canActivate(context)
+
+      expect(result).toBe(true)
+
+      // La empresa se autoriza como institución (mismos @Roles/guards), pero
+      // el perfil en Firestore conserva rol 'empresa' para el cliente.
+      const request = context.switchToHttp().getRequest()
+      expect(request.user).toMatchObject({ id: 'test-uid-123', rol: 'institucion' })
+    })
+
     it('should authenticate via httpOnly cookie when Authorization header is absent', async () => {
       const perfil = {
         email: 'test@test.com',

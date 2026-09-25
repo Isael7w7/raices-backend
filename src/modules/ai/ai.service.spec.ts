@@ -78,9 +78,9 @@ describe('AiService', () => {
     configMock = {
       get: jest.fn((key: string) => {
         const vars: Record<string, string> = {
-          VERTEX_AI_PROJECT_ID: 'test-project',
-          VERTEX_AI_LOCATION: 'us-central1',
-          VERTEX_AI_MODEL: 'gemini-2.0-flash',
+          GEMINI_PROJECT_ID: 'test-project',
+          GEMINI_LOCATION: 'us-central1',
+          GEMINI_MODEL: 'gemini-3.1-flash-lite',
         }
         return vars[key]
       }),
@@ -108,13 +108,13 @@ describe('AiService', () => {
       })
     })
 
-    it('debe usar FIREBASE_PROJECT_ID como fallback cuando VERTEX_AI_PROJECT_ID no existe', async () => {
+    it('debe usar FIREBASE_PROJECT_ID como fallback cuando GEMINI_PROJECT_ID no existe', async () => {
       const configNoVertex = {
         get: jest.fn((key: string) => {
-          if (key === 'VERTEX_AI_PROJECT_ID') return undefined
+          if (key === 'GEMINI_PROJECT_ID') return undefined
           if (key === 'FIREBASE_PROJECT_ID') return 'fallback-project'
-          if (key === 'VERTEX_AI_LOCATION') return 'us-central1'
-          if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
+          if (key === 'GEMINI_LOCATION') return 'us-central1'
+          if (key === 'GEMINI_MODEL') return 'gemini-3.1-flash-lite'
           return undefined
         }),
       }
@@ -157,7 +157,7 @@ describe('AiService', () => {
       expect(result.simulado).toBe(true)
     })
 
-    it('debe manejar errores de inicialización de Vertex AI', async () => {
+    it('debe manejar errores de inicialización de Gemini', async () => {
       ;(GoogleGenAI as jest.Mock).mockImplementationOnce(() => {
         throw new Error('GCP credentials not found')
       })
@@ -178,11 +178,11 @@ describe('AiService', () => {
       expect(result.simulado).toBe(true)
     })
 
-    it('debe usar gemini-2.0-flash como default cuando VERTEX_AI_MODEL no está definido', async () => {
+    it('debe usar gemini-3.1-flash-lite como default cuando GEMINI_MODEL/VERTEX_AI_MODEL no están definidos', async () => {
       const configSinModel = {
         get: jest.fn((key: string) => {
-          if (key === 'VERTEX_AI_PROJECT_ID') return 'test-project'
-          if (key === 'VERTEX_AI_LOCATION') return 'us-central1'
+          if (key === 'GEMINI_PROJECT_ID') return 'test-project'
+          if (key === 'GEMINI_LOCATION') return 'us-central1'
           return undefined
         }),
       }
@@ -203,11 +203,36 @@ describe('AiService', () => {
       )
     })
 
-    it('debe usar us-central1 como default cuando VERTEX_AI_LOCATION no está definido', async () => {
+    it('debe usar VERTEX_AI_MODEL legacy como fallback cuando GEMINI_MODEL no está definido', async () => {
+      const configLegacy = {
+        get: jest.fn((key: string) => {
+          if (key === 'GEMINI_PROJECT_ID') return 'test-project'
+          if (key === 'GEMINI_LOCATION') return 'us-central1'
+          if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
+          return undefined
+        }),
+      }
+
+      await Test.createTestingModule({
+        providers: [
+          AiService,
+          { provide: FIRESTORE, useValue: firestoreMock },
+          { provide: ConfigService, useValue: configLegacy },
+        ],
+      }).compile()
+
+      // Se construye sin error (el modelo legacy se resuelve en tiempo de llamada)
+      expect(GoogleGenAI).toHaveBeenCalledTimes(2)
+      expect(GoogleGenAI).toHaveBeenLastCalledWith(
+        expect.objectContaining({ project: 'test-project', location: 'us-central1' }),
+      )
+    })
+
+    it('debe usar global como default cuando GEMINI_LOCATION/VERTEX_AI_LOCATION no están definidos', async () => {
       const configSinLocation = {
         get: jest.fn((key: string) => {
-          if (key === 'VERTEX_AI_PROJECT_ID') return 'test-project'
-          if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
+          if (key === 'GEMINI_PROJECT_ID') return 'test-project'
+          if (key === 'GEMINI_MODEL') return 'gemini-3.1-flash-lite'
           return undefined
         }),
       }
@@ -221,7 +246,7 @@ describe('AiService', () => {
       }).compile()
 
       expect(GoogleGenAI).toHaveBeenCalledWith(
-        expect.objectContaining({ location: 'us-central1' }),
+        expect.objectContaining({ location: 'global' }),
       )
     })
   })
@@ -317,7 +342,7 @@ describe('AiService', () => {
       expect(historyArg[5].parts[0].text).toBe('msg9')
     })
 
-    it('debe caer en mock cuando Vertex AI chat falla', async () => {
+    it('debe caer en mock cuando Gemini chat falla', async () => {
       firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
       mockSendMessage.mockRejectedValue(new Error('Quota exceeded'))
 
@@ -331,6 +356,17 @@ describe('AiService', () => {
 
       const result = await svc.chat('user1', 'Hola')
       expect(result.simulado).toBe(true)
+    })
+
+    it('debe enviar thinkingLevel MINIMAL (requisito para Gemini 3.x)', async () => {
+      firestoreMock.collection.mockReturnValueOnce(mockCollection(null, true))
+      mockSendMessage.mockResolvedValue(geminiResponse('OK'))
+
+      await svc.chat('user1', 'Hola')
+
+      const configArg = mockChatsCreate.mock.calls[0][0].config
+      expect(configArg.thinkingConfig).toEqual({ thinkingLevel: 'MINIMAL' })
+      expect(configArg.maxOutputTokens).toBeGreaterThan(300)
     })
 
     it('debe incluir perfil del usuario en el system prompt', async () => {
@@ -573,7 +609,20 @@ describe('AiService', () => {
       expect(prompt).toContain('funcional')
     })
 
-    it('debe caer en fallback cuando Vertex AI recommend falla', async () => {
+    it('debe enviar thinkingLevel MINIMAL y responseMimeType JSON en recommend', async () => {
+      setupRecommendMocks()
+      mockGenerateContent.mockResolvedValue(
+        geminiResponse(JSON.stringify({ proximosPasos: ['P1'], razonamiento: 'ok' })),
+      )
+
+      await svc.recommend('user1')
+
+      const configArg = mockGenerateContent.mock.calls[0][0].config
+      expect(configArg.thinkingConfig).toEqual({ thinkingLevel: 'MINIMAL' })
+      expect(configArg.responseMimeType).toBe('application/json')
+    })
+
+    it('debe caer en fallback cuando Gemini recommend falla', async () => {
       setupRecommendMocks()
       mockGenerateContent.mockRejectedValue(new Error('Rate limit'))
 
@@ -725,7 +774,7 @@ describe('AiService', () => {
       expect(result.simulado).toBe(false)
     })
 
-    it('debe caer en fallback cuando Vertex AI falla', async () => {
+    it('debe caer en fallback cuando Gemini falla', async () => {
       firestoreMock.collection.mockReturnValueOnce({
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(
@@ -876,7 +925,7 @@ describe('AiService', () => {
       expect(prompt).toContain('GDL')
     })
 
-    it('debe caer en fallback cuando Vertex AI falla', async () => {
+    it('debe caer en fallback cuando Gemini falla', async () => {
       const perfil = { usuarioId: 'user1', tiposDiscapacidad: '["tea"]' }
       const registro = { nombreCompleto: 'Test' }
 

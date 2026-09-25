@@ -24,11 +24,30 @@ interface PostulacionFirestore extends Omit<PostulacionDoc, 'id'> {
   estado: string
   fechaCreacion?: string
 }
+
+/** Vacante de findAll enriquecida con datos de su institución. */
+type VacanteConInstitucion = VacanteFirestore & {
+  tiposDiscapacidad: string[]
+  nombreInstitucion: string | null
+  ciudadInstitucion: string | null
+  institucionVerificada: boolean
+  institucionOwnerId: string | null
+}
+
+/** Postulación de myApplications enriquecida con su vacante e institución. */
+type PostulacionConVacante = PostulacionFirestore & {
+  titulo?: string
+  modalidad?: string
+  nombreInstitucion: string | null
+  institucionId: string | null
+  institucionOwnerId: string | null
+}
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { NotificationsService } from '../notifications/notifications.service'
 import { ActualizarEstadoPostulacionDto } from './dto/actualizar-estado-postulacion.dto'
 import { CreateJobDto } from './dto/create-job.dto'
 import { ActualizarVacanteDto } from './dto/actualizar-vacante.dto'
+import { PostulanteItemDto } from './dto/respuestas-empleo.dto'
 
 @Injectable()
 export class JobsService {
@@ -37,7 +56,7 @@ export class JobsService {
     private readonly notificaciones: NotificationsService,
   ) {}
 
-  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string; pagina?: number; limite?: number; ordenarPor?: string; direccion?: 'asc' | 'desc'; buscar?: string } = {}): Promise<RespuestaPaginada<any>> {
+  async findAll(filtros: { ciudad?: string; modalidad?: string; tiposDiscapacidad?: string; pagina?: number; limite?: number; ordenarPor?: string; direccion?: 'asc' | 'desc'; buscar?: string } = {}): Promise<RespuestaPaginada<VacanteConInstitucion>> {
     const pagina = filtros.pagina ?? 1
     const limite = filtros.limite ?? 20
 
@@ -179,7 +198,7 @@ export class JobsService {
     return { id: postulacionId, estado: nuevoEstado, fechaActualizacion }
   }
 
-  async myApplications(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async myApplications(usuarioId: string, pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<PostulacionConVacante>> {
     const snap = await this.db.collection(COLECCIONES.postulaciones)
       .where('usuarioId', '==', usuarioId).get()
 
@@ -226,7 +245,7 @@ export class JobsService {
       direccion?: 'asc' | 'desc'
       buscar?: string
     } = {},
-  ): Promise<RespuestaPaginada<any>> {
+  ): Promise<RespuestaPaginada<PostulanteItemDto>> {
     const pagina = filtros.pagina ?? 1
     const limite = filtros.limite ?? 20
 
@@ -323,7 +342,7 @@ export class JobsService {
       direccion?: 'asc' | 'desc'
       buscar?: string
     } = {},
-  ): Promise<RespuestaPaginada<any>> {
+  ): Promise<RespuestaPaginada<PostulanteItemDto>> {
     const pagina = filtros.pagina ?? 1
     const limite = filtros.limite ?? 20
 
