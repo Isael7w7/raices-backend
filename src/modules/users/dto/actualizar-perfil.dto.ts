@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsOptional, IsString, IsIn, MaxLength, Matches } from 'class-validator'
+import { IsOptional, IsString, IsIn, IsArray, IsEmail, ArrayMaxSize, MaxLength, Matches } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
 import { sanitizeHtml } from '../../../common/utils/sanitize-html'
@@ -114,4 +114,47 @@ export class ActualizarPerfilDto {
   @IsOptional()
   @IsIn(['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'])
   preferenciasAcompanamiento?: string
+
+  // ═════════════════════════════════════════════════════════════════
+  // Campos corporativos (rol empresa / persona moral)
+  // ═════════════════════════════════════════════════════════════════
+
+  @ApiPropertyOptional({
+    description: 'Sector o giro comercial de la empresa',
+    example: 'Tecnología',
+  })
+  @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
+  @IsString()
+  @MaxLength(100, { message: 'El sector no puede exceder 100 caracteres' })
+  sector?: string
+
+  @ApiPropertyOptional({
+    description: 'Sitio web de la empresa',
+    example: 'https://miempresa.mx',
+  })
+  @IsOptional()
+  @Transform(({ value }) => sanitizeHtml(value))
+  @IsString()
+  @MaxLength(300, { message: 'El sitio web no puede exceder 300 caracteres' })
+  sitioWeb?: string
+
+  @ApiPropertyOptional({
+    description: 'Correo de contacto público de la empresa',
+    example: 'contacto@miempresa.mx',
+  })
+  @IsOptional()
+  @IsEmail({}, { message: 'El correo de contacto no es válido' })
+  emailContacto?: string
+
+  @ApiPropertyOptional({
+    description: 'Infraestructura accesible disponible en la empresa',
+    example: ['Rampas', 'Baños adaptados'],
+    type: [String],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(30, { message: 'No puede haber más de 30 elementos de accesibilidad' })
+  accesibilidadInfraestructura?: string[]
 }

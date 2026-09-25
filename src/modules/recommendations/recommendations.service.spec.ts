@@ -399,6 +399,25 @@ describe('RecommendationsService', () => {
       expect(resultado.onboardingCompleto).toBe(false)
       expect(resultado.camposFaltantes).toContain('acreditacionTutor')
     })
+
+    it('no debe exigir CURP ni fechaNacimiento para rol empresa (persona moral)', async () => {
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ id: 'u1', nombreCompleto: 'Empresa Demo SA de CV', rol: 'empresa' })
+          }) }) }
+        }
+        return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: false }) }) }
+      })
+
+      const resultado: any = await service.verificarOnboarding('u1')
+
+      expect(resultado.onboardingCompleto).toBe(true)
+      expect(resultado.camposFaltantes).not.toContain('curp')
+      expect(resultado.camposFaltantes).not.toContain('fechaNacimiento')
+      expect(resultado.porcentaje).toBe(100)
+    })
   })
 
   // ── especialistasRecomendados ───────────────────────────────────────

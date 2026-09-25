@@ -273,15 +273,21 @@ export class RecommendationsService {
     const camposRequeridos: string[] = []
     const camposCompletados: string[] = []
 
+    // Las empresas (personas morales) no tienen CURP ni fecha de nacimiento:
+    // su identidad se valida exclusivamente con la CSF. No se exigen ni penalizan.
+    const esEmpresa = perfil.rol === 'empresa'
+
     // Campos obligatorios del perfil base
     if (perfil.nombreCompleto) camposCompletados.push('nombreCompleto')
     else camposRequeridos.push('nombreCompleto')
 
-    if (perfil.fechaNacimiento) camposCompletados.push('fechaNacimiento')
-    else camposRequeridos.push('fechaNacimiento')
+    if (!esEmpresa) {
+      if (perfil.fechaNacimiento) camposCompletados.push('fechaNacimiento')
+      else camposRequeridos.push('fechaNacimiento')
 
-    if (perfil.curp) camposCompletados.push('curp')
-    else camposRequeridos.push('curp')
+      if (perfil.curp) camposCompletados.push('curp')
+      else camposRequeridos.push('curp')
+    }
 
     // Para PCD: verificar perfil de necesidades
     if (perfil.rol === 'pcd') {

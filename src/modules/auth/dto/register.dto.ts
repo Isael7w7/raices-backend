@@ -1,9 +1,13 @@
 import { IsEmail, IsString, MinLength, IsIn, IsOptional, IsArray, Matches, MaxLength } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
+import { Transform } from 'class-transformer'
 import { IsCurpValida } from '../../../common/decorators/is-curp-valida.decorator'
 
 export class RegisterDto {
   @ApiProperty({ description: 'Correo electrónico del usuario', example: 'usuario@correo.mx' })
+  // El correo siempre se guarda en minúsculas para evitar duplicados por
+  // capitalización (ej. 'ANA.ACEVES@ME.COM' y 'ana.aceves@me.com').
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail() email!: string
   @ApiProperty({ description: 'Contraseña (mínimo 8 caracteres, al menos una mayúscula, una minúscula y un número)', example: 'MiPassword123' })
   @IsString()
