@@ -82,7 +82,7 @@ export class AiController {
   @Throttle({ default: { limit: 20, ttl: 3600000 } }) // 20 validaciones manuales por hora
   @ApiOperation({
     summary: 'Ejecutar validación manual por IA',
-    description: 'Analiza con Gemini la coherencia de nombre, email, CURP, rol, datos de institución y documentos de identidad del usuario. Confianza >= 80% con criterios clave → verificación inmediata; 50-79% → revisión manual del admin (último recurso); < 50% o problemas graves → rechazo. Si Vertex AI no está disponible, valida con reglas de código.',
+    description: 'Analiza con Gemini la coherencia de nombre, email, CURP, rol, datos de institución y documentos de identidad del usuario. Confianza >= 80% con criterios clave → verificación inmediata; 50-79% → revisión manual del admin (último recurso); < 50% o problemas graves → rechazo. Si Gemini no está disponible, valida con reglas de código.',
   })
   @ApiParam({ name: 'id', description: 'ID del usuario a validar' })
   @ApiOkResponse({ type: ResultadoValidacionIaDto, description: 'Resultado de la validación' })

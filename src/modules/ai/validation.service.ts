@@ -1,6 +1,7 @@
 import { Injectable, Inject, Logger, NotFoundException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { GoogleGenAI } from '@google/genai'
+import type { ThinkingLevel } from '@google/genai'
 import { Firestore, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -53,11 +54,22 @@ interface RespuestaGeminiValidacion {
   }
 }
 
+/**
+ * Nivel de thinking para modelos Gemini 3.x (valor de cable del enum ThinkingLevel).
+ *
+ * Los modelos Gemini 3 activan thinking dinámico por defecto (nivel HIGH) y esos
+ * tokens de razonamiento CONSUMEN maxOutputTokens, que truncaría/vaciaría el JSON
+ * con límites de 800 tokens. Flash-Lite usa MINIMAL como nivel por defecto del
+ * modelo: mínima latencia, sin costo de razonamiento. (No se usa thinkingBudget:
+ * combinar ambos parámetros devuelve HTTP 400.)
+ */
+const NIVEL_THINKING = 'MINIMAL' as unknown as ThinkingLevel
+
 const TIPOS_DOCUMENTO = ['curp', 'identificacion_oficial', 'certificado_discapacidad'] as const
 const ROLES_VALIDOS = ['pcd', 'padre_tutor', 'tutor', 'institucion', 'especialista', 'empresa', 'institucional', 'admin']
 
 /**
- * Validación automática de usuarios por IA (Vertex AI / Gemini).
+ * Validación automática de usuarios por IA (Gemini / Google Gen AI SDK).
  *
  * Objetivo: reducir al mínimo la intervención del administrador. Las cuentas
  * válidas se aprueban solas; la revisión humana es el ÚLTIMO recurso y solo
@@ -69,7 +81,7 @@ const ROLES_VALIDOS = ['pcd', 'padre_tutor', 'tutor', 'institucion', 'especialis
  *  - Confianza 50-79% o dudas menores         → aprobado: false, requiereRevisionManual: true
  *  - Confianza < 50% o problemas graves       → aprobado: false, requiereRevisionManual: false
  *
- * Mecanismo de fallback (`validarPorReglas`): si Vertex AI no está disponible,
+ * Mecanismo de fallback (`validarPorReglas`): si Gemini no está disponible,
  * se valida con reglas de código (formato de nombre, email, presencia/validez
  * de CURP) para que la app nunca se detenga.
  */
@@ -77,7 +89,7 @@ const ROLES_VALIDOS = ['pcd', 'padre_tutor', 'tutor', 'institucion', 'especialis
 export class ValidationService {
   private readonly logger = new Logger('ValidationService')
   private ai: GoogleGenAI | null = null
-  private modelName: string = 'gemini-2.0-flash'
+  private modelName: string = 'gemini-3.1-flash-lite'
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
@@ -88,21 +100,43 @@ export class ValidationService {
 
   /** Misma configuración que AiService: Gemini vía Application Default Credentials. */
   private initializeModel(): void {
-    const project = this.config.get<string>('VERTEX_AI_PROJECT_ID') ?? this.config.get<string>('FIREBASE_PROJECT_ID')
-    const location = this.config.get<string>('VERTEX_AI_LOCATION') ?? 'us-central1'
-    this.modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
+    // GEMINI_* (nuevo) con fallback a VERTEX_AI_* (legacy) para migrar sin
+    // cambiar las variables de entorno existentes.
+    const project = this.config.get<string>('GEMINI_PROJECT_ID')
+      ?? this.config.get<string>('VERTEX_AI_PROJECT_ID')
+      ?? this.config.get<string>('FIREBASE_PROJECT_ID')
+    const location = this.config.get<string>('GEMINI_LOCATION')
+      ?? this.config.get<string>('VERTEX_AI_LOCATION')
+      ?? 'global'
+    this.modelName = this.config.get<string>('GEMINI_MODEL')
+      ?? this.config.get<string>('VERTEX_AI_MODEL')
+      ?? 'gemini-3.1-flash-lite'
 
     if (!project) {
-      this.logger.warn('Vertex AI: VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID no configurado — validación de usuarios por reglas de respaldo')
+      this.logger.warn('Gemini: GEMINI_PROJECT_ID/VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID no configurado — validación de usuarios por reglas de respaldo')
       return
     }
 
     try {
+      // `vertexai: true` = backend de Gemini Enterprise Agent Platform (antes
+      // Vertex AI) con autenticación ADC; es la bandera vigente en @google/genai.
       this.ai = new GoogleGenAI({ vertexai: true, project, location })
       this.logger.log(`✅ Validación IA inicializada: project=${project}, location=${location}, model=${this.modelName}`)
     } catch (e: unknown) {
-      this.logger.warn(`⚠️  Vertex AI no disponible para validación (${this.mensajeError(e)}) — usando reglas de respaldo`)
+      this.logger.warn(`⚠️  Gemini no disponible para validación (${this.mensajeError(e)}) — usando reglas de respaldo`)
       this.ai = null
+    }
+  }
+
+  /**
+   * Config de generación común para modelos Gemini 3.x: thinkingLevel MINIMAL
+   * (evita que el thinking dinámico consuma maxOutputTokens y trunque el JSON)
+   * más headroom de tokens de salida.
+   */
+  private configGeneracion(maxOutputTokens: number): { maxOutputTokens: number; thinkingConfig: { thinkingLevel: ThinkingLevel } } {
+    return {
+      maxOutputTokens,
+      thinkingConfig: { thinkingLevel: NIVEL_THINKING },
     }
   }
 
@@ -165,10 +199,10 @@ export class ValidationService {
       const result = await this.ai.models.generateContent({
         model: this.modelName,
         contents: this.construirPrompt(datos),
-        config: { maxOutputTokens: 800, responseMimeType: 'application/json' },
+        config: { ...this.configGeneracion(2048), responseMimeType: 'application/json' },
       })
       const text = this.extractText(result)
-      if (!text) throw new Error('Respuesta vacía de Vertex AI')
+      if (!text) throw new Error('Respuesta vacía de Gemini')
       return this.normalizarRespuestaIa(this.parseJsonResponse(text), datos, usuarioId)
     } catch (e: unknown) {
       this.logger.warn(`Validación IA falló para ${usuarioId} (${this.mensajeError(e)}) — usando reglas de respaldo`)
@@ -358,13 +392,13 @@ Responde SOLO con JSON válido:
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // Fallback por reglas de código (Vertex AI caído o no configurado)
+  // Fallback por reglas de código (Gemini caído o no configurado)
   // ═══════════════════════════════════════════════════════════════════
 
   /**
    * Mecanismo de fallback: valida con reglas de código (formato de nombre,
    * email, presencia/validez de CURP, documentos) para evitar que la app
-   * se detenga cuando Vertex AI falla o no está disponible.
+   * se detenga cuando Gemini falla o no está disponible.
    */
   validarPorReglas(datos: DatosUsuario, usuarioId: string): ResultadoValidacion {
     const base = this.criteriosPorReglas(datos)

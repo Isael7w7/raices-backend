@@ -111,10 +111,11 @@ function buildFirestore(opts: {
 
 const configMock = {
   get: jest.fn((key: string) => {
-    if (key === 'VERTEX_AI_PROJECT_ID') return undefined // No AI in tests
+    if (key === 'GEMINI_PROJECT_ID') return undefined // No AI in tests
+    if (key === 'VERTEX_AI_PROJECT_ID') return undefined
     if (key === 'FIREBASE_PROJECT_ID') return undefined
-    if (key === 'VERTEX_AI_LOCATION') return 'us-central1'
-    if (key === 'VERTEX_AI_MODEL') return 'gemini-2.0-flash'
+    if (key === 'GEMINI_LOCATION') return 'us-central1'
+    if (key === 'GEMINI_MODEL') return 'gemini-3.1-flash-lite'
     return undefined
   }),
 };

@@ -50,9 +50,9 @@ Las variables de entorno se configuran en el archivo `.env` (nunca subir a Git).
 | `PORT` | Puerto del servidor | `7000` |
 | `NODE_ENV` | Entorno de ejecución | `development` |
 | `FIREBASE_API_KEY` | API Key de Firebase Auth | — |
-| `VERTEX_AI_PROJECT_ID` | Proyecto GCP para Gemini vía Vertex AI con el SDK `@google/genai` (fallback: `FIREBASE_PROJECT_ID`) | — |
-| `VERTEX_AI_LOCATION` | Región de Vertex AI | `us-central1` |
-| `VERTEX_AI_MODEL` | Modelo Gemini a usar | `gemini-2.0-flash` |
+| `GEMINI_PROJECT_ID` | Proyecto GCP para Gemini vía SDK `@google/genai` (fallbacks: `VERTEX_AI_PROJECT_ID` → `FIREBASE_PROJECT_ID`) | — |
+| `GEMINI_LOCATION` | Región de Gemini Enterprise Agent Platform (antes Vertex AI) | `us-central1` |
+| `GEMINI_MODEL` | Modelo Gemini a usar | `gemini-3.1-flash-lite` |
 | `CORS_ORIGINS` | Dominios permitidos (separados por coma) | — |
 | `RESEND_API_KEY` | API Key de Resend para emails (secreto) | — |
 | `FIREBASE_STORAGE_BUCKET` | Bucket de Cloud Storage (se deriva del proyecto si se omite) | — |
@@ -136,7 +136,7 @@ raices-backend/
 
 - **NUNCA** subir archivos `.env` ni archivos de cuenta de servicio (`*service-account*.json`, `*credentials.json`) a Git
 - Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`, `FIREBASE_API_KEY`) se consumen vía `ConfigService` (variables de entorno) y, en producción, se montan desde **GCP Secret Manager** en Cloud Run (`--set-secrets`) — nunca se inyectan en la imagen Docker
-- Gemini (Vertex AI) se consume con el SDK oficial **`@google/genai`** (`vertexai: true`) y se autentica con **Application Default Credentials** (cuenta de servicio de Cloud Run); no requiere API key embebida
+- Gemini se consume con el SDK oficial **`@google/genai`** (`vertexai: true`, backend de Gemini Enterprise Agent Platform, antes Vertex AI) y se autentica con **Application Default Credentials** (cuenta de servicio de Cloud Run); no requiere API key embebida. Modelo: **`gemini-3.1-flash-lite`** (configurable con `GEMINI_MODEL`)
 - Las credenciales de Firebase se validan al iniciar (JSON bien formado, `project_id` consistente)
 - Rate limiting habilitado (60 requests/minuto por IP, configurable con `THROTTLE_TTL`/`THROTTLE_LIMIT`; límites más estrictos en endpoints de escritura y IA)
 - ETag + caché en memoria (30s, configurable con `ETAG_CACHE_TTL_MS`) en todos los GET: responde `304 Not Modified` sin consultar Firestore cuando el cliente reenvía `If-None-Match`
@@ -172,7 +172,7 @@ docker-compose logs -f
 
 ### Google Cloud Run (Secret Manager)
 
-Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`) se gestionan en **GCP Secret Manager** y se montan en Cloud Run con `--set-secrets`; las variables no sensibles (`NODE_ENV`, `PORT`, `CORS_ORIGINS`, `VERTEX_AI_*`) se pasan como env vars normales.
+Los secretos (`FIREBASE_CREDENTIALS`, `RESEND_API_KEY`) se gestionan en **GCP Secret Manager** y se montan en Cloud Run con `--set-secrets`; las variables no sensibles (`NODE_ENV`, `PORT`, `CORS_ORIGINS`, `GEMINI_*`) se pasan como env vars normales.
 
 #### 1. Requisitos previos (una sola vez)
 ```bash

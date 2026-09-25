@@ -1,6 +1,7 @@
 import { Injectable, Inject, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { GoogleGenAI } from '@google/genai'
+import type { ThinkingLevel } from '@google/genai'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -27,11 +28,18 @@ interface PasoDoc {
   [key: string]: unknown
 }
 
+/**
+ * Nivel de thinking para modelos Gemini 3.x: los modelos Gemini 3 activan
+ * thinking dinámico por defecto (HIGH) y esos tokens consumen maxOutputTokens,
+ * truncando el JSON. MINIMAL minimiza latencia (default de Flash-Lite).
+ */
+const NIVEL_THINKING = 'MINIMAL' as unknown as ThinkingLevel
+
 @Injectable()
 export class RoutesService {
   private readonly logger = new Logger('RoutesService')
   private ai: GoogleGenAI | null = null
-  private modelName: string = 'gemini-2.0-flash'
+  private modelName: string = 'gemini-3.1-flash-lite'
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
@@ -43,20 +51,29 @@ export class RoutesService {
   }
 
   private initializeAi(): void {
-    const project = this.config.get<string>('VERTEX_AI_PROJECT_ID') ?? this.config.get<string>('FIREBASE_PROJECT_ID')
-    const location = this.config.get<string>('VERTEX_AI_LOCATION') ?? 'us-central1'
-    this.modelName = this.config.get<string>('VERTEX_AI_MODEL') ?? 'gemini-2.0-flash'
+    // GEMINI_* (nuevo) con fallback a VERTEX_AI_* (legacy) para migrar sin
+    // cambiar las variables de entorno existentes.
+    const project = this.config.get<string>('GEMINI_PROJECT_ID')
+      ?? this.config.get<string>('VERTEX_AI_PROJECT_ID')
+      ?? this.config.get<string>('FIREBASE_PROJECT_ID')
+    const location = this.config.get<string>('GEMINI_LOCATION')
+      ?? this.config.get<string>('VERTEX_AI_LOCATION')
+      ?? 'global'
+    this.modelName = this.config.get<string>('GEMINI_MODEL')
+      ?? this.config.get<string>('VERTEX_AI_MODEL')
+      ?? 'gemini-3.1-flash-lite'
 
     if (!project) {
-      this.logger.warn('RoutesService: Vertex AI no configurado — generará rutas con plantillas expertas')
+      this.logger.warn('RoutesService: Gemini no configurado — generará rutas con plantillas expertas')
       return
     }
 
     try {
+      // `vertexai: true` = backend de Gemini Enterprise Agent Platform (antes Vertex AI).
       this.ai = new GoogleGenAI({ vertexai: true, project, location })
-      this.logger.log('RoutesService: Vertex AI disponible para generación personalizada')
+      this.logger.log(`RoutesService: Gemini disponible (${this.modelName}) para generación personalizada`)
     } catch (e: unknown) {
-      this.logger.warn(`RoutesService: Vertex AI no disponible (${e instanceof Error ? e.message : String(e)})`)
+      this.logger.warn(`RoutesService: Gemini no disponible (${e instanceof Error ? e.message : String(e)})`)
       this.ai = null
     }
   }
@@ -450,7 +467,7 @@ export class RoutesService {
       ? await this.knowledgeBase.buscarPerfilesSimilares(usuarioId, perfil, registro)
       : []
 
-    // 6. Intentar generar pasos personalizados con Gemini (Vertex AI)
+    // 6. Intentar generar pasos personalizados con Gemini
     let pasosBase = rutaExperta.pasos
     let origen: string = perfilesSimilares.length >= 2 ? 'comunidad' : 'experto'
 
@@ -596,7 +613,7 @@ export class RoutesService {
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // Generación con Vertex AI (Gemini)
+  // Generación con Gemini
   // ═══════════════════════════════════════════════════════════════════
 
   /**
@@ -608,7 +625,7 @@ export class RoutesService {
     registro: PerfilDoc | undefined,
     tiposDiscapacidad: string[],
   ): Promise<{ titulo: string; descripcion: string; categoria: string; orden: number }[]> {
-    if (!this.ai) throw new Error('Vertex AI no disponible')
+    if (!this.ai) throw new Error('Gemini no disponible')
 
     const escalasVida = perfil.escalasVida
       ? `Autonomía=${perfil.escalasVida.autonomia}, Independencia=${perfil.escalasVida.independencia}, Comunicación=${perfil.escalasVida.comunicacion}, Comprensión=${perfil.escalasVida.comprension}, Energía=${perfil.escalasVida.energia}, Movilidad=${perfil.escalasVida.movilidad}, Social=${perfil.escalasVida.social}, Emocional=${perfil.escalasVida.emocional}`
@@ -649,7 +666,13 @@ export class RoutesService {
     const result = await this.ai.models.generateContent({
       model: this.modelName,
       contents: prompt,
-      config: { maxOutputTokens: 1000, responseMimeType: 'application/json' },
+      // thinkingLevel MINIMAL (Gemini 3.x): evita que el thinking dinámico
+      // consuma maxOutputTokens y trunque el JSON; headroom 1000 → 2048.
+      config: {
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+        thinkingConfig: { thinkingLevel: NIVEL_THINKING },
+      },
     })
 
     const text = this.extractText(result)

@@ -39,6 +39,11 @@
     "swagger-ui-express": "^5.0.1",
     "uuid": "^10.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "canvas": "npm:@napi-rs/canvas@^0.1.100"
+    }
+  },
   "devDependencies": {
     "@babel/core": "^8.0.1",
     "@babel/preset-env": "^8.0.2",

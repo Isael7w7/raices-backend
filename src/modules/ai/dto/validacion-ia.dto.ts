@@ -3,7 +3,7 @@ import { IsBoolean, IsOptional, IsString } from 'class-validator'
 
 /**
  * Detalle de criterios de coherencia evaluados por la validación de usuarios
- * con IA (Vertex AI / Gemini) o por el mecanismo de fallback `validarPorReglas`.
+ * con IA (Gemini / Google Gen AI SDK) o por el mecanismo de fallback `validarPorReglas`.
  */
 export class DetallesValidacionDto {
   @ApiProperty({ description: 'El nombre parece real: nombre y apellido, sin caracteres extraños', example: true })

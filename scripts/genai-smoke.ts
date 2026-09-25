@@ -1,11 +1,17 @@
 import 'dotenv/config'
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenAI, ThinkingLevel } from '@google/genai'
 
 async function main(): Promise<void> {
-  const project = process.env.VERTEX_AI_PROJECT_ID ?? process.env.FIREBASE_PROJECT_ID
-  const location = process.env.VERTEX_AI_LOCATION ?? 'us-central1'
-  const model = process.env.VERTEX_AI_MODEL ?? 'gemini-2.0-flash'
-  if (!project) throw new Error('Sin VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID')
+  const project = process.env.GEMINI_PROJECT_ID
+    ?? process.env.VERTEX_AI_PROJECT_ID
+    ?? process.env.FIREBASE_PROJECT_ID
+  const location = process.env.GEMINI_LOCATION
+    ?? process.env.VERTEX_AI_LOCATION
+    ?? 'global'
+  const model = process.env.GEMINI_MODEL
+    ?? process.env.VERTEX_AI_MODEL
+    ?? 'gemini-3.1-flash-lite'
+  if (!project) throw new Error('Sin GEMINI_PROJECT_ID/VERTEX_AI_PROJECT_ID/FIREBASE_PROJECT_ID')
 
   console.log('Config:', JSON.stringify({ project, location, model }))
 
@@ -13,7 +19,9 @@ async function main(): Promise<void> {
   const result = await ai.models.generateContent({
     model,
     contents: 'Responde únicamente con la palabra OK',
-    config: { maxOutputTokens: 10 },
+    // Gemini 3.x: thinking dinámico por defecto consume maxOutputTokens; se fija
+    // MINIMAL para que la respuesta de 10 tokens no quede vacía.
+    config: { maxOutputTokens: 64, thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } },
   })
 
   const candidates = (result as any)?.candidates ?? (result as any)?.response?.candidates

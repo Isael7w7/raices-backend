@@ -232,8 +232,7 @@
     quienEres: string         // Primer párrafo: quién es
     contexto: string          // Segundo párrafo: contexto
     intereses: string         // Tercer párrafo: intereses/aspiraciones
-  }
-  simulado: boolean           // true si no hay Vertex AI configurado
+  }   simulado: boolean           // true si no hay Gemini configurado
 }
 ```
 

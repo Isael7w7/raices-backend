@@ -21,10 +21,10 @@ services:
       - RESEND_API_KEY=${RESEND_API_KEY}
       # Configuración no sensible
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
-      # Si se omite, el código usa FIREBASE_PROJECT_ID como fallback
-      - VERTEX_AI_PROJECT_ID=${VERTEX_AI_PROJECT_ID:-}
-      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION:-us-central1}
-      - VERTEX_AI_MODEL=${VERTEX_AI_MODEL:-gemini-2.0-flash}
+      # Si se omite, el código usa VERTEX_AI_* y FIREBASE_PROJECT_ID como fallback
+      - GEMINI_PROJECT_ID=${GEMINI_PROJECT_ID:-}
+      - GEMINI_LOCATION=${GEMINI_LOCATION:-global}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3.1-flash-lite}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     volumes:
       - uploads:/app/uploads
