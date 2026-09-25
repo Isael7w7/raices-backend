@@ -67,6 +67,14 @@ describe('Verificación de Instituciones (E2E)', () => {
 
       expect(res.status).toBe(201)
       expect(res.body.usuario.rol).toBe('empresa')
+
+      // Opción A (subtipo en institución): la empresa vive en la colección
+      // 'instituciones' con tipo 'empresa', pendiente de verificación, y su
+      // perfil queda vinculado a esa entidad.
+      const inst = await leerDoc('instituciones', res.body.usuario.id)
+      expect(inst?.tipo).toBe('empresa')
+      expect(inst?.verificada).toBe(false)
+      expect(res.body.usuario.institucionId).toBe(res.body.usuario.id)
     })
 
     it('201: registro institución con CSF adjunta guarda documentoCsf', async () => {

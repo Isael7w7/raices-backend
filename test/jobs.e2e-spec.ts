@@ -146,6 +146,97 @@ describe('Empleo (E2E)', () => {
       expect(res.body.titulo).toBe('Desarrollador Web')
       expect(res.body.activa).toBe(true)
     })
+
+    // ── Opción A: la empresa es subtipo de la entidad institución ────────
+
+    it('201: empresa verificada crea vacante y su nombre aparece en el listado', async () => {
+      // El perfil conserva rol 'empresa'; el guard lo normaliza a 'institucion'
+      // para autorizar con los mismos @Roles, y la entidad vive en
+      // 'instituciones' con tipo 'empresa' (id canónico = UID).
+      await sembrarPerfil({ id: 'uid-emp-job', email: 'emp-job@test.com', rol: 'empresa', activo: true, verificado: true })
+      await sembrarInstitucion({
+        id: 'uid-emp-job',
+        nombre: 'Empresa Inclusiva SA',
+        ciudad: 'Mérida',
+        tipo: 'empresa',
+        activa: true,
+        verificada: true,
+        usuarioId: 'uid-emp-job',
+        creadoPor: 'uid-emp-job',
+        tiposDiscapacidad: [],
+        calificacionPromedio: 0,
+        cantidadCalificaciones: 0,
+        fechaCreacion: '2026-01-02T00:00:00.000Z',
+      })
+
+      const res = await request(http)
+        .post('/api/empleo')
+        .send({
+          titulo: 'Analista de Datos',
+          descripcion: 'Puesto accesible',
+          requisitos: 'Excel',
+          modalidad: 'remoto',
+          ciudad: 'Mérida',
+        })
+        .set('Authorization', token('uid-emp-job'))
+
+      expect(res.status).toBe(201)
+      expect(res.body.titulo).toBe('Analista de Datos')
+      expect(res.body.activa).toBe(true)
+      // La vacante queda vinculada a la entidad de la empresa (id = UID)
+      expect(res.body.institucionId).toBe('uid-emp-job')
+      expect(res.body.nombreInstitucion).toBe('Empresa Inclusiva SA')
+
+      // El listado público resuelve el join desde 'instituciones'
+      const listado = await request(http).get('/api/empleo')
+      expect(listado.status).toBe(200)
+      const publicada = listado.body.datos.find((v: any) => v.id === res.body.id)
+      expect(publicada).toBeDefined()
+      expect(publicada.nombreInstitucion).toBe('Empresa Inclusiva SA')
+    })
+
+    it('403: empresa sin verificar en el perfil cae en la guardia de institución (no en la de rol)', async () => {
+      await sembrarPerfil({ id: 'uid-emp-sinverif', email: 'emp-sinverif@test.com', rol: 'empresa', activo: true, verificado: false })
+      await sembrarInstitucion({
+        id: 'uid-emp-sinverif',
+        nombre: 'Empresa Pendiente',
+        tipo: 'empresa',
+        activa: true,
+        verificada: false,
+        usuarioId: 'uid-emp-sinverif',
+        creadoPor: 'uid-emp-sinverif',
+      })
+
+      const res = await request(http)
+        .post('/api/empleo')
+        .send({ titulo: 'Puesto', descripcion: 'Desc' })
+        .set('Authorization', token('uid-emp-sinverif'))
+
+      expect(res.status).toBe(403)
+      // Si el rol NO se normalizara a 'institucion', el mensaje sería 'Rol insuficiente'
+      expect(res.body.message).toContain('Institución no verificada')
+    })
+
+    it('403: empresa verificada pero con entidad sin aprobar por el admin', async () => {
+      await sembrarPerfil({ id: 'uid-emp-pendiente', email: 'emp-pendiente@test.com', rol: 'empresa', activo: true, verificado: true })
+      await sembrarInstitucion({
+        id: 'uid-emp-pendiente',
+        nombre: 'Empresa Sin CSF',
+        tipo: 'empresa',
+        activa: true,
+        verificada: false,
+        usuarioId: 'uid-emp-pendiente',
+        creadoPor: 'uid-emp-pendiente',
+      })
+
+      const res = await request(http)
+        .post('/api/empleo')
+        .send({ titulo: 'Puesto', descripcion: 'Desc' })
+        .set('Authorization', token('uid-emp-pendiente'))
+
+      expect(res.status).toBe(403)
+      expect(res.body.message).toContain('aprobada por un administrador')
+    })
   })
 
   describe('POST /api/empleo/:id/postularse', () => {

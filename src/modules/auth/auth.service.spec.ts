@@ -387,6 +387,49 @@ describe('AuthService', () => {
       expect(authMock.createUser).toHaveBeenCalled()
     })
 
+    it('should create the institution doc with tipo "empresa" for empresa role (subtipo de la entidad)', async () => {
+      // Sin categoría: el registro de empresa no la exige (a diferencia de institucion)
+      const dtoEmpresa = { ...dto, rol: 'empresa' as const }
+      const emailCheckSnap = { empty: true, docs: [] as never[], size: 0 }
+      const batchSet = jest.fn()
+      const batchCommit = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.batch.mockReturnValue({ set: batchSet, commit: batchCommit })
+
+      const perfilDocRef = { ref: 'perfil-ref' }
+      const instDocRef = { ref: 'inst-ref' }
+
+      firestoreMock.collection.mockImplementation((name: string) => {
+        if (name === 'perfiles') {
+          return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue(emailCheckSnap),
+            doc: jest.fn().mockReturnValue(perfilDocRef),
+          }
+        }
+        if (name === 'instituciones') return { doc: jest.fn().mockReturnValue(instDocRef) }
+        return {}
+      })
+
+      const result = await service.register(dtoEmpresa)
+
+      // Perfil + entidad institución en el mismo batch atómico
+      expect(batchSet).toHaveBeenCalledTimes(2)
+      expect(batchSet).toHaveBeenCalledWith(perfilDocRef, expect.objectContaining({
+        rol: 'empresa',
+        institucionId: 'new-uid-123',
+      }))
+      expect(batchSet).toHaveBeenCalledWith(instDocRef, expect.objectContaining({
+        id: 'new-uid-123',
+        creadoPor: 'new-uid-123',
+        tipo: 'empresa',
+        verificada: false,
+      }))
+      // La respuesta para el cliente sigue reportando el subtipo 'empresa'
+      expect(result.usuario.rol).toBe('empresa')
+      expect(result.usuario.institucionId).toBe('new-uid-123')
+    })
+
   })
 
   // ── login ───────────────────────────────────────────────────────────
