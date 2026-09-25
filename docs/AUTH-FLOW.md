@@ -158,7 +158,7 @@ sequenceDiagram
     end
 
     alt Rol = Institución
-        S->>S: 3b. Verificar que categoria esté presente
+        S->>S: 3b. Verificar que categoria esté presente<br/>(solo 'institucion'; 'empresa' no la exige)
     end
 
     S->>DB: 4. Verificar que email no exista
@@ -172,8 +172,8 @@ sequenceDiagram
     S->>S: 6. Preparar datos del perfil
     S->>S: 7. Preparar datos de institución (si aplica)
 
-    alt Rol = Institución
-        S->>DB: 8. batch.set(perfiles/{uid}) + batch.set(instituciones/{uid})
+    alt Rol = Institución o Empresa
+        S->>DB: 8. batch.set(perfiles/{uid}) + batch.set(instituciones/{uid})<br/>(empresa → tipo: 'empresa')
     else Otros roles
         S->>DB: 8. batch.set(perfiles/{uid})
     end
@@ -222,6 +222,8 @@ sequenceDiagram
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Sobre empresas (subtipo de la institución):** el registro con `rol: 'empresa'` crea el **mismo documento** en `instituciones/` con el campo `tipo: 'empresa'` (no exige `categoria`), y el `FirebaseAuthGuard` normaliza `'empresa' → 'institucion'` al poblar `request.user` para que los mismos `@Roles`/guards la autoricen. El perfil en Firestore —y las respuestas de la API— conservan `rol: 'empresa'` para que el cliente distinga el subtipo. Las vistas de directorio/descubrimiento excluyen `tipo: 'empresa'`.
 
 ---
 
@@ -460,7 +462,7 @@ flowchart TD
     
     Lookup -->|"❌ Perfil no existe"| Err3["❌ 401<br/>Usuario no encontrado"]
     Lookup -->|"⚠️ perfil.activo = false"| Err4["❌ 401<br/>Cuenta desactivada"]
-    Lookup -->|"✅ Perfil encontrado y activo"| Normalize["🔄 Normalizar rol<br/>'institution' → 'institucion'"]
+    Lookup -->|"✅ Perfil encontrado y activo"| Normalize["🔄 Normalizar rol<br/>'institution'/'empresa' → 'institucion'"]
     
     Normalize --> Populate["📋 Poblar request.user"]
     
@@ -541,7 +543,8 @@ flowchart TD
 @Get('estadisticas')
 obtenerEstadisticas() { ... }
 
-// ✅ Instituciones y administradores
+// ✅ Instituciones, empresas (subtipo) y administradores
+// (el guard normaliza 'empresa' → 'institucion' en request.user)
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('institucion', 'admin')
 @Post()
@@ -634,7 +637,7 @@ sequenceDiagram
         Note over G1,C: FASE 3: VERIFICACIÓN DE GUARDS
         G1->>G1: 5. verifyIdToken()
         G1->>DB: 6. Obtener perfil
-        G1->>G1: 7. Poblar request.user
+        G1->>G1: 7. Poblar request.user<br/>(normaliza 'institution'/'empresa' → 'institucion')
         G1-->>G2: ✅ Token válido
 
         G2->>G2: 8. Verificar @Roles(['institucion', 'admin'])

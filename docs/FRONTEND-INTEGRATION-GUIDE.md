@@ -59,7 +59,7 @@ interface Usuario {
   id: string;
   email: string;
   nombreCompleto: string;
-  rol: 'pcd' | 'tutor' | 'institucion' | 'admin';
+  rol: 'pcd' | 'tutor' | 'institucion' | 'empresa' | 'admin';
   avatarUrl?: string;
   features: FeatureFlags;
 }
@@ -360,6 +360,8 @@ validando el header `Origin` en peticiones de escritura autenticadas por cookie.
 ---
 
 ## 🛡️ Sistema de Permisos
+
+> **Nota — empresas (subtipo de institución):** el backend autoriza a las cuentas `rol: "empresa"` como si fueran `institucion` (el `FirebaseAuthGuard` normaliza `'empresa' → 'institucion'` en `request.user`), pero **las respuestas de la API siguen reportando `rol: "empresa"`**. Por eso cualquier `RequireRole roles={[...]}` / `IfRole` que restrinja pantallas de institución (vacantes, mi-institución, postulantes) debe incluir `'empresa'` además de `'institucion'`. La empresa nace con `verificada: false` en su entidad y no aparece en el directorio público (`GET /instituciones`), pero sus vacantes sí se listan en `GET /empleo` una vez aprobada.
 
 ### 1. Estructura de Features
 

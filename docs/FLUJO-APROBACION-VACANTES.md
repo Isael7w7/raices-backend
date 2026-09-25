@@ -26,12 +26,13 @@
 **¿Qué hace este flujo?** Una persona registra su organización como **institución**, un **administrador la aprueba** y solo entonces la institución puede **publicar vacantes** de empleo inclusivo en el directorio público.
 
 **Reglas clave:**
-- El rol canónico es **`institucion`** (el guard normaliza el legacy `institution` automáticamente).
-- El registro crea de forma **atómica** (un solo `db.batch()`) los documentos `perfiles/{uid}` e `instituciones/{uid}`, con vínculo explícito (`institucionId`, `creadoPor`, `usuarioId`).
-- Una institución recién registrada nace con **`activa: true`** y **`verificada: false`** (pendiente de aprobación).
-- **Solo instituciones `activa: true` Y `verificada: true`** pueden:
+- El rol canónico es **`institucion`** (el guard normaliza el legacy `institution` automáticamente). Las **empresas** son un **subtipo de esta misma entidad**: su perfil conserva `rol: "empresa"`, pero el `FirebaseAuthGuard` lo normaliza a `"institucion"` al poblar `request.user`, así que se autorizan con los mismos `@Roles`/guards sin modificarlos.
+- El registro crea de forma **atómica** (un solo `db.batch()`) los documentos `perfiles/{uid}` e `instituciones/{uid}`, con vínculo explícito (`institucionId`, `creadoPor`, `usuarioId`). Para empresas, el documento lleva **`tipo: "empresa"`** (las instituciones y los documentos legados no lo llevan).
+- Una institución (o empresa) recién registrada nace con **`activa: true`** y **`verificada: false`** (pendiente de aprobación).
+- **Solo entidades `activa: true` Y `verificada: true`** pueden:
   - Publicar vacantes (`POST /api/empleo`).
-  - Aparecer en el listado público de vacantes (`GET /api/empleo`) y en el directorio (`GET /api/instituciones`).
+  - Aparecer en el listado público de vacantes (`GET /api/empleo`).
+  - Aparecer en el directorio (`GET /api/instituciones`) — **excepto las empresas**, que se excluyen del directorio y de las vistas de descubrimiento/recomendaciones por su campo `tipo: "empresa"`. Su presencia pública son sus vacantes; el detalle `GET /api/instituciones/:id` queda abierto para abrir su perfil desde una vacante.
 
 ---
 
@@ -41,14 +42,15 @@
 
 ```
 perfiles/{uid}                    ← Perfil del usuario
-├── rol: "institucion"
+├── rol: "institucion" | "empresa" ← empresa = subtipo (el guard la trata como institucion)
 ├── institucionId: <uid>          ← Vínculo con su institución
 ├── activo: boolean
 └── verificado: boolean
 
-instituciones/{uid}               ← Documento de la institución (id = UID)
+instituciones/{uid}               ← Documento de la institución o empresa (id = UID)
 ├── nombre, emailContacto
-├── categoria: "funcional" | "educativo" | "laboral" | "social"
+├── tipo?: "empresa"              ← subtipo (solo empresas; ausente en instituciones/legados)
+├── categoria: "funcional" | "educativo" | "laboral" | "social" (null en empresas)
 ├── descripcion, telefono
 ├── tiposDiscapacidad: string[]
 ├── creadoPor: <uid>              ← Dueño (permite findMine y propiedad)
@@ -65,6 +67,8 @@ vacantes/{id}                     ← Vacantes de empleo
 ```
 
 > **Nota:** las instituciones creadas vía `POST /api/instituciones` (endpoint de creación manual) usan un ID aleatorio y se localizan por `creadoPor`. Las creadas en el **registro** usan `id = UID` (documento canónico).
+>
+> **Nota (empresas):** el registro con `rol: 'empresa'` crea este mismo documento con `tipo: 'empresa'` y **sin `categoria`** (solo es obligatoria para instituciones). Pasa por la misma cola de aprobación del administrador. Las cuentas empresa anteriores a este cambio se migran con `src/database/migrations/migrar-empresas.ts`.
 
 ---
 
@@ -77,21 +81,23 @@ sequenceDiagram
     participant AD as Admin
     participant J as API (JobsService)
 
-    U->>A: POST /autenticacion/registro { rol: "institucion", categoria, ... }
-    A->>A: Valida que exista categoria
+    U->>A: POST /autenticacion/registro { rol: "institucion", categoria, ... }<br/>(o rol: "empresa", sin categoria)
+    A->>A: Valida que exista categoria (solo rol "institucion")
     A->>A: Crea usuario en Firebase Auth
     A->>A: db.batch(): perfiles/{uid} + instituciones/{uid} (atómico)
+    Note over A: empresa → el doc de instituciones lleva tipo: "empresa";
+    Note over A: el perfil conserva rol "empresa" (el guard la trata como institucion)
     Note over A: Si el batch falla → rollback (elimina el usuario de Firebase Auth)
     A-->>U: 201 { usuario, requiereInicioSesion: true }
     Note over U: El registro NO devuelve tokens: debe llamar a POST /autenticacion/inicio-sesion
-    Note over U: Institución queda activa: true, verificada: false
+    Note over U: La entidad queda activa: true, verificada: false
 
     AD->>AD: GET /administracion/instituciones/pendientes
     AD->>AD: POST /administracion/instituciones/:id/aprobar
     Note over AD: Escribe { verificada: true, activa: true } + envía email
     AD-->>U: Institución aprobada ✅
 
-    U->>J: POST /empleo (Bearer token, rol "institucion")
+    U->>J: POST /empleo (Bearer token, rol "institucion"<br/>— empresa: rol normalizado en el guard)
     J->>J: Valida institución por creadoPor
     J->>J: createJob(): ¿existe? ¿activa? ¿verificada?
     J-->>U: 201 Vacante creada
@@ -104,12 +110,12 @@ sequenceDiagram
 
 1. **Validaciones previas** en `auth.service.ts` (`register`):
    - Si viene `tutorId`, solo aplica a rol `pcd` (no a instituciones).
-   - Si `rol === 'institucion'` y falta `categoria` → `400 Bad Request: La categoría es obligatoria para registrar una institución`.
+   - Si `rol === 'institucion'` y falta `categoria` → `400 Bad Request: La categoría es obligatoria para registrar una institución`. (Las empresas no exigen `categoria`.)
    - Email duplicado → `409 Conflict`.
 2. **Creación del usuario** en Firebase Auth.
 3. **Escritura atómica** con `db.batch()`:
-   - `perfiles/{uid}` con `institucionId: uid`.
-   - `instituciones/{uid}` con `creadoPor`, `usuarioId`, `categoria`, `descripcion`, `telefono`, `tiposDiscapacidad`, `activa: true`, `verificada: false`.
+   - `perfiles/{uid}` con `institucionId: uid` (y `rol: "empresa"` cuando el registro es de empresa).
+   - `instituciones/{uid}` con `creadoPor`, `usuarioId`, `categoria`, `descripcion`, `telefono`, `tiposDiscapacidad`, `activa: true`, `verificada: false` — y `tipo: "empresa"` si el rol es `empresa`.
    - Si el `batch.commit()` falla → se elimina el usuario de Firebase Auth (rollback) y se propaga el error.
 
 ---
@@ -127,6 +133,7 @@ sequenceDiagram
 
 **Roles permitidos para crear vacantes** (`@Roles('institucion', 'admin')`):
 - Usuario con rol `institucion`: se resuelve su institución por `creadoPor`.
+- Usuario con rol `empresa`: el guard lo normaliza a `institucion` (subtipo), pasa el `RolesGuard` y resuelve su entidad por `creadoPor` igual que una institución.
 - Admin: debe enviar `institucionId` explícito.
 - Cualquier otro rol → `403` del `RolesGuard`.
 
@@ -158,12 +165,12 @@ sequenceDiagram
 
 | Método | Ruta | Rol | Descripción |
 |--------|------|-----|-------------|
-| `POST` | `/api/autenticacion/registro` | Público | Registro (rol `institucion` con `categoria` obligatoria) |
+| `POST` | `/api/autenticacion/registro` | Público | Registro (rol `institucion` con `categoria` obligatoria, o rol `empresa` sin `categoria`) |
 | `GET` | `/api/autenticacion/yo` | Autenticado | Perfil con objeto `institucion` adjunto |
 | `GET` | `/api/usuarios/perfil` | Autenticado | Perfil completo con `institucion` adjunta |
 | `GET` | `/api/instituciones/mi-institucion` | Autenticado | Institución del usuario (doc canónico o por `creadoPor`) |
 | `PUT` | `/api/instituciones/mi-institucion` | Autenticado | Actualizar su institución (solo si está activa) |
-| `GET` | `/api/instituciones` | Público | Directorio (solo `activa && verificada`) |
+| `GET` | `/api/instituciones` | Público | Directorio (solo `activa && verificada`; excluye `tipo: 'empresa'`) |
 | `GET` | `/api/instituciones/:id` | Público | Detalle público (solo `activa && verificada`; `404` si está pendiente o inactiva) |
 | `GET` | `/api/instituciones/:id/detalle` | Autenticado | Detalle sin filtrar estado (admin o propietario) |
 | `PUT`/`DELETE` | `/api/instituciones/:id` | `institucion`, `admin` | Actualizar / soft-delete por ID (`RolesGuard` + propiedad validada en el servicio; `404` si está inactiva o eliminada) |
@@ -174,6 +181,8 @@ sequenceDiagram
 | `GET` | `/api/empleo/postulaciones?vacanteId=xxx` | `institucion`, `admin` | Alias del anterior (compatibilidad frontend) |
 | `GET` | `/api/empleo/postulantes-institucion` | `institucion`, `admin` | Ver todos los postulantes de MI institución |
 | `PATCH` | `/api/empleo/postulaciones/:id/estado` | `institucion`, `admin` | Cambiar estado de postulación (aceptar/rechazar) |
+
+> Las filas con rol `institucion` también aplican a las **cuentas empresa**: el `FirebaseAuthGuard` normaliza `empresa → 'institucion'` en `request.user`, sin necesidad de listar el rol en cada `@Roles`.
 
 ### Administración (todos con `@Roles('admin')`)
 
@@ -194,6 +203,8 @@ sequenceDiagram
 | **Aprobada** | ✅ `true` | ✅ `true` | ✅ Sí | ✅ Sí | ✅ Sí |
 | Inactiva / desactivada | ❌ `false` | — | ❌ No | ❌ No (403 inactiva) | ❌ No |
 | Rechazada | documento eliminado en cascada | | ❌ | ❌ | ❌ |
+
+> Las empresas recorren exactamente los mismos estados (el campo `tipo: 'empresa'` no cambia la aprobación); la única diferencia es que **nunca aparecen en el directorio** aunque estén aprobadas.
 
 ---
 
@@ -226,7 +237,11 @@ Las reglas anteriores están cubiertas por la suite de Jest:
 | `jobs.controller.spec.ts` | El endpoint `POST /empleo` acepta un usuario con rol `institucion` (delegación al servicio) |
 | `roles.guard.spec.ts` | `RolesGuard` con `['institucion', 'admin']` permite `rol: 'institucion'` (sin 403) |
 | `admin.service.spec.ts` | `approveInstitution` escribe `{ verificada: true, activa: true }` y envía email; `rejectInstitution` elimina institución + vacantes |
-| `auth.service.spec.ts` | Registro atómico de institución (batch con `creadoPor`/`usuarioId`/`institucionId`/`categoria`), rollback y rechazo sin `categoria` |
+| `auth.service.spec.ts` | Registro atómico de institución (batch con `creadoPor`/`usuarioId`/`institucionId`/`categoria`), rollback y rechazo sin `categoria`; registro de **empresa** crea `instituciones/{uid}` con `tipo: 'empresa'` sin exigir `categoria` |
+| `firebase-auth.guard.spec.ts` | Normalización `empresa → institucion` en `request.user` (el perfil y las respuestas de la API siguen reportando `rol: 'empresa'`) |
+| `institutions.service.spec.ts` | El directorio excluye `tipo: 'empresa'` pero conserva los documentos legados sin el campo |
+| `verificacion-institucion.e2e-spec.ts` | Registro de empresa sin CURP crea el documento `instituciones` con `tipo: 'empresa'` y `institucionId` vinculado |
+| `jobs.e2e-spec.ts` | Empresa verificada publica vacantes en `POST /empleo` con su nombre en el listado público; `403` si el perfil o la entidad no están verificados |
 
 ---
 
@@ -254,7 +269,10 @@ No. `createJob` devuelve `403` con el mensaje de aprobación pendiente.
 Se elimina la institución y sus vacantes asociadas (cascada atómica) y se desactiva el perfil vinculado si existe.
 
 **¿El rol se escribe como `institution` (inglés) o `institucion`?**
-El canónico es `institucion`. El `FirebaseAuthGuard` normaliza automáticamente el valor legacy `institution` para compatibilidad con cuentas antiguas.
+El canónico es `institucion`. El `FirebaseAuthGuard` normaliza automáticamente el valor legacy `institution` para compatibilidad con cuentas antiguas, y también `empresa → 'institucion'` al poblar `request.user` (las empresas son subtipo de la entidad institución; el perfil conserva `rol: 'empresa'` para el cliente).
+
+**¿Las empresas aparecen en el directorio público de instituciones?**
+No. Comparten la colección `instituciones` pero llevan `tipo: "empresa"`, y las vistas de descubrimiento (`GET /instituciones`, descubrimiento, recomendaciones e "instituciones cercanas" de las rutas) las excluyen en memoria (sin índices nuevos ni migración de documentos legados). Su presencia pública son sus vacantes en `GET /api/empleo`; el detalle `GET /api/instituciones/:id` queda accesible para abrir su perfil desde una vacante. Las reseñas de una empresa viven en su propio documento y no contaminan a otras instituciones.
 
 **¿Dónde vive la lógica de aprobación?**
 En `admin.service.ts` (`approveInstitution` / `rejectInstitution`) y su exposición HTTP en `admin.controller.ts`.

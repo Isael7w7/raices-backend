@@ -458,7 +458,7 @@ Utilizado por Docker y Cloud Run como healthcheck. Excluido de rate limiting (`@
 | `perfiles` | Perfiles de usuario (id = UID de Firebase Auth) | → perfilesExtendidos, dependientes |
 | `perfilesExtendidos` | Datos extendidos (discapacidad, necesidades, escalas) | ← perfiles |
 | `dependientes` | Dependientes de tutores (planos + cuentas PCD vinculadas) | ← perfiles |
-| `instituciones` | Directorio de instituciones | ← perfiles (creadoPor) |
+| `instituciones` | Directorio de instituciones y empresas (subtipo `tipo: 'empresa'`, ocultas del directorio público) | ← perfiles (creadoPor) |
 | `favoritos` | Instituciones guardadas por usuario | ← perfiles, instituciones |
 | `resenas` | Reseñas de instituciones | ← perfiles, instituciones |
 | `publicaciones` | Publicaciones de comunidad | ← perfiles, grupos |
@@ -486,7 +486,7 @@ Utilizado por Docker y Cloud Run como healthcheck. Excluido de rate limiting (`@
   "id": "uid-firebase",
   "email": "usuario@email.com",
   "nombreCompleto": "Juan Pérez",
-  "rol": "pcd | padre_tutor | institucion | admin",
+  "rol": "pcd | padre_tutor | institucion | especialista | empresa | institucional | admin",
   "activo": true,
   "verificado": false,
   "ciudad": "Ciudad de México",
@@ -553,7 +553,7 @@ Utilizado por Docker y Cloud Run como healthcheck. Excluido de rate limiting (`@
 
 | Guard | Función |
 |-------|---------|
-| `JwtAuthGuard` | Verifica JWT (cookie httpOnly o header Bearer) |
+| `JwtAuthGuard` | Verifica JWT (cookie httpOnly o header Bearer) y normaliza el rol (`'institution'`/`'empresa'` → `'institucion'`) |
 | `RolesGuard` | Valida roles (`@Roles('admin')`) |
 | `FeatureGuard` | Valida feature flags (`@Feature('comunidad')`) |
 | `LimitDependientesGuard` | Valida límite de dependientes por tutor |
