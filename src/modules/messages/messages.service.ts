@@ -108,4 +108,36 @@ export class MessagesService {
       .where('destinatarioId', '==', usuarioId).where('leido', '==', false).get()
     return snap.size
   }
+
+  /**
+   * Marca como leídos todos los mensajes recibidos de un socio específico.
+   * Usado por el cliente al abrir una conversación: actualiza en lote los
+   * mensajes `destinatarioId == usuarioId && remitenteId == socioId && leido == false`.
+   */
+  async marcarConversacionLeida(usuarioId: string, socioId: string): Promise<{ actualizados: number }> {
+    if (usuarioId === socioId) {
+      throw new ForbiddenException('No puedes marcar tu propia conversación')
+    }
+
+    const snap = await this.db.collection(COLECCIONES.mensajesDirectos)
+      .where('destinatarioId', '==', usuarioId)
+      .where('remitenteId', '==', socioId)
+      .where('leido', '==', false)
+      .get()
+
+    if (snap.empty) return { actualizados: 0 }
+
+    // Escritura atómica en batch (límite de Firestore: 500 ops por batch;
+    // el paginado defensivo evita fallar con conversaciones muy largas)
+    const docs = snap.docs
+    for (let i = 0; i < docs.length; i += 450) {
+      const batch = this.db.batch()
+      for (const doc of docs.slice(i, i + 450)) {
+        batch.update(doc.ref, { leido: true })
+      }
+      await batch.commit()
+    }
+
+    return { actualizados: docs.length }
+  }
 }

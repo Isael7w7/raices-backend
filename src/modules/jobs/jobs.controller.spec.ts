@@ -18,6 +18,7 @@ describe('JobsController', () => {
     myApplications: jest.fn(),
     update: jest.fn(),
     remove: jest.fn(),
+    misVacantes: jest.fn(),
     postulantesDeMiInstitucion: jest.fn(),
     actualizarEstadoPostulacion: jest.fn(),
   }
@@ -67,6 +68,37 @@ describe('JobsController', () => {
     // la restricción por rol (403) la aplica RolesGuard antes del controlador.
     await controller.create(dto as any, user as any)
     expect(mockSvc.createForUser).toHaveBeenCalledWith(user, dto)
+  })
+
+  it('registra GET mis-vacantes con guards y roles correctos, ANTES de la ruta paramétrica :id', () => {
+    const handler = (JobsController.prototype as any).myJobs
+
+    // Ruta y método HTTP
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('mis-vacantes')
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.GET)
+
+    // Guards aplicados
+    const guards = Reflect.getMetadata('__guards__', handler) ?? []
+    expect(guards).toContain(JwtAuthGuard)
+    expect(guards).toContain(RolesGuard)
+
+    // Roles exigidos
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'admin'])
+
+    // Orden de declaración: ruta estática antes de @Get(':id')
+    const metodos = Object.getOwnPropertyNames(JobsController.prototype)
+    expect(metodos.indexOf('myJobs')).toBeLessThan(metodos.indexOf('findOne'))
+  })
+
+  it('delega en el servicio al consultar mis-vacantes', async () => {
+    mockSvc.misVacantes.mockResolvedValue({ datos: [{ id: 'v1', titulo: 'Dev' }], total: 1 })
+
+    const user = { id: 'inst-user', email: 'c@test.com', rol: 'institucion', nombreCompleto: 'C', verificado: true, tutorId: null as string | null, features: {} }
+
+    const result = await controller.myJobs(user as any, undefined)
+
+    expect(mockSvc.misVacantes).toHaveBeenCalledWith(user, undefined)
+    expect(result.total).toBe(1)
   })
 
   it('registra GET postulantes-institucion con guards y roles correctos, ANTES de la ruta paramétrica :id', () => {

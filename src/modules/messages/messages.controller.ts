@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { MessagesService } from './messages.service'
 import { EnviarDto } from './dto/enviar.dto'
@@ -53,5 +53,16 @@ export class MessagesController {
   @ApiResponse({ status: 403, description: 'Funcionalidad de chat desactivada para tu cuenta, o no puedes enviarte mensajes a ti mismo, o usuario destino no existe' })
   send(@Param('userId') destinatarioId: string, @Body() dto: EnviarDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.sendMessage(user, destinatarioId, dto.contenido, dto.mediaUrl)
+  }
+
+  @Patch('leer/:userId')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Marcar conversación como leída', description: 'Marca como leídos todos los mensajes recibidos del usuario indicado. Lo llama el cliente al abrir una conversación.' })
+  @ApiParam({ name: 'userId', description: 'ID del socio de la conversación' })
+  @ApiOkResponse({ description: 'Mensajes marcados como leídos', schema: { type: 'object', properties: { actualizados: { type: 'number', example: 3 } } } })
+  @ApiResponse({ status: 403, description: 'No puedes marcar tu propia conversación' })
+  marcarLeida(@Param('userId') socioId: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.marcarConversacionLeida(user.id, socioId)
   }
 }

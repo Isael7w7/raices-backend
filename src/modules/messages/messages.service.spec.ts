@@ -180,4 +180,57 @@ describe('MessagesService', () => {
       expect(result).toBe(5)
     })
   })
+
+  describe('marcarConversacionLeida', () => {
+    it('marca como leídos los mensajes recibidos del socio y retorna el conteo', async () => {
+      const refs = [{ ref: { update: jest.fn() } }, { ref: { update: jest.fn() } }, { ref: { update: jest.fn() } }]
+      const batch = { update: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: refs }),
+      })
+      firestoreMock.batch.mockReturnValue(batch)
+
+      const result = await service.marcarConversacionLeida('u1', 'u2')
+
+      expect(result).toEqual({ actualizados: 3 })
+      expect(batch.update).toHaveBeenCalledTimes(3)
+      refs.forEach(r => expect(batch.update).toHaveBeenCalledWith(r.ref, { leido: true }))
+      expect(batch.commit).toHaveBeenCalledTimes(1)
+    })
+
+    it('no crea batch cuando no hay mensajes sin leer', async () => {
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      })
+
+      const result = await service.marcarConversacionLeida('u1', 'u2')
+
+      expect(result).toEqual({ actualizados: 0 })
+      expect(firestoreMock.batch).not.toHaveBeenCalled()
+    })
+
+    it('rechaza marcar la propia conversación (usuario == socio)', async () => {
+      await expect(service.marcarConversacionLeida('u1', 'u1')).rejects.toThrow(ForbiddenException)
+      expect(firestoreMock.collection).not.toHaveBeenCalled()
+    })
+
+    it('pagina en múltiples batches con conversaciones de más de 450 mensajes', async () => {
+      const refs = Array.from({ length: 900 }, (_, i) => ({ ref: { update: jest.fn() } }))
+      const batch = { update: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
+
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: refs }),
+      })
+      firestoreMock.batch.mockReturnValue(batch)
+
+      const result = await service.marcarConversacionLeida('u1', 'u2')
+
+      expect(result).toEqual({ actualizados: 900 })
+      expect(batch.commit).toHaveBeenCalledTimes(2) // 450 + 450
+    })
+  })
 })

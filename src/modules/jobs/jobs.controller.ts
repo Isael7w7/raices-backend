@@ -165,6 +165,21 @@ export class JobsController {
     })
   }
 
+  @Get('mis-vacantes')
+  @UseETag()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Mis vacantes', description: 'Retorna TODAS las vacantes de la institución del usuario (incluye pausadas/inactivas para poder reactivarlas). Para admins se requiere institucionId.' })
+  @ApiQuery({ name: 'institucionId', required: false, description: 'Obligatorio para admins: ID de la institución' })
+  @ApiOkResponse({ type: PaginaVacantesDto, description: 'Vacantes propias, activas e inactivas' })
+  @ApiResponse({ status: 400, description: 'Admin sin institucionId' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada para el usuario' })
+  myJobs(@CurrentUser() user: CurrentUserPayload, @Query('institucionId') institucionId?: string) {
+    return this.svc.misVacantes(user, institucionId)
+  }
+
   // Alias para compatibilidad con el frontend que llama a /empleo/postulaciones
   @Get('postulaciones')
   @UseETag()

@@ -465,6 +465,39 @@ export class JobsService {
     return this.findOne(ref.id)
   }
 
+  /**
+   * Vacantes de la institución del usuario autenticado (rol institución/empresa),
+   * INCLUYENDO las pausadas/eliminadas (activa=false) para poder reactivarlas.
+   * Para admin se requiere institucionId explícito.
+   */
+  async misVacantes(user: CurrentUserPayload, institucionId?: string) {
+    let idInstitucion: string | undefined = institucionId
+
+    if (user.rol !== 'admin') {
+      const snap = await this.db.collection(COLECCIONES.instituciones)
+        .where('creadoPor', '==', user.id).limit(1).get()
+      if (snap.empty) {
+        throw new NotFoundException('No tienes una institución registrada. Crea una institución primero.')
+      }
+      idInstitucion = snap.docs[0].id
+    } else if (!institucionId) {
+      throw new BadRequestException('Como administrador, debes proporcionar el ID de la institución (institucionId).')
+    }
+
+    const snap = await this.db.collection(COLECCIONES.vacantes)
+      .where('institucionId', '==', idInstitucion).get()
+
+    const vacantes = snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as VacanteFirestore))
+      .sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+      .map(v => ({
+        ...v,
+        tiposDiscapacidad: parsearTiposDiscapacidad(v.tiposDiscapacidad),
+      }))
+
+    return { datos: vacantes, total: vacantes.length }
+  }
+
   async update(id: string, user: CurrentUserPayload, dto: ActualizarVacanteDto) {
     const doc = await this.db.collection(COLECCIONES.vacantes).doc(id).get()
     if (!doc.exists) throw new NotFoundException('Vacante no encontrada')
