@@ -2,7 +2,6 @@ import { Injectable, Inject, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
-import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 
 /** Métricas agregadas de una ruta */
 export interface MetricaRuta {

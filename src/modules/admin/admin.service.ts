@@ -11,6 +11,7 @@ import { StorageService } from '../storage/storage.service'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import type { PerfilDoc, InstitucionDoc, DocumentoIdentidadDoc, AlertaRiesgo } from '../../common/interfaces/firestore-documents.interface'
+import { InstitucionAdminDto, UsuarioAdminDto } from './dto/respuestas-admin.dto'
 
 /** Documento de reseña Firestore (campos usados en admin). */
 interface ResenaFirestore {
@@ -20,6 +21,19 @@ interface ResenaFirestore {
   calificacion?: number
   comentario?: string
   fechaCreacion?: string
+}
+
+/** Fila de reseña enriquecida con datos de usuario e institución.
+ *  (Retorno tipado de getReviews; reemplaza RespuestaPaginada<any>. Los campos
+ *  opcionales pueden faltar en Firestore y por eso no son nullables estrictos.) */
+interface ResenaEnriquecida {
+  id: string
+  calificacion?: number
+  comentario?: string
+  fechaCreacion?: string
+  nombreUsuario: string | null
+  emailUsuario: string | null
+  nombreInstitucion: string | null
 }
 
 /** Documento de sesión analítica Firestore. */
@@ -301,7 +315,7 @@ export class AdminService {
 
   /* ───────────────────────── Instituciones ───────────────────────── */
 
-  async getAllInstitutions(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getAllInstitutions(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<InstitucionAdminDto>> {
     const snap = await this.col(COLECCIONES.instituciones).orderBy('fechaCreacion', 'desc').get()
     let todos = snap.docs.map(d => {
       const data = d.data()
@@ -465,7 +479,7 @@ export class AdminService {
 
   /* ───────────────────────── Usuarios ───────────────────────── */
 
-  async getUsers(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getUsers(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<UsuarioAdminDto>> {
     const snap = await this.col(COLECCIONES.perfiles).orderBy('fechaCreacion', 'desc').get()
     let todos = snap.docs.map(d => {
       const data = d.data()
@@ -669,7 +683,7 @@ export class AdminService {
 
   /* ───────────────────────── Reseñas (moderación) ───────────────────────── */
 
-  async getReviews(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<any>> {
+  async getReviews(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<ResenaEnriquecida>> {
     const revSnap = await this.col(COLECCIONES.resenas).orderBy('fechaCreacion', 'desc').get()
     const resenas = revSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResenaFirestore))
 

@@ -8,6 +8,8 @@ import { RoutesService } from './routes.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
 import { FIRESTORE } from '../../database/firebase.provider';
 import { COLECCIONES } from '../../database/firestore.constants';
+import { ConfigService } from '@nestjs/config';
+import { RoutesAnalyticsService } from './routes-analytics.service';
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
 
@@ -147,8 +149,8 @@ async function crearService(firestoreMock: any) {
       RoutesService,
       { provide: FIRESTORE, useValue: firestoreMock },
       { provide: KnowledgeBaseService, useValue: knowledgeBaseMock },
-      { provide: require('@nestjs/config').ConfigService, useValue: configMock },
-      { provide: require('./routes-analytics.service').RoutesAnalyticsService, useValue: analyticsMock },
+      { provide: ConfigService, useValue: configMock },
+      { provide: RoutesAnalyticsService, useValue: analyticsMock },
     ],
   }).compile();
   return module.get<RoutesService>(RoutesService);
@@ -553,10 +555,6 @@ describe('RoutesService', () => {
           data: () => ({ ciudad: 'Mérida', fechaNacimiento: '2015-01-01' }),
         }),
       };
-      const rutasActivasCol = {
-        where: jest.fn().mockReturnThis(),
-        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
-      };
       const nuevaRutaRef = crearRef('ruta-nueva', null, false);
       const rutasColExtend = {
         ...fx.rutasCol,
@@ -603,18 +601,6 @@ describe('RoutesService', () => {
       };
       const registroDoc = {
         get: jest.fn().mockResolvedValue({ exists: true, data: () => ({}) }),
-      };
-      const rutasActivasCol = {
-        where: jest.fn().mockReturnThis(),
-        get: jest.fn().mockResolvedValue({
-          empty: false,
-          docs: [{
-            id: 'ruta-activa',
-            exists: true,
-            data: () => ({ ...rutaBase, estado: 'activa' }),
-            ref: crearRef('ruta-activa', rutaBase),
-          }],
-        }),
       };
       const pasosCol = {
         where: jest.fn().mockReturnThis(),

@@ -2,8 +2,8 @@ import { Injectable, Inject, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
-import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
-import type { PerfilExtendidoDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
+import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import type { PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
 
 // ─── Tipos internos ──────────────────────────────────────────────────────
 
@@ -129,33 +129,6 @@ const RUTA_GENERICA: RutaExperta = {
   ],
 }
 
-// ─── Rangos de edad para matching ────────────────────────────────────────
-
-/** Calcula el rango de edad aproximado a partir de la fecha de nacimiento. */
-function calcularRangoEdad(fechaNacimiento?: string): string {
-  if (!fechaNacimiento) return 'desconocido'
-  try {
-    const nac = new Date(fechaNacimiento)
-    const hoy = new Date()
-    const edad = Math.floor((hoy.getTime() - nac.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-    if (edad <= 5) return '0-5'
-    if (edad <= 12) return '6-12'
-    if (edad <= 17) return '13-17'
-    if (edad <= 25) return '18-25'
-    if (edad <= 35) return '26-35'
-    if (edad <= 50) return '36-50'
-    return '51+'
-  } catch {
-    return 'desconocido'
-  }
-}
-
-/** Verifica si dos rangos de edad son compatibles (±2 años de diferencia). */
-function rangosCompatibles(rangoA: string, rangoB: string): boolean {
-  if (rangoA === 'desconocido' || rangoB === 'desconocido') return true // Si no sabemos, asumimos compatible
-  return rangoA === rangoB // Mismo rango = compatible
-}
-
 // ─── Servicio ────────────────────────────────────────────────────────────
 
 @Injectable()
@@ -215,16 +188,14 @@ export class KnowledgeBaseService {
   /**
    * Busca perfiles similares al usuario actual:
    * - Mismo tipo de discapacidad
-   * - Rango de edad compatible (±2 años)
    * - Misma etapa de vida
    *
    * Retorna usuarios con rutas completadas o alta interacción positiva.
    */
-  async buscarPerfilesSimilares(usuarioId: string, perfil: PerfilExtendidoDoc, perfilBase: PerfilDoc): Promise<PerfilSimilar[]> {
+  async buscarPerfilesSimilares(usuarioId: string, perfil: PerfilExtendidoDoc): Promise<PerfilSimilar[]> {
     try {
       const tiposUsuario = parsearTiposDiscapacidad(perfil.tiposDiscapacidad)
       const etapaUsuario = perfil.etapaVida ?? 'desconocida'
-      const rangoEdadUsuario = calcularRangoEdad(perfilBase.fechaNacimiento)
 
       if (tiposUsuario.length === 0) return []
 

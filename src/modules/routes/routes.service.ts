@@ -464,7 +464,7 @@ export class RoutesService {
 
     // 5. Buscar perfiles similares (Fase Evolutiva)
     const perfilesSimilares = perfil && registro
-      ? await this.knowledgeBase.buscarPerfilesSimilares(usuarioId, perfil, registro)
+      ? await this.knowledgeBase.buscarPerfilesSimilares(usuarioId, perfil)
       : []
 
     // 6. Intentar generar pasos personalizados con Gemini
