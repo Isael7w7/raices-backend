@@ -167,6 +167,39 @@ export interface PerfilExtendidoDoc {
 }
 
 /**
+ * Borrador del formulario de onboarding (colección `borradoresOnboarding`).
+ * Documento único por usuario/tutor: guarda solo las respuestas enviadas
+ * (guardado parcial) más el progreso recalculado en cada guardado.
+ */
+export interface BorradorOnboardingDoc {
+  id?: string
+  usuarioId?: string
+  // ── Respuestas del formulario (todas opcionales: payloads parciales) ──
+  observacionesGenerales?: string
+  fechaNacimiento?: string
+  curp?: string
+  ciudad?: string
+  tiposDiscapacidad?: string[]
+  necesidades?: string[]
+  metasActuales?: string[]
+  escalasVida?: Record<string, number>
+  preferenciasAcompanamiento?: string
+  tonoContextual?: string
+  areasInteres?: string[]
+  historialEducacion?: string[]
+  etapaVida?: string
+  historialTerapia?: string[]
+  tieneDiagnostico?: boolean
+  // ── Progreso recalculado en cada guardado ──
+  porcentajeProgreso?: number
+  ultimoPasoCompletado?: number
+  onboardingCompleto?: boolean
+  pasosPendientes?: string[]
+  fechaCreacion?: string
+  fechaActualizacion?: string
+}
+
+/**
  * Documento de la colección `foros` (foros institucionales tipo Classroom).
  */
 export interface ForoDoc {

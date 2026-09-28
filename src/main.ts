@@ -83,6 +83,7 @@ async function bootstrap() {
     .addTag("Catálogos", "Catálogos de referencia (parentescos, discapacidades, etc.)")
     .addTag("Mensajes", "Mensajería directa entre usuarios")
     .addTag("Rutas de Desarrollo", "Rutas y caminos de desarrollo personalizados")
+    .addTag("Onboarding", "Guardado parcial y estado del onboarding (Diapositiva 1)")
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

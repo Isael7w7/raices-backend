@@ -23,6 +23,7 @@ import { MessagesModule } from './modules/messages/messages.module'
 import { CatalogsModule } from './modules/catalogs/catalogs.module'
 import { HealthModule } from './modules/health/health.module'
 import { RoutesModule } from './modules/routes/routes.module'
+import { OnboardingModule } from './modules/onboarding/onboarding.module'
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { RoutesModule } from './modules/routes/routes.module'
     CatalogsModule,
     HealthModule,
     RoutesModule,
+    OnboardingModule,
   ],
   providers: [
     {

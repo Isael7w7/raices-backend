@@ -2,6 +2,8 @@
 export const COLECCIONES = {
   perfiles: 'perfiles',
   perfilesExtendidos: 'perfilesExtendidos',
+  // Borrador del formulario de onboarding (guardado parcial / "continuar después")
+  borradoresOnboarding: 'borradoresOnboarding',
   dependientes: 'dependientes',
   favoritos: 'favoritos',
   resenas: 'resenas',
