@@ -246,6 +246,12 @@ describe('OnboardingService', () => {
         destinatarioPerfil: 'PARA_MI_HIJO',
         nombrePcd: 'Diego',
         pasosPendientes: expect.arrayContaining(['historialEducativo', 'terapias']),
+        etapas: {
+          etapa1: { nombre: 'Conocer quién eres', completada: false, desbloqueada: true, porcentaje: expect.any(Number) },
+          etapa2: { nombre: 'Conocer tu día a día', completada: false, desbloqueada: false, porcentaje: 0 },
+          etapa3: { nombre: 'Reconocer tus logros e intereses', completada: false, desbloqueada: false, porcentaje: 0 },
+        },
+        modulosPermitidos: ['inicio', 'perfil_pcd'],
       })
       expect(estado.pasosPendientes).not.toContain('datosGenerales')
     })
@@ -292,6 +298,10 @@ describe('OnboardingService', () => {
       expect(estado.onboardingCompleto).toBe(false)
       expect(estado.porcentajeProgreso).toBe(0)
       expect(estado.pasosPendientes).toHaveLength(SECCIONES_ONBOARDING.length)
+      // Fail-closed: sin estado confiable no se desbloquea nada más allá de la Etapa 1
+      expect(estado.etapas.etapa1.desbloqueada).toBe(true)
+      expect(estado.etapas.etapa1.completada).toBe(false)
+      expect(estado.modulosPermitidos).toEqual(['inicio', 'perfil_pcd'])
     })
 
     it('prefiere la cuenta PCD vinculada para nombrePcd sobre un dependiente plano', async () => {
@@ -306,6 +316,87 @@ describe('OnboardingService', () => {
       const estado = await service.obtenerEstado('u1')
 
       expect(estado.nombrePcd).toBe('Diego')
+    })
+  })
+
+  // ── Navegación por etapas ──────────────────────────────────────────
+
+  describe('etapas y modulosPermitidos', () => {
+    /** Borrador que completa las 15 secciones del onboarding. */
+    const onboardingCompleto = {
+      fechaNacimiento: '2015-03-15',
+      curp: 'GAPL800101MCYRL093',
+      ciudad: 'Mérida',
+      historialEducacion: ['educacion_regular'],
+      etapaVida: 'infancia',
+      historialTerapia: ['fisioterapia'],
+      tieneDiagnostico: true,
+      tiposDiscapacidad: ['tea'],
+      necesidades: ['apoyo_social'],
+      metasActuales: ['escuela'],
+      escalasVida: { autonomia: 3 },
+      preferenciasAcompanamiento: 'recomendaciones_paso',
+      tonoContextual: 'empatico',
+      areasInteres: ['educacion'],
+      observacionesGenerales: 'Todo en orden',
+    }
+
+    it('onboarding incompleto: solo Etapa 1 desbloqueada y modulos de esa etapa', async () => {
+      mockearFuentes({ borrador: { curp: 'GAPL800101MCYRL093' } })
+
+      const estado = await service.obtenerEstado('u1')
+
+      expect(estado.etapas.etapa1).toEqual({
+        nombre: 'Conocer quién eres',
+        completada: false,
+        desbloqueada: true,
+        porcentaje: expect.any(Number),
+      })
+      // Etapa 2 requiere Etapa 1 completada → bloqueada
+      expect(estado.etapas.etapa2.desbloqueada).toBe(false)
+      expect(estado.etapas.etapa3.desbloqueada).toBe(false)
+      expect(estado.modulosPermitidos).toEqual(['inicio', 'perfil_pcd'])
+    })
+
+    it('onboarding completo: Etapa 1 completada desbloquea la Etapa 2 y sus módulos', async () => {
+      mockearFuentes({ borrador: onboardingCompleto })
+
+      const estado = await service.obtenerEstado('u1')
+
+      expect(estado.etapas.etapa1.completada).toBe(true)
+      expect(estado.etapas.etapa1.porcentaje).toBe(100)
+      expect(estado.etapas.etapa2.desbloqueada).toBe(true)
+      expect(estado.etapas.etapa2.completada).toBe(false) // módulo pendiente
+      expect(estado.etapas.etapa2.porcentaje).toBe(0)
+      // Etapa 3 requiere Etapa 2 completada → sigue bloqueada
+      expect(estado.etapas.etapa3.desbloqueada).toBe(false)
+      expect(estado.modulosPermitidos).toEqual(['inicio', 'perfil_pcd', 'terapias', 'rutinas'])
+    })
+
+    it('las etapas 2 y 3 nunca aparecen desbloqueadas sin completar la previa', async () => {
+      mockearFuentes({ borrador: onboardingCompleto })
+
+      const estado = await service.obtenerEstado('u1')
+
+      expect(estado.etapas.etapa3.desbloqueada).toBe(false)
+      expect(estado.modulosPermitidos).not.toContain('caminos')
+      expect(estado.modulosPermitidos).not.toContain('comunidad')
+    })
+
+    it('etapaCompletada retorna true solo para la Etapa 1 con onboarding completo', async () => {
+      mockearFuentes({ borrador: onboardingCompleto })
+
+      await expect(service.etapaCompletada('u1', 1)).resolves.toBe(true)
+      await expect(service.etapaCompletada('u1', 2)).resolves.toBe(false)
+      await expect(service.etapaCompletada('u1', 3)).resolves.toBe(false)
+    })
+
+    it('etapaCompletada es fail-closed cuando Firestore falla', async () => {
+      firestoreMock.collection.mockImplementation(() => {
+        throw new Error('The collection does not exist')
+      })
+
+      await expect(service.etapaCompletada('u1', 1)).resolves.toBe(false)
     })
   })
 

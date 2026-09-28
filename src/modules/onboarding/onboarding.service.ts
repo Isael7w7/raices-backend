@@ -39,6 +39,31 @@ export const SECCIONES_ONBOARDING: { clave: SeccionOnboarding; campos: (keyof Sa
   { clave: 'observacionesGenerales', campos: ['observacionesGenerales'] },
 ]
 
+/**
+ * Las 3 etapas de navegación del ecosistema Raíces (Sidebar) y los módulos
+ * del menú lateral que habilita cada una.
+ *
+ * Solo la Etapa 1 tiene progreso real hoy (onboarding). Las Etapas 2 y 3
+ * quedan en 0% hasta que existan sus módulos (rutinas/terapias y caminos/
+ * oportunidades/comunidad); el desbloqueo está encadenado: la etapa N se
+ * desbloquea cuando la etapa N-1 está completada.
+ */
+export const ETAPAS_ONBOARDING = [
+  { clave: 'etapa1', nombre: 'Conocer quién eres', modulos: ['inicio', 'perfil_pcd'] },
+  { clave: 'etapa2', nombre: 'Conocer tu día a día', modulos: ['terapias', 'rutinas'] },
+  { clave: 'etapa3', nombre: 'Reconocer tus logros e intereses', modulos: ['caminos', 'oportunidades', 'comunidad'] },
+] as const
+
+export type ClaveEtapa = (typeof ETAPAS_ONBOARDING)[number]['clave']
+
+/** Estado de navegación de una etapa (contrato del Frontend). */
+export interface EstadoEtapa {
+  nombre: string
+  completada: boolean
+  desbloqueada: boolean
+  porcentaje: number
+}
+
 /** Mapeo de perfiles.destinatarioRegistro → contrato del Frontend. */
 const DESTINATARIO_POR_REGISTRO: Record<string, 'PARA_MI' | 'PARA_MI_HIJO'> = {
   para_mi: 'PARA_MI',
@@ -114,20 +139,85 @@ export class OnboardingService {
       const destinatarioPerfil = this.destinatarioPerfil(perfil)
       const nombrePcd = await this.nombrePcd(usuarioId, perfil, destinatarioPerfil)
 
-      return { ...progreso, destinatarioPerfil, nombrePcd }
+      return { ...progreso, ...this.calcularEtapas(progreso), destinatarioPerfil, nombrePcd }
     } catch (err: unknown) {
       // Firestore inaccesible o colección nueva sin crear: el estado nunca
       // debe romper el onboarding; se responde "sin avanzar" para reintentar.
       this.logger.warn(`obtenerEstado falló para usuario ${usuarioId}: ${err instanceof Error ? err.message : String(err)}`)
-      return {
+      const progreso = {
         onboardingCompleto: false,
         porcentajeProgreso: 0,
         ultimoPasoCompletado: 0,
-        destinatarioPerfil: 'PARA_MI',
-        nombrePcd: null,
         pasosPendientes: SECCIONES_ONBOARDING.map(s => s.clave),
       }
+      return {
+        ...progreso,
+        ...this.calcularEtapas(progreso),
+        destinatarioPerfil: 'PARA_MI',
+        nombrePcd: null,
+      }
     }
+  }
+
+  /**
+   * Indica si la etapa dada está COMPLETADA para el usuario.
+   * Usado por {@link EtapaGuard}; nunca lanza (obtenerEstado es defensivo),
+   * por lo que ante un fallo de Firestore responde false (fail-closed).
+   */
+  async etapaCompletada(usuarioId: string, etapa: number): Promise<boolean> {
+    const estado = await this.obtenerEstado(usuarioId)
+    const clave = `etapa${etapa}`
+    const etapaInfo = (estado.etapas as Record<string, EstadoEtapa | undefined>)[clave]
+    return etapaInfo?.completada ?? false
+  }
+
+  // ─── Navegación por etapas (Sidebar) ─────────────────────────────
+
+  /**
+   * Calcula el estado de las 3 etapas del Sidebar a partir del progreso:
+   *
+   * - Etapa 1: refleja el onboarding (completada = onboardingCompleto,
+   *   porcentaje = porcentajeProgreso). Siempre desbloqueada.
+   * - Etapa 2 y 3: 0% hasta que existan sus módulos; se desbloquean
+   *   encadenadamente (N desbloqueada ⇔ etapa N-1 completada).
+   * - modulosPermitidos: unión de los módulos de las etapas desbloqueadas.
+   *
+   * Cuando lleguen los módulos de rutinas/caminos, aquí se calcula el
+   * porcentaje real de las etapas 2 y 3.
+   */
+  private calcularEtapas(progreso: { onboardingCompleto: boolean; porcentajeProgreso: number }): {
+    etapas: Record<ClaveEtapa, EstadoEtapa>
+    modulosPermitidos: string[]
+  } {
+    // Solo la Etapa 1 tiene datos reales hoy (onboarding).
+    const completadas: Record<ClaveEtapa, boolean> = {
+      etapa1: progreso.onboardingCompleto,
+      etapa2: false, // Pendiente: módulo de rutinas/apoyos/terapias
+      etapa3: false, // Pendiente: módulo de caminos/oportunidades/comunidad
+    }
+    const porcentajes: Record<ClaveEtapa, number> = {
+      etapa1: progreso.porcentajeProgreso,
+      etapa2: 0,
+      etapa3: 0,
+    }
+
+    const etapas = {} as Record<ClaveEtapa, EstadoEtapa>
+    const modulosPermitidos: string[] = []
+    let previaCompletada = true // La primera etapa siempre está desbloqueada
+
+    for (const etapa of ETAPAS_ONBOARDING) {
+      const desbloqueada = previaCompletada
+      etapas[etapa.clave] = {
+        nombre: etapa.nombre,
+        completada: completadas[etapa.clave],
+        desbloqueada,
+        porcentaje: porcentajes[etapa.clave],
+      }
+      if (desbloqueada) modulosPermitidos.push(...etapa.modulos)
+      previaCompletada = completadas[etapa.clave]
+    }
+
+    return { etapas, modulosPermitidos }
   }
 
   // ─── Fusión (merge) ───────────────────────────────────────────────

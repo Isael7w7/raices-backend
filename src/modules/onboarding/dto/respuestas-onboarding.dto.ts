@@ -1,5 +1,37 @@
 import { ApiProperty } from '@nestjs/swagger'
 
+// ─── Navegación por etapas (Sidebar) ───────────────────────────────
+
+/** Estado de una etapa del Sidebar. */
+export class EstadoEtapaDto {
+  @ApiProperty({ description: 'Nombre de la etapa', example: 'Conocer quién eres' })
+  nombre!: string
+
+  @ApiProperty({ description: 'Si la etapa está completamente resuelta', example: true })
+  completada!: boolean
+
+  @ApiProperty({
+    description: 'Si la etapa está desbloqueada (requiere completar la etapa anterior)',
+    example: true,
+  })
+  desbloqueada!: boolean
+
+  @ApiProperty({ description: 'Porcentaje de avance de la etapa (0-100)', example: 100 })
+  porcentaje!: number
+}
+
+/** Mapa de las 3 etapas de navegación del ecosistema Raíces. */
+export class EtapasNavegacionDto {
+  @ApiProperty({ type: EstadoEtapaDto, description: 'Etapa 1: perfilamiento / onboarding inicial' })
+  etapa1!: EstadoEtapaDto
+
+  @ApiProperty({ type: EstadoEtapaDto, description: 'Etapa 2: rutinas, apoyos y terapias' })
+  etapa2!: EstadoEtapaDto
+
+  @ApiProperty({ type: EstadoEtapaDto, description: 'Etapa 3: caminos, oportunidades y comunidad' })
+  etapa3!: EstadoEtapaDto
+}
+
 // ─── Diapositiva 1 · Estado del Onboarding ──────────────────────────
 
 /**
@@ -43,6 +75,19 @@ export class EstadoOnboardingDto {
     type: [String],
   })
   pasosPendientes!: string[]
+
+  @ApiProperty({
+    type: EtapasNavegacionDto,
+    description: 'Progreso y desbloqueo de las 3 etapas del Sidebar',
+  })
+  etapas!: EtapasNavegacionDto
+
+  @ApiProperty({
+    description: 'Módulos del menú lateral permitidos (etapas desbloqueadas)',
+    example: ['inicio', 'perfil_pcd', 'terapias', 'rutinas'],
+    type: [String],
+  })
+  modulosPermitidos!: string[]
 }
 
 // ─── Guardado parcial (POST /api/onboarding/borrador) ───────────────
