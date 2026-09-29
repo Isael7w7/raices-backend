@@ -218,7 +218,7 @@ describe('MessagesService', () => {
     })
 
     it('pagina en múltiples batches con conversaciones de más de 450 mensajes', async () => {
-      const refs = Array.from({ length: 900 }, (_, i) => ({ ref: { update: jest.fn() } }))
+      const refs = Array.from({ length: 900 }, () => ({ ref: { update: jest.fn() } }))
       const batch = { update: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
 
       firestoreMock.collection.mockReturnValue({

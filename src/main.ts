@@ -6,9 +6,15 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { join } from "path";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { GlobalExceptionFilter, instalarManejadoresDeErroresNoCapturados } from "./common/filters/global-exception.filter";
 import { obtenerOrigenesPermitidos } from "./common/utils/cors-origins";
 
 async function bootstrap() {
+  // OBSERVABILIDAD: los errores de proceso que nunca llegan al filtro HTTP
+  // (promesas rechazadas, excepciones no capturadas) se emiten como logs
+  // estructurados con severity=ERROR en Cloud Logging.
+  instalarManejadoresDeErroresNoCapturados();
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   const allowedOrigins = obtenerOrigenesPermitidos({
@@ -43,6 +49,10 @@ async function bootstrap() {
 
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  // OBSERVABILIDAD: logs estructurados JSON (severity/statusCode/path/method/
+  // stack/userId) para Cloud Logging → métrica `critical_errors_counter` y
+  // alertas de 5xx. Reemplaza al filtro por defecto de Nest.
+  app.useGlobalFilters(new GlobalExceptionFilter());
   app.setGlobalPrefix("api");
 
   // Swagger configuration

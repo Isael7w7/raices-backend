@@ -1,0 +1,38 @@
+{
+  "displayName": "Errores críticos 5xx (Raíces backend)",
+  "documentation": {
+    "mimeType": "text/markdown",
+    "content": "## Errores críticos 5xx — API Raíces\n\nLa métrica log-based `critical_errors_counter` superó 0 en una ventana de 5 minutos: al menos una petición respondió 500 o el `GlobalExceptionFilter` registró un fallo crítico.\n\n### Qué revisar\n1. Logs del incidente:\nhttps://console.cloud.google.com/logs/query?query=resource.type%3D%22cloud_run_revision%22%20AND%20severity%3E%3DERROR%20AND%20(jsonPayload.statusCode%3E%3D500%20OR%20jsonPayload.status%3E%3D500)\n2. Metric Explorer de la métrica:\nhttps://console.cloud.google.com/metric-explorer?project=__PROJECT_ID__\n3. Estado del servicio de Cloud Run: revisiones recientes, deploy o agotamiento de cuota.\n\n### Contexto\n- Backend: Cloud Run + NestJS (servicio `raices-backend`).\n- El filtro de logs es `resource.type=\"cloud_run_revision\" AND severity>=ERROR AND (jsonPayload.statusCode>=500 OR jsonPayload.status>=500)`.\n- Cada registro crítico incluye `timestamp`, `severity`, `message`, `statusCode`, `path`, `method`, `stack` y `userId` (si hay sesión)."
+  },
+  "userLabels": {
+    "equipo": "plataforma",
+    "servicio": "raices-backend"
+  },
+  "conditions": [
+    {
+      "displayName": "critical_errors_counter > 0 en una ventana de 5 minutos",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/critical_errors_counter\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "0s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": [],
+            "perSeriesAligner": "ALIGN_SUM"
+          }
+        ],
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "combiner": "OR",
+  "notificationChannels": __NOTIFICATION_CHANNELS__,
+  "alertStrategy": {
+    "autoClose": "1800s"
+  }
+}

@@ -98,6 +98,7 @@ raices-backend/
 ├── src/
 │   ├── common/
 │   │   ├── decorators/      # Decoradores personalizados
+│   │   ├── filters/         # Filtros globales (logs estructurados de errores)
 │   │   ├── guards/          # Guards de autenticación y autorización
 │   │   ├── interceptors/    # Interceptors (ETag, etc.)
 │   │   ├── interfaces/      # Interfaces TypeScript
@@ -124,6 +125,7 @@ raices-backend/
 │   ├── app.module.ts
 │   └── main.ts
 ├── docs/                    # Documentación
+├── infra/                   # Métricas, alertas y dashboard de GCP (gcloud)
 ├── scripts/                 # Scripts utilitarios
 ├── Dockerfile
 ├── docker-compose.yml
@@ -229,6 +231,7 @@ Ver [docs/DOCKER-GCP-DEPLOYMENT.md](docs/DOCKER-GCP-DEPLOYMENT.md) para más det
 - [Flujo de Aprobación de Instituciones](docs/FLUJO-APROBACION-VACANTES.md)
 - [Flujo Tutor ↔ PCD](docs/FLUJO-TUTOR-PCD.md)
 - [Guía de Docker y Deploy](docs/DOCKER-GCP-DEPLOYMENT.md)
+- [Observabilidad de Errores Críticos y Alertas GCP](docs/OBSERVABILIDAD-ERRORES-GCP.md)
 
 ---
 

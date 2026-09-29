@@ -1,0 +1,17 @@
+# Log-based metric: critical_errors_counter
+# Cuenta los registros de errores críticos (5xx) emitidos por el
+# GlobalExceptionFilter del backend (ver src/common/filters/global-exception.filter.ts).
+#
+# Despliegue: ./infra/observability.sh metric
+# Referencia: https://cloud.google.com/logging/docs/reference/v2/rest/v2/projects.metrics
+
+filter: 'resource.type="cloud_run_revision" AND severity>=ERROR AND (jsonPayload.statusCode>=500 OR jsonPayload.status>=500)'
+description: Cuenta de respuestas 5xx y fallos críticos no capturados del backend Raíces (Cloud Run / NestJS).
+metricDescriptor:
+  type: logging.googleapis.com/user/critical_errors_counter
+  metricKind: DELTA
+  valueType: INT64
+  description: Errores críticos (statusCode >= 500) registrados por el ExceptionFilter del backend.
+labelExtractors:
+  status_code: 'EXTRACT(jsonPayload.statusCode)'
+  method: 'EXTRACT(jsonPayload.method)'

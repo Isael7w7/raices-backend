@@ -1,0 +1,126 @@
+{
+  "displayName": "Raíces API — Observabilidad (5xx, latencia, códigos)",
+  "gridLayout": {
+    "columns": "1",
+    "widgets": [
+      {
+        "title": "Errores críticos 5xx a lo largo del tiempo",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/critical_errors_counter\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": ["resource.labels.service_name"],
+                    "perSeriesAligner": "ALIGN_SUM"
+                  }
+                }
+              },
+              "plotType": "LINE",
+              "minAlignmentPeriod": "60s",
+              "targetAxis": "Y1"
+            }
+          ],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Errores 5xx (conteo por minuto)",
+            "scale": "LINEAR"
+          },
+          "options": {
+            "mode": "COLOR",
+            "tooltip": {
+              "mode": "LITERAL"
+            }
+          }
+        }
+      },
+      {
+        "title": "Latencia HTTP — percentiles p95 y p99",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"serviceruntime.googleapis.com/http/server/response_latencies\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_NONE",
+                    "groupByFields": [],
+                    "perSeriesAligner": "ALIGN_PERCENTILE_95"
+                  }
+                }
+              },
+              "plotType": "LINE",
+              "minAlignmentPeriod": "60s",
+              "targetAxis": "Y1"
+            },
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"serviceruntime.googleapis.com/http/server/response_latencies\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_NONE",
+                    "groupByFields": [],
+                    "perSeriesAligner": "ALIGN_PERCENTILE_99"
+                  }
+                }
+              },
+              "plotType": "LINE",
+              "minAlignmentPeriod": "60s",
+              "targetAxis": "Y1"
+            }
+          ],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Latencia HTTP (p95 / p99)",
+            "scale": "LINEAR"
+          },
+          "options": {
+            "mode": "COLOR",
+            "tooltip": {
+              "mode": "LITERAL"
+            }
+          }
+        }
+      },
+      {
+        "title": "Distribución de solicitudes HTTP por código de respuesta (2xx / 4xx / 5xx)",
+        "xyChart": {
+          "dataSets": [
+            {
+              "timeSeriesQuery": {
+                "timeSeriesFilter": {
+                  "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\"",
+                  "aggregation": {
+                    "alignmentPeriod": "60s",
+                    "crossSeriesReducer": "REDUCE_SUM",
+                    "groupByFields": ["metric.labels.response_code_class"],
+                    "perSeriesAligner": "ALIGN_RATE"
+                  }
+                }
+              },
+              "plotType": "STACKED_AREA",
+              "minAlignmentPeriod": "60s",
+              "targetAxis": "Y1"
+            }
+          ],
+          "timeshiftDuration": "0s",
+          "yAxis": {
+            "label": "Solicitudes por segundo",
+            "scale": "LINEAR"
+          },
+          "options": {
+            "mode": "COLOR",
+            "tooltip": {
+              "mode": "LITERAL"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

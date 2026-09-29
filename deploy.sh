@@ -263,7 +263,11 @@ deploy_to_cloud_run() {
     # API (Cloud Run *.run.app) están en orígenes distintos → SameSite=None + Secure.
     # Con SameSite=Lax (default) el navegador NO enviaría la cookie cross-site.
     # Se pueden sobreescribir exportando las variables antes de ejecutar el deploy.
-    local env_vars="NODE_ENV=production"
+    # NODE_ENV por defecto 'production'. Se puede sobreescribir para desplegar
+    # un ambiente de staging (NODE_ENV=staging ./deploy.sh deploy), lo que
+    # habilita el endpoint /api/health/simular-error-500 usado por la guía de
+    # prueba de la alerta de observabilidad (docs/OBSERVABILIDAD-ERRORES-GCP.md).
+    local env_vars="NODE_ENV=${NODE_ENV:-production}"
     env_vars+=",FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-${PROJECT_ID}}"
     env_vars+=",COOKIE_SAMESITE=${COOKIE_SAMESITE:-none}"
     env_vars+=",COOKIE_SECURE=${COOKIE_SECURE:-true}"
@@ -276,7 +280,7 @@ deploy_to_cloud_run() {
         while IFS= read -r line; do
             if [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
                 local skip=0
-                # Skip PORT (reservado por Cloud Run), NODE_ENV (ya fijada a production),
+                # Skip PORT (reservado por Cloud Run), NODE_ENV (ya fijada por la línea base),
                 # GOOGLE_APPLICATION_CREDENTIALS (ruta local inexistente en Cloud Run),
                 # cookies de sesión (ya fijadas a none/true para cross-site),
                 # secretos y vars ya base
