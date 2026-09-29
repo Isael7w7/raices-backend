@@ -24,6 +24,7 @@ import { CatalogsModule } from './modules/catalogs/catalogs.module'
 import { HealthModule } from './modules/health/health.module'
 import { RoutesModule } from './modules/routes/routes.module'
 import { OnboardingModule } from './modules/onboarding/onboarding.module'
+import { ContactoModule } from './modules/contacto/contacto.module'
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { OnboardingModule } from './modules/onboarding/onboarding.module'
     HealthModule,
     RoutesModule,
     OnboardingModule,
+    ContactoModule,
   ],
   providers: [
     {

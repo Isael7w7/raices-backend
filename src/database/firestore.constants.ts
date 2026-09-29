@@ -13,6 +13,7 @@ export const COLECCIONES = {
   grupos: 'grupos',
   miembrosGrupo: 'miembrosGrupo',
   mensajesDirectos: 'mensajesDirectos',
+  mensajesContacto: 'mensajesContacto',
   notificaciones: 'notificaciones',
   postulaciones: 'postulaciones',
   instituciones: 'instituciones',
