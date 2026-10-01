@@ -28,12 +28,6 @@
           "yAxis": {
             "label": "Errores 5xx (conteo por minuto)",
             "scale": "LINEAR"
-          },
-          "options": {
-            "mode": "COLOR",
-            "tooltip": {
-              "mode": "LITERAL"
-            }
           }
         }
       },
@@ -78,12 +72,6 @@
           "yAxis": {
             "label": "Latencia HTTP (p95 / p99)",
             "scale": "LINEAR"
-          },
-          "options": {
-            "mode": "COLOR",
-            "tooltip": {
-              "mode": "LITERAL"
-            }
           }
         }
       },
@@ -112,12 +100,6 @@
           "yAxis": {
             "label": "Solicitudes por segundo",
             "scale": "LINEAR"
-          },
-          "options": {
-            "mode": "COLOR",
-            "tooltip": {
-              "mode": "LITERAL"
-            }
           }
         }
       }

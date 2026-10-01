@@ -150,7 +150,7 @@ describe('ThrottlerGuard — Unit Tests', () => {
     it('should define stricter limits for sensitive endpoints', () => {
       // Endpoints sensibles deben tener límites más bajos
       const endpoints = {
-        registro: { limit: 3, ttl: 3600000 },      // 3 por hora
+        registro: { limit: 10, ttl: 3600000 },     // 10 por hora
         login: { limit: 5, ttl: 60000 },            // 5 por minuto
         refresh: { limit: 10, ttl: 60000 },         // 10 por minuto
         logout: { limit: 10, ttl: 60000 },          // 10 por minuto

@@ -57,25 +57,27 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # Ejecuta un subcomando de Cloud Monitoring con el primer prefijo disponible
 # (gcloud monitoring -> gcloud beta monitoring -> gcloud alpha monitoring).
-# Si el prefijo GA no existe, gcloud falla sin crear nada, por lo que el
-# reintento con beta/alpha es seguro.
+#
+# El prefijo se resuelve con --help (y no probando los tres) por dos motivos:
+#  1. no se reintentan beta/alpha ante errores reales (permisos, validación);
+#  2. stdout queda SOLO con datos y stderr se propaga tal cual: si se captura
+#     2>&1, avisos como "WARNING: filter keys not present" se confunden con el
+#     nombre de un recurso y producen falsos "ya existe".
 mon() {
   local grupo="$1"; shift
-  local salida=""
-  if salida="$(gcloud monitoring "$grupo" "$@" 2>&1)"; then
-    printf '%s\n' "$salida"
-    return 0
+  local prefijo=""
+  if gcloud monitoring "$grupo" --help >/dev/null 2>&1; then
+    prefijo="gcloud monitoring"
+  elif gcloud beta monitoring "$grupo" --help >/dev/null 2>&1; then
+    prefijo="gcloud beta monitoring"
+  elif gcloud alpha monitoring "$grupo" --help >/dev/null 2>&1; then
+    prefijo="gcloud alpha monitoring"
+  else
+    log_error "No existe el subcomando 'gcloud monitoring ${grupo}' en esta versión de gcloud."
+    return 1
   fi
-  if salida="$(gcloud beta monitoring "$grupo" "$@" 2>&1)"; then
-    printf '%s\n' "$salida"
-    return 0
-  fi
-  if salida="$(gcloud alpha monitoring "$grupo" "$@" 2>&1)"; then
-    printf '%s\n' "$salida"
-    return 0
-  fi
-  printf '%s\n' "$salida" >&2
-  return 1
+  # shellcheck disable=SC2086
+  ${prefijo} "$grupo" "$@"
 }
 
 verificar_requisitos() {

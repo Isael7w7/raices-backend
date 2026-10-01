@@ -38,7 +38,7 @@ export class AuthController {
   ) {}
 
   @Post('registro')
-  @Throttle({ default: { limit: 3, ttl: 3600000 } }) // 3 registros por hora
+  @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 10 registros por hora
   @UseInterceptors(FileInterceptor('csf', {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: csfDocumentFileFilter,

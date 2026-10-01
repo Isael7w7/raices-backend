@@ -137,7 +137,7 @@
 
 | Endpoint | Método | Descripción | Throttle |
 |----------|--------|-------------|----------|
-| `/api/autenticacion/registro` | POST | Registrar nuevo usuario (pcd, tutor, institución) | 3/hora |
+| `/api/autenticacion/registro` | POST | Registrar nuevo usuario (pcd, tutor, institución) | 10/hora |
 | `/api/autenticacion/inicio-sesion` | POST | Login con Firebase Auth | 5/min |
 | `/api/autenticacion/renovar-token` | POST | Refrescar tokens de acceso | 10/min |
 | `/api/autenticacion/cerrar-sesion` | POST | Eliminar cookies de sesión | 10/min |

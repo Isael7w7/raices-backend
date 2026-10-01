@@ -120,10 +120,10 @@ describe('Rate Limiting (E2E) — ThrottlerGuard', () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   describe('Per-Endpoint Throttles', () => {
-    describe('POST /api/autenticacion/registro (limit: 3/hora)', () => {
+    describe('POST /api/autenticacion/registro (limit: 10/hora)', () => {
       it('should rate limit after multiple registration attempts', async () => {
         const statuses = []
-        for (let i = 1; i <= 5; i++) {
+        for (let i = 1; i <= 11; i++) {
           const res = await request(http)
             .post('/api/autenticacion/registro')
             .send({
@@ -493,7 +493,7 @@ describe('Rate Limiting (E2E) — ThrottlerGuard', () => {
   describe('Registration Brute Force Prevention', () => {
     it('should limit registration attempts', async () => {
       const statuses = []
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= 11; i++) {
         const res = await request(http)
           .post('/api/autenticacion/registro')
           .send({

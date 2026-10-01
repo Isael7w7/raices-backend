@@ -30,7 +30,7 @@
 ### POST `/autenticacion/registro`
 **Descripción:** Crear una nueva cuenta de usuario  
 **Autenticación:** No requerida  
-**Rate Limit:** 3 req/hora
+**Rate Limit:** 10 req/hora
 
 **Request Body:**
 ```json
@@ -1334,7 +1334,7 @@ Cuando el token expire (1 hora):
 
 | Endpoint | Límite | Ventana |
 |----------|--------|---------|
-| `/autenticacion/registro` | 3 | 1 hora |
+| `/autenticacion/registro` | 10 | 1 hora |
 | `/autenticacion/inicio-sesion` | 5 | 1 minuto |
 | `/ia/conversacion` | 20 | 1 hora |
 | Otros endpoints | 100 | 1 minuto |
