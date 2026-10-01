@@ -162,6 +162,7 @@
 |----------|--------|-------------|------|
 | `/api/usuarios/perfil` | GET | Perfil completo del usuario | ✅ |
 | `/api/usuarios/perfil` | PUT | Actualizar perfil básico | ✅ |
+| `/api/usuarios/:id` | PUT | Editar datos básicos de cualquier usuario (solo admin) | ✅ Roles |
 | `/api/usuarios/perfil-pcd/:pcdUserId` | GET | Ver perfil PCD (tutor/institución) | ✅ Roles |
 | `/api/usuarios/avatar` | POST | Subir foto de perfil (5MB, imagen) | ✅ |
 | `/api/usuarios/avatar` | DELETE | Eliminar foto de perfil | ✅ |
@@ -364,6 +365,8 @@
 | `/api/administracion/instituciones/:id/verificar` | PATCH | Alternar verificación |
 | `/api/administracion/instituciones/:id` | DELETE | Rechazar/eliminar institución |
 | `/api/administracion/usuarios` | GET | Todos los usuarios |
+| `/api/administracion/usuarios/:id` | PATCH | Editar nombre/correo (409 si el correo ya existe) |
+| `/api/administracion/usuarios/:id` | PUT | Editar nombre/correo (alias de PATCH) |
 | `/api/administracion/usuarios/:id/activo` | PATCH | Activar/desactivar usuario |
 | `/api/administracion/usuarios/:id/rol` | PATCH | Cambiar rol |
 | `/api/administracion/usuarios/:id` | DELETE | Eliminar cuenta |

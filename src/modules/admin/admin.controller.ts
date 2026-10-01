@@ -2,11 +2,13 @@ import { Controller, Get, Post, Put, Patch, Delete, Param, Body, Query, UseGuard
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiBody, ApiQuery } from '@nestjs/swagger'
 import { AdminService } from './admin.service'
 import { ActualizarConfiguracionDto } from './dto/actualizar-configuracion.dto'
+import { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto'
 import {
   EstadisticasDto, AnaliticasDto, NecesidadesInteligenciaDto, VisitantesActivosDto,
   PaginaInstitucionesAdminDto, PaginaUsuariosAdminDto,
   PaginaResenasAdminDto, RespuestaToggleUsuarioDto, RespuestaToggleVerificacionDto,
   RespuestaRolDto, AlertaDto, ConfiguracionDto, VerificacionIdentidadInstitucionDto,
+  UsuarioAdminDto,
 } from './dto/respuestas-admin.dto'
 import { InstitucionDto } from '../institutions/dto/respuestas-institucion.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
@@ -206,6 +208,51 @@ export class AdminController {
   @ApiResponse({ status: 400, description: 'Rol inválido o intento de cambiar propio rol' })
   changeRole(@Param('id') id: string, @Body('role') role: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.changeUserRole(id, role, user.id)
+  }
+
+  @Patch('usuarios/:id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.ACTUALIZAR_USUARIO,
+    recurso: 'usuario',
+    obtenerRecursoId: (id: string) => id,
+    extraerMetadatos: (resultado) => ({ email: resultado?.email, nombreCompleto: resultado?.nombreCompleto }),
+  })
+  @ApiOperation({
+    summary: 'Editar datos básicos de un usuario',
+    description: 'Actualización parcial de nombreCompleto (o nombre + apellido) y email. Devuelve 409 si el correo ya pertenece a otra cuenta.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @ApiBody({ type: ActualizarUsuarioDto })
+  @ApiOkResponse({ type: UsuarioAdminDto, description: 'Usuario actualizado' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos (correo malformado)' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ status: 409, description: 'El correo ya está en uso por otra cuenta' })
+  updateUser(@Param('id') id: string, @Body() dto: ActualizarUsuarioDto) {
+    return this.svc.updateUser(id, dto)
+  }
+
+  @Put('usuarios/:id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.ACTUALIZAR_USUARIO,
+    recurso: 'usuario',
+    obtenerRecursoId: (id: string) => id,
+    extraerMetadatos: (resultado) => ({ email: resultado?.email, nombreCompleto: resultado?.nombreCompleto }),
+  })
+  @ApiOperation({ summary: 'Editar datos básicos de un usuario (alias PUT)', description: 'Mismo comportamiento que PATCH /administracion/usuarios/:id.' })
+  @ApiParam({ name: 'id', description: 'ID del usuario' })
+  @ApiBody({ type: ActualizarUsuarioDto })
+  @ApiOkResponse({ type: UsuarioAdminDto, description: 'Usuario actualizado' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos (correo malformado)' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ status: 409, description: 'El correo ya está en uso por otra cuenta' })
+  updateUserPut(@Param('id') id: string, @Body() dto: ActualizarUsuarioDto) {
+    return this.svc.updateUser(id, dto)
   }
 
   @Delete('usuarios/:id')

@@ -3,9 +3,10 @@ import { UsersController } from './users.controller'
 import { UsersService } from './users.service'
 import { StorageModule } from '../storage/storage.module'
 import { AiModule } from '../ai/ai.module'
+import { AdminModule } from '../admin/admin.module'
 
 @Module({
-  imports: [StorageModule, AiModule],
+  imports: [StorageModule, AiModule, AdminModule],
   controllers: [UsersController],
   providers: [UsersService],
 })

@@ -213,6 +213,25 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ---
 
+### PUT `/usuarios/:id`
+**Descripción:** Editar datos básicos de cualquier usuario (alias administrativo; usa `nombreCompleto` o `nombre` + `apellido` y `email`)  
+**Autenticación:** Bearer Token requerido (rol: admin)
+
+**Request Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez García",
+  "email": "juan@correo.mx"
+}
+```
+
+**Respuestas:**
+- `200`: Usuario actualizado
+- `404`: Usuario no encontrado
+- `409`: El correo ya está en uso por otra cuenta
+
+---
+
 ### POST `/usuarios/avatar`
 **Descripción:** Subir avatar del usuario  
 **Autenticación:** Bearer Token requerido  
@@ -1036,6 +1055,26 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 - `limite` (number): Resultados por página
 - `rol` (string): Filtrar por rol
 - `buscar` (string): Búsqueda por nombre/email
+
+---
+
+### PATCH `/administracion/usuarios/:id`
+**Descripción:** Editar datos básicos de un usuario (modal "Editar usuario"). Acepta actualización parcial de `nombreCompleto` (o `nombre` + `apellido`) y `email`. Alias: `PUT /administracion/usuarios/:id`  
+**Autenticación:** Bearer Token requerido (rol: admin)
+
+**Request Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez García",
+  "email": "juan@correo.mx"
+}
+```
+
+**Respuestas:**
+- `200`: Usuario actualizado
+- `400`: Correo malformado
+- `404`: Usuario no encontrado
+- `409`: El correo ya está en uso por otra cuenta
 
 ---
 

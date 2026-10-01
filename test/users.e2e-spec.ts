@@ -39,6 +39,28 @@ describe('Usuarios y vínculo tutor-PCD (E2E)', () => {
     })
   })
 
+  describe('PUT /api/usuarios/perfil (edición propia)', () => {
+    it('200: sigue editando el propio perfil (no lo eclipsa PUT /:id)', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/perfil')
+        .send({ nombreCompleto: 'PCD Editada' })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(200)
+      expect((await leerDoc('perfiles', 'uid-pcd')).nombreCompleto).toBe('PCD Editada')
+    })
+
+    it('403: un usuario sin rol admin no puede usar PUT /api/usuarios/:id', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/uid-otro-tutor')
+        .send({ nombreCompleto: 'Hackeado' })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(403)
+      expect((await leerDoc('perfiles', 'uid-otro-tutor')).nombreCompleto).toBe('Otro')
+    })
+  })
+
   describe('POST /api/usuarios/vincular-pcd (solo tutor)', () => {
     it('401: sin token', async () => {
       const res = await request(http).post('/api/usuarios/vincular-pcd').send({ email: 'pcd@test.com' })

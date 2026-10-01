@@ -3,6 +3,7 @@ import { BadRequestException, RequestMethod } from '@nestjs/common'
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants'
 import { UsersController } from './users.controller'
 import { UsersService } from './users.service'
+import { AdminService } from '../admin/admin.service'
 import { StorageService } from '../storage/storage.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FirebaseAuthGuard } from '../../common/guards/firebase-auth.guard'
@@ -19,6 +20,10 @@ describe('UsersController', () => {
     linkPcdToTutor: jest.fn(),
   }
 
+  const mockAdminSvc = {
+    updateUser: jest.fn(),
+  }
+
   beforeEach(async () => {
     jest.clearAllMocks()
 
@@ -27,6 +32,7 @@ describe('UsersController', () => {
       providers: [
         { provide: UsersService, useValue: mockSvc },
         { provide: StorageService, useValue: {} },
+        { provide: AdminService, useValue: mockAdminSvc },
       ],
     })
       .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
@@ -111,6 +117,30 @@ describe('UsersController', () => {
     await controller.linkPcdToTutor(user as any, '  PCD@Test.com ')
 
     expect(mockSvc.linkPcdToTutor).toHaveBeenCalledWith('tutor-1', 'pcd@test.com')
+  })
+
+  it('registra PUT :id con RolesGuard y rol admin, declarado DESPUÉS de PUT perfil', () => {
+    const handler = (UsersController.prototype as any).updateUserPorId
+
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(':id')
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.PUT)
+
+    const guards = Reflect.getMetadata('__guards__', handler) ?? []
+    expect(guards).toContain(RolesGuard)
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['admin'])
+
+    const metodos = Object.getOwnPropertyNames(UsersController.prototype)
+    expect(metodos.indexOf('updateProfile')).toBeLessThan(metodos.indexOf('updateUserPorId'))
+  })
+
+  it('delega en AdminService al editar un usuario por id', async () => {
+    mockAdminSvc.updateUser.mockResolvedValue({ id: 'u-2', email: 'nuevo@test.com', nombreCompleto: 'Editado' })
+
+    const dto = { nombreCompleto: 'Editado', email: 'nuevo@test.com' }
+    const result = await controller.updateUserPorId('u-2', dto as any)
+
+    expect(mockAdminSvc.updateUser).toHaveBeenCalledWith('u-2', dto)
+    expect(result.nombreCompleto).toBe('Editado')
   })
 
   it('registra DELETE cuenta con FirebaseAuthGuard y delega al servicio limpiando cookies', async () => {

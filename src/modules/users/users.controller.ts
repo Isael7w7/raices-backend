@@ -6,6 +6,9 @@ import { MultimediaMagicBytesValidator } from '../../common/validators/multimedi
 import { imageFileFilter } from '../../common/utils/image-filter'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
+import { AdminService } from '../admin/admin.service'
+import { ActualizarUsuarioDto } from '../admin/dto/actualizar-usuario.dto'
+import { UsuarioAdminDto } from '../admin/dto/respuestas-admin.dto'
 import { StorageService } from '../storage/storage.service'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
 import { GuardarEscalasVidaDto } from './dto/guardar-escalas-vida.dto'
@@ -36,6 +39,7 @@ export class UsersController {
   constructor(
     private readonly svc: UsersService,
     private readonly storage: StorageService,
+    private readonly adminService: AdminService,
     @Optional() private readonly config?: ConfigService,
   ) {}
 
@@ -74,6 +78,25 @@ export class UsersController {
   @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil actualizado' })
   updateProfile(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilDto) {
     return this.svc.updateProfile(user.id, dto)
+  }
+
+  @Put(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Editar datos básicos de un usuario (solo admin)',
+    description: 'Actualización parcial de nombreCompleto (o nombre + apellido) y email de cualquier cuenta. Devuelve 409 si el correo ya pertenece a otra cuenta.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario a editar' })
+  @ApiBody({ type: ActualizarUsuarioDto })
+  @ApiOkResponse({ type: UsuarioAdminDto, description: 'Usuario actualizado' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos (correo malformado)' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ status: 409, description: 'El correo ya está en uso por otra cuenta' })
+  updateUserPorId(@Param('id') id: string, @Body() dto: ActualizarUsuarioDto) {
+    return this.adminService.updateUser(id, dto)
   }
 
   @Post('avatar')

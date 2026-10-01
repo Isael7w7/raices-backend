@@ -139,6 +139,114 @@ describe('Administración (E2E) — autorización por rol', () => {
     })
   })
 
+  describe('Edición de usuario (modal "Editar usuario")', () => {
+    it('200: PATCH actualiza nombreCompleto y email', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ nombreCompleto: 'Nombre Editado', email: 'editado@test.com' })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.nombreCompleto).toBe('Nombre Editado')
+      expect(res.body.email).toBe('editado@test.com')
+
+      const perfil = await leerDoc('perfiles', 'uid-objetivo')
+      expect(perfil.nombreCompleto).toBe('Nombre Editado')
+      expect(perfil.email).toBe('editado@test.com')
+    })
+
+    it('200: PUT /api/administracion/usuarios/:id tiene el mismo comportamiento', async () => {
+      const res = await request(http)
+        .put('/api/administracion/usuarios/uid-objetivo')
+        .send({ nombreCompleto: 'Via PUT' })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.nombreCompleto).toBe('Via PUT')
+      expect((await leerDoc('perfiles', 'uid-objetivo')).nombreCompleto).toBe('Via PUT')
+    })
+
+    it('200: PUT /api/usuarios/:id (alias) actualiza al usuario', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/uid-objetivo')
+        .send({ nombreCompleto: 'Via Alias' })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.nombreCompleto).toBe('Via Alias')
+      expect((await leerDoc('perfiles', 'uid-objetivo')).nombreCompleto).toBe('Via Alias')
+    })
+
+    it('200: acepta nombre + apellido y los concatena en nombreCompleto', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ nombre: 'Ana', apellido: 'Torres' })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.nombreCompleto).toBe('Ana Torres')
+    })
+
+    it('409: el correo ya pertenece a otra cuenta', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ email: 'pcd@test.com' })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(409)
+      expect((await leerDoc('perfiles', 'uid-objetivo')).email).toBe('obj@test.com')
+    })
+
+    it('200: el propio correo no dispara conflicto', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ email: 'obj@test.com', nombreCompleto: 'Objetivo Editado' })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.email).toBe('obj@test.com')
+    })
+
+    it('400: correo malformado', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ email: 'no-es-un-correo' })
+        .set('Authorization', token('uid-admin'))
+      expect(res.status).toBe(400)
+    })
+
+    it('404: usuario inexistente', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/no-existe')
+        .send({ nombreCompleto: 'Nadie' })
+        .set('Authorization', token('uid-admin'))
+      expect(res.status).toBe(404)
+    })
+
+    it('403: rol no admin no puede editar usuarios', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ nombreCompleto: 'Hack' })
+        .set('Authorization', token('uid-pcd'))
+      expect(res.status).toBe(403)
+    })
+
+    it('401: sin token', async () => {
+      const res = await request(http)
+        .patch('/api/administracion/usuarios/uid-objetivo')
+        .send({ nombreCompleto: 'Sin token' })
+      expect(res.status).toBe(401)
+    })
+
+    it('403: PUT /api/usuarios/:id también exige rol admin', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/uid-objetivo')
+        .send({ nombreCompleto: 'Hack' })
+        .set('Authorization', token('uid-pcd'))
+      expect(res.status).toBe(403)
+    })
+  })
+
   describe('Configuración', () => {
     it('200: admin actualiza configuración', async () => {
       const res = await request(http)
