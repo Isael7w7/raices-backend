@@ -168,6 +168,8 @@
 | `/api/usuarios/avatar` | POST | Subir foto de perfil (5MB, imagen) | ✅ |
 | `/api/usuarios/avatar` | DELETE | Eliminar foto de perfil | ✅ |
 | `/api/usuarios/perfil-necesidades` | POST | Guardar perfil de necesidades | ✅ |
+| `/api/usuarios/perfil-necesidades` | PUT | Actualizar preferencias/condiciones (parcial: `tiposDiscapacidad`, `etapaVida`, `necesidadesMovilidad`, `areasInteres`, `condiciones`) | ✅ |
+| `/api/usuarios/perfil-necesidades` | PATCH | Alias del PUT anterior | ✅ |
 | `/api/usuarios/escalas-vida` | POST | Guardar evaluación "Cómo vives hoy" | ✅ |
 | `/api/usuarios/documento-identidad` | POST | Subir documento (CURP/identificación) | ✅ |
 | `/api/usuarios/estado-validacion-identidad` | GET | Estado de validación | ✅ |
@@ -175,6 +177,9 @@
 | `/api/usuarios/dependientes/count` | GET | Conteo de dependientes vs límite | ✅ |
 | `/api/usuarios/dependientes` | POST | Agregar dependiente | ✅ + Guard límite |
 | `/api/usuarios/dependientes/:id` | GET/PUT/DELETE | CRUD dependiente | ✅ |
+| `/api/usuarios/dependientes/:dependienteId/permisos` | GET | Permisos del dependiente (features + permisos de los modales de tutor) | ✅ Roles |
+| `/api/usuarios/dependientes/:dependienteId/permisos` | PUT | Guardar módulos y acciones del tutor (parcial, solo campos enviados) | ✅ Roles (tutor/admin) |
+| `/api/usuarios/dependientes/:dependienteId/permisos` | PATCH | Alias del PUT anterior | ✅ Roles (tutor/admin) |
 | `/api/usuarios/mis-personas` | GET | Lista consolidada (paginada) | ✅ |
 | `/api/usuarios/vincular-pcd` | POST | Vincular PCD por email | ✅ Tutor |
 | `/api/usuarios/desvincular-pcd/:pcdUserId` | DELETE | Desvincular PCD | ✅ Tutor |
@@ -191,6 +196,41 @@
   multimedia: boolean     // Acceso a contenido multimedia
 }
 ```
+
+**Permisos del tutor (modales "Configurar opciones" y "Permisos de acceso"):**
+```typescript
+{
+  instituciones: boolean,   // Módulo → features.descubrimiento
+  empleo: boolean,          // Módulo → features.postulaciones
+  comunidad: boolean,       // Módulo → features.comunidad
+  puedeComentar: boolean,   // Acción (solo permisos)
+  puedeInteractuar: boolean,// Acción (solo permisos)
+  accesoMultimedia: boolean,// Acción → features.multimedia
+  accesoChat: boolean       // Acción → features.chat
+}
+```
+Se persiste en el campo `permisos` del documento (`dependientes` o `perfiles`
+para cuentas PCD vinculadas) junto con `features`, que es lo que aplican los
+guards. Solo se modifican los campos enviados; los módulos/acciones con
+equivalente funcional quedan reflejados en `features` (espejo). También se
+aceptan los nombres clásicos (`chat`, `postulaciones`, `resenas`,
+`descubrimiento`, `favoritos`, `multimedia`) por compatibilidad. Respuesta
+`400` si el body no trae permisos, `403` si el dependiente no pertenece al
+tutor autenticado (el rol `admin` puede actualizar cualquiera) y `404` si el
+dependiente no existe.
+
+---
+
+### 4.2.1 🧑‍🏫 Módulo de Tutores (`/api/tutores`)
+
+**Responsable:** Alias de los permisos del tutor sobre un dependiente (mismos
+servicio, validaciones y respuestas que `/api/usuarios/dependientes/:id/permisos`).
+
+| Endpoint | Método | Descripción | Auth |
+|----------|--------|-------------|------|
+| `/api/tutores/dependientes/:dependienteId/permisos` | GET | Permisos del dependiente (features + permisos) | ✅ Roles |
+| `/api/tutores/dependientes/:dependienteId/permisos` | PUT | Guardar módulos y acciones del tutor | ✅ Roles (tutor/admin) |
+| `/api/tutores/dependientes/:dependienteId/permisos` | PATCH | Alias del PUT anterior | ✅ Roles (tutor/admin) |
 
 ---
 
@@ -209,11 +249,15 @@
 | `/api/instituciones/:id` | PUT | Actualizar institución (admin/propietario) | ✅ |
 | `/api/instituciones/mi-institucion` | DELETE | Eliminar mi institución (soft-delete) | ✅ |
 | `/api/instituciones/:id` | DELETE | Eliminar institución (admin/propietario) | ✅ |
+| `/api/instituciones/verificacion/documentos` | POST | Subir documento de verificación (multipart: `documento` + `tipo`) | ✅ Rol institución |
+| `/api/instituciones/mi-institucion/estado-verificacion` | GET | Pasos de verificación con porcentaje (sin CURP) | ✅ |
 | `/api/instituciones/validar-csf-qr` | POST | Validar código QR de Constancia de Situación Fiscal | ✅ |
 
 **Categorías de instituciones:** funcional, educativo, laboral, social
 
 **Visibilidad:** Solo se muestran instituciones `activa=true` y `verificada=true` al público.
+
+> **Verificación de personas morales (institución/empresa):** la CURP **no aplica** y nunca se exige. El único requisito indispensable es la **CSF** (`tipo=csf` → `instituciones/{id}.documentoCsf`), subida con `POST /api/instituciones/verificacion/documentos`; la identificación del representante legal (`tipo=identificacion_representante`) es opcional. `GET /api/instituciones/mi-institucion/estado-verificacion` retorna los pasos válidos (`csf`, `aprobacion_admin`, `identificacion_representante` — nunca `curp`), `pasosPendientes`, `documentosFaltantes` (solo `["csf"]`) y un `porcentaje` calculado sobre los obligatorios: 0 sin CSF, 50 con CSF, 100 cuando además el administrador aprueba.
 
 ---
 
@@ -282,7 +326,12 @@
 | `/api/comunidad/foros` | POST | Crear foro (solo institución/admin) | ✅ Rol |
 | `/api/comunidad/foros/:id` | GET | Detalle de foro con respuestas | — |
 | `/api/comunidad/foros/:id/respuestas` | POST | Responder pregunta detonante | ✅ |
-| `/api/comunidad/conectemos/publicaciones` | GET | Galería "Conectemos" (contenido creativo PCD) | — |
+| `/api/comunidad/eventos` | GET | Listar eventos (próximos; filtros `?categoria=&fecha=&desde=&buscar=`) | ✅ |
+| `/api/comunidad/eventos` | POST | Crear evento | ✅ + Feature `comunidad` |
+| `/api/comunidad/eventos/:id` | GET | Detalle de evento (organizador y `asisto`) | ✅ |
+| `/api/comunidad/eventos/:id/asistir` | POST | Confirmar/cancelar asistencia (toggle) | ✅ + Feature `comunidad` |
+| `/api/comunidad/conectemos/publicaciones` | GET | Galería "Conectemos" (solo publicaciones multimedia: `mediaUrl`, `recursosVisuales`, `urlThumbnail`, `tipoMedia`) | — |
+| `/api/comunidad/galeria` | GET | Alias público del mismo feed de galería | — |
 
 ---
 
@@ -362,9 +411,9 @@
 | `/api/administracion/auditoria` | GET | Logs de auditoría (paginado, filtrable) |
 | `/api/administracion/auditoria/estadisticas` | GET | Resumen de auditoría |
 | `/api/administracion/instituciones` | GET | Todas las instituciones |
-| `/api/administracion/instituciones/pendientes` | GET | Pendientes de aprobación |
-| `/api/administracion/instituciones/:id/verificacion-identidad` | GET | Estado verificación identidad |
-| `/api/administracion/instituciones/:id/aprobar` | POST | Aprobar institución |
+| `/api/administracion/instituciones/pendientes` | GET | Pendientes de aprobación (incluye `verificacionIdentidad.tieneCsf`) |
+| `/api/administracion/instituciones/:id/verificacion-identidad` | GET | Estado de verificación (CSF / documentos del representante) |
+| `/api/administracion/instituciones/:id/aprobar` | POST | Aprobar institución (400 si falta la CSF; nunca exige CURP) |
 | `/api/administracion/instituciones/:id/verificar` | PATCH | Alternar verificación |
 | `/api/administracion/instituciones/:id` | DELETE | Rechazar/eliminar institución |
 | `/api/administracion/usuarios` | GET | Todos los usuarios |

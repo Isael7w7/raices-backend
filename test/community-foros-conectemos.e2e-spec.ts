@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 import { crearAppE2E } from './helpers/app.e2e'
-import { limpiarDb, sembrarPerfil, sembrarInstitucion, leerDoc, token } from './helpers/fixtures'
+import { limpiarDb, sembrarPerfil, sembrarInstitucion, token } from './helpers/fixtures'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 
@@ -183,7 +183,7 @@ describe('Comunidad: Foros, Conectemos y Roles (E2E)', () => {
   // Espacio "Conectemos"
   // ═══════════════════════════════════════════════════════════════════
 
-  describe('GET /api/comunidad/conectemos/publicaciones', () => {
+  describe('GET /api/comunidad/conectemos/publicaciones (Galería)', () => {
     it('200: retorna galería vacía cuando no hay contenido creativo', async () => {
       const res = await request(http).get('/api/comunidad/conectemos/publicaciones')
 
@@ -191,11 +191,11 @@ describe('Comunidad: Foros, Conectemos y Roles (E2E)', () => {
       expect(res.body.datos).toEqual([])
     })
 
-    it('200: retorna publicaciones con categoriaCreativa', async () => {
-      // Crear publicación creativa
+    it('200: retorna solo publicaciones multimedia con categoría creativa y formato de galería', async () => {
+      // Crear publicación creativa CON adjunto visual
       await request(http)
         .post('/api/comunidad/publicaciones')
-        .send({ contenido: 'Mi dibujo favorito', categoriaCreativa: 'dibujo' })
+        .send({ contenido: 'Mi dibujo favorito', categoriaCreativa: 'dibujo', mediaUrl: 'https://storage/dibujo.png' })
         .set('Authorization', token('uid-pcd'))
 
       const res = await request(http).get('/api/comunidad/conectemos/publicaciones')
@@ -206,17 +206,66 @@ describe('Comunidad: Foros, Conectemos y Roles (E2E)', () => {
       expect(res.body.datos[0].nombreCompleto).toBe('Ana PCD')
       expect(res.body.datos[0].rol).toBe('pcd')
       expect(res.body.datos[0].etiquetaRol).toBe('Persona con discapacidad')
+      // Formato visual para la cuadrícula: URL del recurso + miniatura + tipo
+      expect(res.body.datos[0].mediaUrl).toBe('https://storage/dibujo.png')
+      expect(res.body.datos[0].recursosVisuales).toEqual(['https://storage/dibujo.png'])
+      expect(res.body.datos[0].urlThumbnail).toBe('https://storage/dibujo.png')
+      expect(res.body.datos[0].tipoMedia).toBe('imagen')
+    })
+
+    it('200: excluye publicaciones creativas de solo texto o con adjuntos no gráficos', async () => {
+      // Solo texto (sin mediaUrl)
+      await request(http)
+        .post('/api/comunidad/publicaciones')
+        .send({ contenido: 'Historia sin imagen', categoriaCreativa: 'historia' })
+        .set('Authorization', token('uid-pcd'))
+
+      // Otra publicación creativa sin adjunto visual
+      await request(http)
+        .post('/api/comunidad/publicaciones')
+        .send({ contenido: 'Arte solo con texto', categoriaCreativa: 'arte' })
+        .set('Authorization', token('uid-pcd'))
+
+      // Adjunto únicamente documental (no gráfico)
+      await request(http)
+        .post('/api/comunidad/publicaciones')
+        .send({ contenido: 'Documento', categoriaCreativa: 'general', mediaUrl: 'https://storage/acta.pdf' })
+        .set('Authorization', token('uid-pcd'))
+
+      const res = await request(http).get('/api/comunidad/conectemos/publicaciones')
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toEqual([])
+    })
+
+    it('200: el alias /api/comunidad/galeria aplica el mismo filtro multimedia', async () => {
+      await request(http)
+        .post('/api/comunidad/publicaciones')
+        .send({ contenido: 'Con imagen', categoriaCreativa: 'arte', mediaUrl: 'https://storage/arte.jpg' })
+        .set('Authorization', token('uid-pcd'))
+
+      await request(http)
+        .post('/api/comunidad/publicaciones')
+        .send({ contenido: 'Sin imagen', categoriaCreativa: 'arte' })
+        .set('Authorization', token('uid-pcd'))
+
+      const res = await request(http).get('/api/comunidad/galeria')
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos.length).toBe(1)
+      expect(res.body.datos[0].contenido).toBe('Con imagen')
+      expect(res.body.datos[0].recursosVisuales).toEqual(['https://storage/arte.jpg'])
     })
 
     it('200: filtra por categoría creativa', async () => {
       await request(http)
         .post('/api/comunidad/publicaciones')
-        .send({ contenido: 'Arte', categoriaCreativa: 'arte' })
+        .send({ contenido: 'Arte', categoriaCreativa: 'arte', mediaUrl: 'https://storage/arte.jpg' })
         .set('Authorization', token('uid-pcd'))
 
       await request(http)
         .post('/api/comunidad/publicaciones')
-        .send({ contenido: 'Historia', categoriaCreativa: 'historia' })
+        .send({ contenido: 'Historia', categoriaCreativa: 'historia', mediaUrl: 'https://storage/historia.jpg' })
         .set('Authorization', token('uid-pcd'))
 
       const res = await request(http).get('/api/comunidad/conectemos/publicaciones?categoriaCreativa=arte')

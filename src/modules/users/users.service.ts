@@ -4,7 +4,7 @@ import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 import { getAuth } from 'firebase-admin/auth'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
-import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
+import { FEATURES_POR_DEFECTO, FeatureFlags, PERMISOS_DEFECTO, PermisosDependiente } from '../../common/interfaces/feature-flags.interface'
 import { DependienteDoc, DependienteFormateado, PerfilDoc, PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
 import { StorageService } from '../storage/storage.service'
 import { ValidationService } from '../ai/validation.service'
@@ -14,7 +14,10 @@ import { coincideBusqueda } from '../../common/utils/busqueda'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
+import { ActualizarPerfilNecesidadesDto } from './dto/actualizar-perfil-necesidades.dto'
+import { ActualizarPermisosDependienteDto } from './dto/actualizar-permisos-dependiente.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
+import { ETagInterceptor } from '../../common/interceptors/etag.interceptor'
 
 @Injectable()
 export class UsersService {
@@ -41,32 +44,7 @@ export class UsersService {
 
     const resultado: Record<string, unknown> = {
       ...perfil,
-      perfilNecesidades: perfilExtendido ? {
-        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
-        severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
-        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
-        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
-        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
-        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
-        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
-        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
-        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
-        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
-        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
-        etapaVida: perfilExtendido.etapaVida ?? null,
-        preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
-        nivelApoyo: perfilExtendido.nivelApoyo ?? null,
-        // ── Campos Spec MVP Raíces ──
-        escalasVida: perfilExtendido.escalasVida ?? null,
-        tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
-        requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
-        temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
-        preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
-        areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
-        viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
-        historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
-        tonoContextual: perfilExtendido.tonoContextual ?? null,
-      } : null,
+      perfilNecesidades: perfilExtendido ? this.perfilNecesidadesDe(perfilExtendido) : null,
     }
 
     // Para usuarios institución, adjuntar los datos básicos de su institución.
@@ -247,6 +225,85 @@ export class UsersService {
       nivelApoyo: carga.nivelApoyo,
     }
     return perfilGuardado
+  }
+
+  /**
+   * Mapea el documento de `perfilesExtendidos` al objeto `perfilNecesidades`
+   * de las respuestas: los arreglos guardados como JSON se devuelven como
+   * arreglos y los campos ausentes conservan su valor por defecto.
+   */
+  private perfilNecesidadesDe(perfilExtendido: DocumentData) {
+    return {
+      tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
+      severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
+      modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
+      necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
+      accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
+      zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
+      necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
+      metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
+      areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
+      historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
+      historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
+      etapaVida: perfilExtendido.etapaVida ?? null,
+      preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
+      nivelApoyo: perfilExtendido.nivelApoyo ?? null,
+      // ── Campos Spec MVP Raíces ──
+      escalasVida: perfilExtendido.escalasVida ?? null,
+      tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
+      requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
+      temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
+      preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
+      areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
+      viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
+      historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
+      tonoContextual: perfilExtendido.tonoContextual ?? null,
+      condiciones: this.parsearCampoJson(perfilExtendido.condiciones),
+    }
+  }
+
+  /**
+   * Actualización parcial de preferencias y condiciones del perfil
+   * (formulario "Editar Preferencias", `PUT/PATCH /usuarios/perfil-necesidades`).
+   *
+   * Solo modifica los campos enviados; si el usuario aún no tiene documento en
+   * `perfilesExtendidos` lo crea. Al terminar invalida la caché ETag del
+   * usuario para que las lecturas con `@UseETag` (incluida la que el frontend
+   * usa como contexto de la historia personal de IA) no sirvan datos
+   * obsoletos durante el TTL de la caché.
+   */
+  async actualizarPreferenciasNecesidades(usuarioId: string, dto: ActualizarPerfilNecesidadesDto) {
+    const carga: Record<string, unknown> = {}
+    if (dto.tiposDiscapacidad !== undefined) carga.tiposDiscapacidad = JSON.stringify(dto.tiposDiscapacidad)
+    if (dto.etapaVida !== undefined) carga.etapaVida = dto.etapaVida
+    if (dto.necesidadesMovilidad !== undefined) carga.necesidadesMovilidad = JSON.stringify(dto.necesidadesMovilidad)
+    if (dto.areasInteres !== undefined) carga.areasInteres = JSON.stringify(dto.areasInteres)
+    if (dto.condiciones !== undefined) carga.condiciones = JSON.stringify(dto.condiciones)
+
+    if (Object.keys(carga).length === 0) {
+      throw new BadRequestException('No se recibieron campos para actualizar')
+    }
+
+    const existe = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+
+    let datosActualizados: DocumentData
+    if (!existe.empty) {
+      const docId = existe.docs[0].id
+      const actuales = (existe.docs[0].data() ?? {}) as DocumentData
+      datosActualizados = { ...actuales, ...carga }
+      await this.col(COLECCIONES.perfilesExtendidos).doc(docId).update(carga)
+    } else {
+      const ref = this.col(COLECCIONES.perfilesExtendidos).doc()
+      datosActualizados = { id: ref.id, usuarioId, ...carga }
+      await ref.set(datosActualizados)
+    }
+
+    // Invalidación de caché: sin esto, GET /usuarios/perfil (con @UseETag)
+    // devolvería 304 con la preferencia anterior hasta expirar el TTL.
+    ETagInterceptor.clearUsuarioCache(usuarioId)
+
+    return this.perfilNecesidadesDe(datosActualizados)
   }
 
   // ─── Escalas "Cómo vives hoy" ─────────────────────────────────────
@@ -508,32 +565,7 @@ export class UsersService {
       esMiPcd: true,
       tutorId: perfil.tutorId ?? null,
       // Datos extendidos de la PCD
-      perfilNecesidades: perfilExtendido ? {
-        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
-        severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
-        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
-        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
-        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
-        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
-        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
-        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
-        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
-        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
-        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
-        etapaVida: perfilExtendido.etapaVida ?? null,
-        preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
-        nivelApoyo: perfilExtendido.nivelApoyo ?? null,
-        // Campos Spec MVP Raíces
-        escalasVida: perfilExtendido.escalasVida ?? null,
-        tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
-        requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
-        temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
-        preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
-        areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
-        viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
-        historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
-        tonoContextual: perfilExtendido.tonoContextual ?? null,
-      } : null,
+      perfilNecesidades: perfilExtendido ? this.perfilNecesidadesDe(perfilExtendido) : null,
     }
 
     return resultado
@@ -876,11 +908,15 @@ export class UsersService {
     }
 
     let features: FeatureFlags = data.features ?? { ...FEATURES_POR_DEFECTO }
+    let permisosGuardados: Partial<PermisosDependiente> | null = data.permisos ?? null
     if (data.esCuentaVinculada || data.pcdUserId) {
       const pcdId = data.pcdUserId ?? dependienteId
       const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdId).get()
-      if (pcdDoc.exists && pcdDoc.data()?.features) {
-        features = { ...FEATURES_POR_DEFECTO, ...pcdDoc.data()!.features }
+      if (pcdDoc.exists) {
+        if (pcdDoc.data()?.features) {
+          features = { ...FEATURES_POR_DEFECTO, ...pcdDoc.data()!.features }
+        }
+        permisosGuardados = pcdDoc.data()?.permisos ?? permisosGuardados
       }
     }
 
@@ -890,7 +926,102 @@ export class UsersService {
       esCuentaVinculada: data.esCuentaVinculada === true || !!data.pcdUserId,
       pcdUserId: data.pcdUserId ?? null,
       features,
+      permisos: this.calcularPermisos(features, null, permisosGuardados),
     }
+  }
+
+  /**
+   * Combina los permisos guardados con los defaults y refleja las features
+   * funcionales en los módulos/acciones equivalentes, para que el modal de
+   * tutor muestre exactamente el estado que se está aplicando.
+   */
+  private calcularPermisos(
+    features: FeatureFlags,
+    entrada?: Partial<PermisosDependiente> | null,
+    guardados?: Partial<PermisosDependiente> | null,
+  ): PermisosDependiente {
+    const permisos: PermisosDependiente = { ...PERMISOS_DEFECTO }
+
+    for (const origen of [guardados, entrada]) {
+      if (!origen) continue
+      for (const clave of Object.keys(origen) as (keyof PermisosDependiente)[]) {
+        const valor = origen[clave]
+        if (valor !== undefined) permisos[clave] = valor
+      }
+    }
+
+    // Espejo de las features finales (módulos/acciones con equivalente funcional)
+    permisos.instituciones = features.descubrimiento
+    permisos.empleo = features.postulaciones
+    permisos.comunidad = features.comunidad
+    permisos.accesoChat = features.chat
+    permisos.accesoMultimedia = features.multimedia
+
+    return permisos
+  }
+
+  /**
+   * Guarda los permisos de los modales de tutor ("Configurar opciones" y
+   * "Permisos de acceso") sobre un dependiente plano o la cuenta PCD
+   * vinculada. Verifica que el usuario autenticado sea el tutor dueño o
+   * tenga rol admin (403 en caso contrario) y persiste tanto `permisos`
+   * (estado de los controles) como `features` (aplicación real de los
+   * módulos/acciones).
+   */
+  async actualizarPermisosDependiente(usuarioId: string, dependienteId: string, rol: string, dto: ActualizarPermisosDependienteDto) {
+    const doc = await this.col(COLECCIONES.dependientes).doc(dependienteId).get()
+    if (!doc.exists) {
+      throw new NotFoundException('Dependiente no encontrado')
+    }
+    const data = doc.data()!
+    if (data.tutorId !== usuarioId && rol !== 'admin') {
+      throw new ForbiddenException('Este dependiente no pertenece a tu cuenta')
+    }
+
+    // Nombres clásicos de features enviados por clientes anteriores
+    const legacy: Partial<FeatureFlags> = {}
+    for (const clave of ['chat', 'postulaciones', 'resenas', 'descubrimiento', 'favoritos', 'multimedia'] as const) {
+      if (dto[clave] !== undefined) legacy[clave] = dto[clave]!
+    }
+
+    // Módulos (casillas) y acciones (interruptores) enviados
+    const entrada: Partial<PermisosDependiente> = {}
+    for (const clave of ['instituciones', 'empleo', 'comunidad', 'puedeComentar', 'puedeInteractuar', 'accesoMultimedia', 'accesoChat'] as const) {
+      if (dto[clave] !== undefined) entrada[clave] = dto[clave]!
+    }
+
+    if (Object.keys(legacy).length === 0 && Object.keys(entrada).length === 0) {
+      throw new BadRequestException('No se recibieron permisos para actualizar')
+    }
+
+    // Módulos/acciones → features funcionales (lo que realmente aplican los guards)
+    const mapeadas: Partial<FeatureFlags> = { ...legacy }
+    if (dto.instituciones !== undefined) mapeadas.descubrimiento = dto.instituciones
+    if (dto.empleo !== undefined) mapeadas.postulaciones = dto.empleo
+    if (dto.comunidad !== undefined) mapeadas.comunidad = dto.comunidad
+    if (dto.accesoChat !== undefined) mapeadas.chat = dto.accesoChat
+    if (dto.accesoMultimedia !== undefined) mapeadas.multimedia = dto.accesoMultimedia
+
+    // Cuenta PCD vinculada: la fuente de verdad es su perfil real
+    if (data.esCuentaVinculada || data.pcdUserId) {
+      const pcdId = data.pcdUserId ?? dependienteId
+      const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdId).get()
+      if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+      const pcd = pcdDoc.data()!
+      if (pcd.tutorId !== usuarioId && rol !== 'admin') {
+        throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como tutor')
+      }
+
+      const features: FeatureFlags = { ...FEATURES_POR_DEFECTO, ...(pcd.features ?? {}), ...mapeadas }
+      const permisos = this.calcularPermisos(features, entrada, pcd.permisos ?? null)
+      await this.col(COLECCIONES.perfiles).doc(pcdId).update({ features, permisos })
+      return { dependienteId, features, permisos }
+    }
+
+    const features: FeatureFlags = { ...FEATURES_POR_DEFECTO, ...(data.features ?? {}), ...mapeadas }
+    const permisos = this.calcularPermisos(features, entrada, data.permisos ?? null)
+    await this.col(COLECCIONES.dependientes).doc(dependienteId).update({ features, permisos })
+    return { dependienteId, features, permisos }
   }
 
   /**

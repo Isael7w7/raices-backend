@@ -109,7 +109,10 @@ export class AdminController {
   @UseETag()
   @ApiOperation({
     summary: 'Verificación de identidad de institución',
-    description: 'Retorna el estado de verificación de identidad del representante legal de una institución. Indica si la institución puede ser aprobada (requiere identidad del representante aprobada).',
+    description:
+      'Retorna el estado de verificación de una institución/empresa (persona moral). ' +
+      'La aprobación exige la Constancia de Situación Fiscal (CSF): la CURP no aplica ' +
+      'a personas morales y la identificación del representante legal es opcional.',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución' })
   @ApiOkResponse({ type: VerificacionIdentidadInstitucionDto, description: 'Estado de verificación de identidad de la institución' })

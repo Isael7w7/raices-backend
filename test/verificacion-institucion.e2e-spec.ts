@@ -13,6 +13,10 @@ import request from 'supertest'
  *  2. Guard: instituciones no verificadas no pueden crear vacantes
  *  3. Guard: instituciones verificadas SÍ pueden crear vacantes
  *  4. Guard: otros roles (tutor, pcd) no se ven afectados
+ *  5. Endpoints que NO requieren verificación
+ *  6. POST /instituciones/verificacion/documentos: CSF indispensable, sin CURP
+ *  7. GET /instituciones/mi-institucion/estado-verificacion: pasos sin CURP
+ *  8. Aprobación admin: exige CSF (nunca CURP/identificación del representante)
  * ══════════════════════════════════════════════════════════════════════════════
  */
 
@@ -382,6 +386,393 @@ describe('Verificación de Instituciones (E2E)', () => {
         .get('/api/instituciones')
 
       expect(res.status).toBe(200)
+    })
+  })
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 6. POST /instituciones/verificacion/documentos — CSF indispensable, sin CURP
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('POST /api/instituciones/verificacion/documentos', () => {
+    const uid = 'uid-inst-verif'
+    const csf = () => Buffer.from('%PDF-1.4 fake csf')
+
+    beforeEach(async () => {
+      await sembrarPerfil({
+        id: uid,
+        email: 'verif@test.com',
+        rol: 'institucion',
+        activo: true,
+        verificado: false,
+        nombreCompleto: 'Centro Verificación',
+        institucionId: uid,
+      })
+      await sembrarInstitucion({
+        id: uid,
+        nombre: 'Centro Verificación',
+        emailContacto: 'verif@test.com',
+        categoria: 'funcional',
+        activa: true,
+        verificada: false,
+        creadoPor: uid,
+        usuarioId: uid,
+      })
+    })
+
+    it('401: sin token', async () => {
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .field('tipo', 'csf')
+        .attach('documento', csf(), { filename: 'csf.pdf', contentType: 'application/pdf' })
+
+      expect(res.status).toBe(401)
+    })
+
+    it('403: rol PCD no puede subir documentos de verificación', async () => {
+      await sembrarPerfil({ id: 'uid-pcd-verif', email: 'pcd-verif@test.com', rol: 'pcd', activo: true, nombreCompleto: 'PCD' })
+
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token('uid-pcd-verif'))
+        .field('tipo', 'csf')
+        .attach('documento', csf(), { filename: 'csf.pdf', contentType: 'application/pdf' })
+
+      expect(res.status).toBe(403)
+    })
+
+    it('201: sube la CSF (indispensable) y persiste documentoCsf en la institución', async () => {
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token(uid))
+        .field('tipo', 'csf')
+        .attach('documento', csf(), { filename: 'csf.pdf', contentType: 'application/pdf' })
+
+      expect(res.status).toBe(201)
+      expect(res.body.tipo).toBe('csf')
+      expect(res.body.estado).toBe('pendiente')
+      expect(typeof res.body.urlDocumento).toBe('string')
+      // La CURP no participa en absoluto en la respuesta
+      expect(res.body.numeroCurp).toBeUndefined()
+
+      const inst = await leerDoc('instituciones', uid)
+      expect(typeof inst.documentoCsf).toBe('string')
+      expect(inst.documentoCsf.length).toBeGreaterThan(0)
+      expect(typeof inst.fechaDocumentoCsf).toBe('string')
+    })
+
+    it('201: sube la identificación del representante SIN numeroCurp (opcional)', async () => {
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token(uid))
+        .field('tipo', 'identificacion_representante')
+        .attach('documento', Buffer.from('png-bytes'), { filename: 'ine.png', contentType: 'image/png' })
+
+      expect(res.status).toBe(201)
+      expect(res.body.tipo).toBe('identificacion_representante')
+      expect(res.body.estado).toBe('pendiente')
+      expect(typeof res.body.urlDocumento).toBe('string')
+
+      // Quedó registrada como identificación oficial del usuario, sin CURP
+      const estado = await request(http)
+        .get('/api/usuarios/estado-validacion-identidad')
+        .set('Authorization', token(uid))
+      expect(estado.status).toBe(200)
+      expect(estado.body.tieneIdentificacion).toBe(true)
+      expect(estado.body.tieneCurp).toBe(false)
+    })
+
+    it('400: tipo inválido (solo csf o identificacion_representante)', async () => {
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token(uid))
+        .field('tipo', 'curp')
+        .attach('documento', csf(), { filename: 'curp.pdf', contentType: 'application/pdf' })
+
+      expect(res.status).toBe(400)
+    })
+
+    it('400: sin archivo adjunto', async () => {
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token(uid))
+        .field('tipo', 'csf')
+
+      expect(res.status).toBe(400)
+    })
+
+    it('404: usuario con rol institución pero sin institución registrada', async () => {
+      await sembrarPerfil({ id: 'uid-sin-inst', email: 'sininst@test.com', rol: 'institucion', activo: true, nombreCompleto: 'Sin Institución' })
+
+      const res = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token('uid-sin-inst'))
+        .field('tipo', 'csf')
+        .attach('documento', csf(), { filename: 'csf.pdf', contentType: 'application/pdf' })
+
+      expect(res.status).toBe(404)
+    })
+  })
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 7. GET /instituciones/mi-institucion/estado-verificacion — pasos sin CURP
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('GET /api/instituciones/mi-institucion/estado-verificacion', () => {
+    const uid = 'uid-inst-estado'
+    const CSF = 'https://storage.googleapis.com/raices-bucket/instituciones/csf.pdf'
+
+    const sembrarBase = (extras: Record<string, any> = {}) =>
+      sembrarInstitucion({
+        id: uid,
+        nombre: 'Centro Estado',
+        emailContacto: 'estado@test.com',
+        categoria: 'funcional',
+        activa: true,
+        verificada: false,
+        creadoPor: uid,
+        usuarioId: uid,
+        ...extras,
+      })
+
+    beforeEach(async () => {
+      await sembrarPerfil({
+        id: uid,
+        email: 'estado@test.com',
+        rol: 'institucion',
+        activo: true,
+        verificado: false,
+        nombreCompleto: 'Centro Estado',
+        institucionId: uid,
+      })
+      await sembrarBase()
+    })
+
+    it('401: sin token', async () => {
+      const res = await request(http).get('/api/instituciones/mi-institucion/estado-verificacion')
+      expect(res.status).toBe(401)
+    })
+
+    it('200: sin CSF → pasos sin CURP, pendientes CSF + aprobación', async () => {
+      const res = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token(uid))
+
+      expect(res.status).toBe(200)
+      expect(res.body.verificada).toBe(false)
+      expect(res.body.pasos.map((p: any) => p.clave)).toEqual(['csf', 'aprobacion_admin', 'identificacion_representante'])
+      expect(res.body.pasos.some((p: any) => p.clave === 'curp')).toBe(false)
+      expect(res.body.pasos.find((p: any) => p.clave === 'csf').obligatorio).toBe(true)
+      expect(res.body.pasos.find((p: any) => p.clave === 'identificacion_representante').obligatorio).toBe(false)
+      expect(res.body.documentosFaltantes).toEqual(['csf'])
+      expect(res.body.documentosFaltantes).not.toContain('curp')
+      expect(res.body.pasosPendientes).toEqual(['csf', 'aprobacion_admin'])
+      expect(res.body.porcentaje).toBe(0)
+    })
+
+    it('200: con CSF → solo falta la aprobación del administrador (50%)', async () => {
+      await sembrarBase({ documentoCsf: CSF })
+
+      const res = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token(uid))
+
+      expect(res.status).toBe(200)
+      expect(res.body.documentosFaltantes).toEqual([])
+      expect(res.body.pasosPendientes).toEqual(['aprobacion_admin'])
+      expect(res.body.porcentaje).toBe(50)
+    })
+
+    it('200: con CSF y aprobación → 100%', async () => {
+      await sembrarBase({ documentoCsf: CSF, verificada: true })
+
+      const res = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token(uid))
+
+      expect(res.status).toBe(200)
+      expect(res.body.verificada).toBe(true)
+      expect(res.body.pasosPendientes).toEqual([])
+      expect(res.body.porcentaje).toBe(100)
+    })
+
+    it('200: la identificación del representante es opcional y no altera el porcentaje', async () => {
+      await sembrarBase({ documentoCsf: CSF })
+      await sembrarPerfil({ id: uid, email: 'estado@test.com', rol: 'institucion', activo: true, verificado: false, nombreCompleto: 'Centro Estado', institucionId: uid, curp: 'GAPL800101HMCYRL09' })
+
+      const res = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token(uid))
+
+      expect(res.status).toBe(200)
+      expect(res.body.pasos.find((p: any) => p.clave === 'identificacion_representante').obligatorio).toBe(false)
+      expect(res.body.porcentaje).toBe(50)
+    })
+
+    it('200: rol empresa también obtiene los pasos sin CURP', async () => {
+      await sembrarPerfil({ id: 'uid-empresa-estado', email: 'empresa-estado@test.com', rol: 'empresa', activo: true, verificado: false, nombreCompleto: 'Empresa SA', institucionId: 'uid-empresa-estado' })
+      await sembrarInstitucion({
+        id: 'uid-empresa-estado',
+        nombre: 'Empresa SA',
+        emailContacto: 'empresa-estado@test.com',
+        categoria: 'funcional',
+        activa: true,
+        verificada: false,
+        creadoPor: 'uid-empresa-estado',
+        usuarioId: 'uid-empresa-estado',
+        tipo: 'empresa',
+      })
+
+      const res = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token('uid-empresa-estado'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.pasos.map((p: any) => p.clave)).toEqual(['csf', 'aprobacion_admin', 'identificacion_representante'])
+      expect(res.body.documentosFaltantes).toEqual(['csf'])
+    })
+
+    it('404: usuario sin institución registrada', async () => {
+      await sembrarPerfil({ id: 'uid-estado-sin-inst', email: 'estadoinst@test.com', rol: 'institucion', activo: true, nombreCompleto: 'Sin Inst' })
+
+      const res = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token('uid-estado-sin-inst'))
+
+      expect(res.status).toBe(404)
+    })
+  })
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 8. Aprobación del administrador — exige CSF, nunca CURP/identificación
+  // ══════════════════════════════════════════════════════════════════════════
+
+  describe('Aprobación admin — requisito CSF (sin CURP)', () => {
+    const uid = 'uid-inst-aprobar'
+    const CSF = 'https://storage.googleapis.com/raices-bucket/instituciones/csf.pdf'
+
+    const sembrarInstitucionConCSF = () =>
+      sembrarInstitucion({
+        id: uid,
+        nombre: 'Centro Aprobar',
+        emailContacto: 'aprobar@test.com',
+        categoria: 'funcional',
+        activa: true,
+        verificada: false,
+        creadoPor: uid,
+        usuarioId: uid,
+        documentoCsf: CSF,
+      })
+
+    beforeEach(async () => {
+      await sembrarPerfil({ id: 'uid-admin-aprobar', email: 'admin-aprobar@test.com', rol: 'admin', activo: true, nombreCompleto: 'Admin' })
+      await sembrarPerfil({ id: uid, email: 'aprobar@test.com', rol: 'institucion', activo: true, verificado: false, nombreCompleto: 'Centro Aprobar', institucionId: uid })
+    })
+
+    it('400: no puede aprobarse sin CSF (indispensable para personas morales)', async () => {
+      await sembrarInstitucion({ id: uid, nombre: 'Centro Aprobar', emailContacto: 'aprobar@test.com', categoria: 'funcional', activa: true, verificada: false, creadoPor: uid, usuarioId: uid })
+
+      const res = await request(http)
+        .post(`/api/administracion/instituciones/${uid}/aprobar`)
+        .set('Authorization', token('uid-admin-aprobar'))
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toContain('Constancia de Situación Fiscal')
+      expect(res.body.message).not.toContain('CURP')
+
+      const inst = await leerDoc('instituciones', uid)
+      expect(inst.verificada).toBe(false)
+    })
+
+    it('204: se aprueba con SOLO la CSF (sin CURP ni identificación del representante)', async () => {
+      await sembrarInstitucionConCSF()
+
+      const res = await request(http)
+        .post(`/api/administracion/instituciones/${uid}/aprobar`)
+        .set('Authorization', token('uid-admin-aprobar'))
+
+      expect(res.status).toBe(204)
+
+      const inst = await leerDoc('instituciones', uid)
+      expect(inst.verificada).toBe(true)
+      expect(inst.activa).toBe(true)
+    })
+
+    it('200: verificación de identidad reporta puedeAprobarse por CSF, nunca por CURP', async () => {
+      await sembrarInstitucionConCSF()
+
+      const res = await request(http)
+        .get(`/api/administracion/instituciones/${uid}/verificacion-identidad`)
+        .set('Authorization', token('uid-admin-aprobar'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.verificacionIdentidad.tieneCsf).toBe(true)
+      expect(res.body.verificacionIdentidad.tieneCurp).toBe(false)
+      expect(res.body.verificacionIdentidad.tieneIdentificacion).toBe(false)
+      expect(res.body.verificacionIdentidad.puedeAprobarse).toBe(true)
+      expect(res.body.verificacionIdentidad.motivo).toBeNull()
+    })
+
+    it('200: sin CSF → puedeAprobarse false y el motivo menciona la CSF (no la CURP)', async () => {
+      await sembrarInstitucion({ id: uid, nombre: 'Centro Aprobar', emailContacto: 'aprobar@test.com', categoria: 'funcional', activa: true, verificada: false, creadoPor: uid, usuarioId: uid })
+
+      const res = await request(http)
+        .get(`/api/administracion/instituciones/${uid}/verificacion-identidad`)
+        .set('Authorization', token('uid-admin-aprobar'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.verificacionIdentidad.tieneCsf).toBe(false)
+      expect(res.body.verificacionIdentidad.puedeAprobarse).toBe(false)
+      expect(res.body.verificacionIdentidad.motivo).toContain('Constancia de Situación Fiscal')
+      expect(res.body.verificacionIdentidad.motivo).not.toContain('CURP')
+    })
+
+    it('200: el listado de pendientes expone tieneCsf y puedeAprobarse basado en la CSF', async () => {
+      await sembrarInstitucionConCSF()
+
+      const res = await request(http)
+        .get('/api/administracion/instituciones/pendientes')
+        .set('Authorization', token('uid-admin-aprobar'))
+
+      expect(res.status).toBe(200)
+      const item = (res.body as any[]).find((i: any) => i.id === uid)
+      expect(item).toBeDefined()
+      expect(item.verificacionIdentidad.tieneCsf).toBe(true)
+      expect(item.verificacionIdentidad.puedeAprobarse).toBe(true)
+      expect(item.verificacionIdentidad.tieneCurp).toBe(false)
+    })
+
+    it('flujo completo: subir CSF → estado 50% → aprobar → 100% (sin CURP en ningún paso)', async () => {
+      await sembrarInstitucion({ id: uid, nombre: 'Centro Aprobar', emailContacto: 'aprobar@test.com', categoria: 'funcional', activa: true, verificada: false, creadoPor: uid, usuarioId: uid })
+
+      // 1. Subir la CSF
+      const subir = await request(http)
+        .post('/api/instituciones/verificacion/documentos')
+        .set('Authorization', token(uid))
+        .field('tipo', 'csf')
+        .attach('documento', Buffer.from('%PDF-1.4 fake csf'), { filename: 'csf.pdf', contentType: 'application/pdf' })
+      expect(subir.status).toBe(201)
+
+      // 2. Estado intermedio: 50%, solo falta aprobación
+      const estado1 = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token(uid))
+      expect(estado1.body.porcentaje).toBe(50)
+      expect(estado1.body.pasosPendientes).toEqual(['aprobacion_admin'])
+      expect(estado1.body.pasos.every((p: any) => p.clave !== 'curp')).toBe(true)
+
+      // 3. El admin aprueba con solo la CSF
+      const aprobar = await request(http)
+        .post(`/api/administracion/instituciones/${uid}/aprobar`)
+        .set('Authorization', token('uid-admin-aprobar'))
+      expect(aprobar.status).toBe(204)
+
+      // 4. Estado final: 100%
+      const estado2 = await request(http)
+        .get('/api/instituciones/mi-institucion/estado-verificacion')
+        .set('Authorization', token(uid))
+      expect(estado2.body.porcentaje).toBe(100)
+      expect(estado2.body.pasosPendientes).toEqual([])
+      expect(estado2.body.verificada).toBe(true)
     })
   })
 })

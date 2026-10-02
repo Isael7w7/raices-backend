@@ -40,6 +40,19 @@ export class ETagInterceptor implements NestInterceptor {
     ETagInterceptor.cache.clear()
   }
 
+  /**
+   * Invalida todas las entradas en caché de un usuario (claves `MÉTODO:URL:userId`).
+   * Se usa tras modificar datos suyos (p. ej. preferencias del perfil) para que
+   * las lecturas con `@UseETag` —incluida la que alimenta el contexto de la
+   * historia personal de IA— no sirvan una respuesta obsoleta durante el TTL.
+   */
+  static clearUsuarioCache(usuarioId: string): void {
+    const sufijo = `:${usuarioId}`
+    for (const clave of [...ETagInterceptor.cache.keys()]) {
+      if (clave.endsWith(sufijo)) ETagInterceptor.cache.delete(clave)
+    }
+  }
+
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const ctx = context.switchToHttp()
     const req = ctx.getRequest()

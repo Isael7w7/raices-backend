@@ -2,6 +2,7 @@ import { Controller, Post, Patch, Get, Body, Param, Req, HttpCode, UseGuards } f
 import { Request } from 'express'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiBearerAuth, ApiParam, ApiBody } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler'
+import { throttlePorEntorno } from '../../common/utils/throttle'
 import { AiService } from './ai.service'
 import { ValidationService } from './validation.service'
 import { ChatIaDto } from './dto/chat-ia.dto'
@@ -29,7 +30,7 @@ export class AiController {
 
   @Post('conversacion')
   @HttpCode(200)
-  @Throttle({ default: { limit: 20, ttl: 3600000 } }) // 20 chats por hora
+  @Throttle(throttlePorEntorno(20, 100, 3600000)) // 20 chats/hora en prod · 100/hora en dev/staging
   @ApiOperation({ summary: 'Conversación con asistente IA', description: 'Conversa con el asistente de Raíces. Usa el perfil del usuario para dar respuestas contextualizadas. Máximo 150 palabras por respuesta.' })
   @ApiOkResponse({ type: RespuestaChatDto, description: 'Respuesta del asistente' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
@@ -40,7 +41,7 @@ export class AiController {
   @Post('recomendaciones')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, DependientePropietarioGuard)
-  @Throttle({ default: { limit: 10, ttl: 3600000 } }) // 10 recomendaciones por hora
+  @Throttle(throttlePorEntorno(10, 100, 3600000)) // 10 recomendaciones/hora en prod · 100/hora en dev/staging
   @ApiOperation({ summary: 'Recomendaciones personalizadas', description: 'Genera 3 próximos pasos concretos basados en el perfil del usuario o de un dependiente. Incluye sugerencias de instituciones. Si se envía dependienteId, se valida que el dependiente pertenezca al tutor autenticado.' })
   @ApiOkResponse({ type: RespuestaRecomendacionDto, description: 'Próximos pasos, razonamiento y sugerencias de instituciones' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
@@ -60,7 +61,7 @@ export class AiController {
 
   @Post('resumen')
   @HttpCode(200)
-  @Throttle({ default: { limit: 5, ttl: 3600000 } }) // 5 resúmenes por hora
+  @Throttle(throttlePorEntorno(5, 100, 3600000)) // 5 resúmenes/hora en prod · 100/hora en dev/staging
   @ApiOperation({
     summary: 'Resumen narrativo del perfil',
     description: 'Genera un resumen de 1 párrafo (historia interpretativa) y 3 párrafos (quién eres, contexto, intereses/aspiraciones) basado estrictamente en los datos del usuario. NO inventa información no proporcionada.',
@@ -79,7 +80,7 @@ export class AiController {
   @HttpCode(200)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  @Throttle({ default: { limit: 20, ttl: 3600000 } }) // 20 validaciones manuales por hora
+  @Throttle(throttlePorEntorno(20, 100, 3600000)) // 20 validaciones/hora en prod · 100/hora en dev/staging
   @ApiOperation({
     summary: 'Ejecutar validación manual por IA',
     description: 'Analiza con Gemini la coherencia de nombre, email, CURP, rol, datos de institución y documentos de identidad del usuario. Confianza >= 80% con criterios clave → verificación inmediata; 50-79% → revisión manual del admin (último recurso); < 50% o problemas graves → rechazo. Si Gemini no está disponible, valida con reglas de código.',

@@ -96,9 +96,13 @@ describe('AdminService', () => {
   // ── approveInstitution ──────────────────────────────────────────────
 
   describe('approveInstitution', () => {
-    it('should approve and send email', async () => {
+    it('approves and sends email with ONLY the CSF (no CURP / no identificación)', async () => {
       const updateMock = jest.fn().mockResolvedValue(undefined)
-      const getMock = jest.fn().mockResolvedValue(mockDoc({ nombre: 'Centro', emailContacto: 'c@test.com' }, true, 'inst1'))
+      const getMock = jest.fn().mockResolvedValue(mockDoc(
+        { nombre: 'Centro', emailContacto: 'c@test.com', documentoCsf: 'https://storage/csf.pdf' },
+        true,
+        'inst1',
+      ))
 
       firestoreMock.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({ update: updateMock, get: getMock }),
@@ -108,6 +112,115 @@ describe('AdminService', () => {
 
       expect(updateMock).toHaveBeenCalledWith({ verificada: true, activa: true })
       expect(emailMock.sendInstitutionApproved).toHaveBeenCalledWith('c@test.com', 'Centro')
+    })
+
+    it('should throw BadRequestException when the CSF is missing (indispensable)', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const getMock = jest.fn().mockResolvedValue(mockDoc(
+        { nombre: 'Centro', emailContacto: 'c@test.com' },
+        true,
+        'inst1',
+      ))
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ update: updateMock, get: getMock }),
+      })
+
+      await expect(service.approveInstitution('inst1')).rejects.toThrow(BadRequestException)
+
+      expect(updateMock).not.toHaveBeenCalled()
+      expect(emailMock.sendInstitutionApproved).not.toHaveBeenCalled()
+    })
+
+    it('should throw BadRequestException when the CSF is an empty string', async () => {
+      const getMock = jest.fn().mockResolvedValue(mockDoc({ nombre: 'Centro', documentoCsf: '' }, true, 'inst1'))
+      firestoreMock.collection.mockReturnValue({ doc: jest.fn().mockReturnValue({ update: jest.fn(), get: getMock }) })
+
+      await expect(service.approveInstitution('inst1')).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw NotFoundException when the institution does not exist', async () => {
+      const getMock = jest.fn().mockResolvedValue(mockDoc(null, false))
+      firestoreMock.collection.mockReturnValue({ doc: jest.fn().mockReturnValue({ update: jest.fn(), get: getMock }) })
+
+      await expect(service.approveInstitution('ghost')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── getVerificacionIdentidadInstitucion ─────────────────────────────
+
+  describe('getVerificacionIdentidadInstitucion', () => {
+    function mockInst(opts: {
+      inst: Record<string, any> | null
+      perfil?: Record<string, any> | null
+      docs?: any[]
+    }) {
+      const { inst, perfil = null, docs = [] } = opts
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'instituciones') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(inst, inst !== null, 'inst1')) }) }
+        }
+        if (nombre === 'perfiles') {
+          return { doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(perfil, perfil !== null)) }) }
+        }
+        if (nombre === 'documentosIdentidad') {
+          return {
+            orderBy: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: docs.length === 0, docs: docs.map(d => ({ data: () => d })), size: docs.length }),
+          }
+        }
+        return {}
+      })
+    }
+
+    it('can be approved with ONLY the CSF: CURP and identificación are not required', async () => {
+      mockInst({
+        inst: { nombre: 'Centro Vida', usuarioId: 'user1', documentoCsf: 'https://storage/csf.pdf' },
+        perfil: { nombreCompleto: 'Representante', email: 'r@test.com', curp: null, estadoValidacionIdentidad: 'sin_documentos' },
+        docs: [],
+      })
+
+      const res = await service.getVerificacionIdentidadInstitucion('inst1')
+
+      expect(res.verificacionIdentidad.tieneCsf).toBe(true)
+      expect(res.verificacionIdentidad.tieneCurp).toBe(false)
+      expect(res.verificacionIdentidad.tieneIdentificacion).toBe(false)
+      expect(res.verificacionIdentidad.puedeAprobarse).toBe(true)
+      expect(res.verificacionIdentidad.motivo).toBeNull()
+      expect(JSON.stringify(res.verificacionIdentidad.motivo ?? '')).not.toContain('CURP')
+    })
+
+    it('cannot be approved without the CSF and reports it as the motivo (never CURP)', async () => {
+      mockInst({
+        inst: { nombre: 'Centro Vida', usuarioId: 'user1' },
+        perfil: { nombreCompleto: 'Representante', email: 'r@test.com', estadoValidacionIdentidad: 'sin_documentos' },
+        docs: [{ tipo: 'curp', estado: 'aprobado', usuarioId: 'user1' }],
+      })
+
+      const res = await service.getVerificacionIdentidadInstitucion('inst1')
+
+      expect(res.verificacionIdentidad.tieneCsf).toBe(false)
+      expect(res.verificacionIdentidad.puedeAprobarse).toBe(false)
+      expect(res.verificacionIdentidad.motivo).toContain('Constancia de Situación Fiscal')
+      expect(res.verificacionIdentidad.motivo).not.toContain('CURP')
+    })
+
+    it('reports CSF status even when the institution has no linked user', async () => {
+      mockInst({ inst: { nombre: 'Empresa X' } })
+
+      const res = await service.getVerificacionIdentidadInstitucion('inst1')
+
+      expect(res.representante).toBeNull()
+      expect(res.verificacionIdentidad.tieneCsf).toBe(false)
+      expect(res.verificacionIdentidad.puedeAprobarse).toBe(false)
+      expect(res.verificacionIdentidad.motivo).toContain('Constancia de Situación Fiscal')
+    })
+
+    it('throws NotFoundException for a missing institution', async () => {
+      mockInst({ inst: null })
+
+      await expect(service.getVerificacionIdentidadInstitucion('ghost')).rejects.toThrow(NotFoundException)
     })
   })
 

@@ -15,9 +15,11 @@ import { GuardarEscalasVidaDto } from './dto/guardar-escalas-vida.dto'
 import { EscalasVidaGuardadasDto } from './dto/respuestas-escalas.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
+import { ActualizarPerfilNecesidadesDto } from './dto/actualizar-perfil-necesidades.dto'
+import { ActualizarPermisosDependienteDto } from './dto/actualizar-permisos-dependiente.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
 import { DocumentoIdentidadSubidoDto, EstadoValidacionIdentidadDto } from './dto/documento-identidad.dto'
-import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, PaginaMisPersonasDto, PaginaUsuariosBusquedaDto } from './dto/respuestas-usuario.dto'
+import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, RespuestaPermisosActualizadosDto, PaginaMisPersonasDto, PaginaUsuariosBusquedaDto } from './dto/respuestas-usuario.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
@@ -97,6 +99,38 @@ export class UsersController {
   @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil actualizado' })
   updateProfile(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilDto) {
     return this.svc.updateProfile(user.id, dto)
+  }
+
+  // Preferencias y condiciones del perfil. Deben declararse ANTES de
+  // @Put(':id') para que la ruta estática no sea capturada por el parámetro :id.
+  @Put('perfil-necesidades')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 guardados por minuto
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Actualizar preferencias y necesidades (PUT)',
+    description: 'Actualización parcial de las preferencias y condiciones del perfil: tiposDiscapacidad, etapaVida, necesidadesMovilidad, areasInteres y condiciones. Solo se modifican los campos enviados; si no existe el perfil extendido se crea.',
+  })
+  @ApiBody({ type: ActualizarPerfilNecesidadesDto })
+  @ApiOkResponse({ type: PerfilNecesidadesDto, description: 'Preferencias actualizadas' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o sin campos para actualizar' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  actualizarPreferenciasNecesidades(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilNecesidadesDto) {
+    return this.svc.actualizarPreferenciasNecesidades(user.id, dto)
+  }
+
+  @Patch('perfil-necesidades')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Actualizar preferencias y necesidades (PATCH)',
+    description: 'Alias de PUT /usuarios/perfil-necesidades: misma actualización parcial de preferencias y condiciones del perfil autenticado.',
+  })
+  @ApiBody({ type: ActualizarPerfilNecesidadesDto })
+  @ApiOkResponse({ type: PerfilNecesidadesDto, description: 'Preferencias actualizadas' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos o sin campos para actualizar' })
+  @ApiResponse({ status: 401, description: 'No autorizado' })
+  actualizarPreferenciasNecesidadesPatch(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilNecesidadesDto) {
+    return this.svc.actualizarPreferenciasNecesidades(user.id, dto)
   }
 
   @Put(':id')
@@ -359,17 +393,34 @@ export class UsersController {
     return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
   }
 
+  @Put('dependientes/:dependienteId/permisos')
+  @UseGuards(RolesGuard)
+  @Roles('padre_tutor', 'tutor', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Guardar permisos de dependiente (PUT)', description: 'Persiste los módulos (Configurar opciones) y acciones (Permisos de acceso) enviados por el modal de tutor. Solo se modifican los campos enviados. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
+  @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
+  @ApiBody({ type: ActualizarPermisosDependienteDto })
+  @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
+  @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 403, description: 'El dependiente no pertenece al tutor autenticado' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  saveDependentPermissionsPut(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, user.rol, dto)
+  }
+
   @Patch('dependientes/:dependienteId/permisos')
   @UseGuards(RolesGuard)
-  @Roles('padre_tutor', 'tutor')
+  @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Guardar permisos de dependiente', description: 'Alias de PATCH /dependientes/:dependienteId/features: actualiza los switches de permisos (chat, postulaciones, comunidad, reseñas, etc.) de un dependiente plano. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
+  @ApiOperation({ summary: 'Guardar permisos de dependiente (PATCH)', description: 'Mismo comportamiento que PUT /dependientes/:dependienteId/permisos: persiste los módulos y acciones del modal de tutor junto con las features funcionales que aplican los guards.' })
   @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
-  @ApiBody({ type: UpdateFeaturesDto })
-  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Permisos actualizados' })
+  @ApiBody({ type: ActualizarPermisosDependienteDto })
+  @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
+  @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 403, description: 'El dependiente no pertenece al tutor autenticado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
-  saveDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: UpdateFeaturesDto) {
-    return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
+  saveDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, user.rol, dto)
   }
 
   @Patch('vincular-pcd/:pcdId/features')

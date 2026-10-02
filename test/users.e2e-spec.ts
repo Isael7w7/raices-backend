@@ -61,6 +61,114 @@ describe('Usuarios y vínculo tutor-PCD (E2E)', () => {
     })
   })
 
+  describe('PUT/PATCH /api/usuarios/perfil-necesidades (Editar Preferencias)', () => {
+    it('200: actualiza las preferencias y las persiste en perfilesExtendidos', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({
+          tiposDiscapacidad: ['tea'],
+          etapaVida: 'adulto',
+          necesidadesMovilidad: ['rampas'],
+          areasInteres: ['arte', 'deporte'],
+          condiciones: ['diabetes tipo 2'],
+        })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.etapaVida).toBe('adulto')
+      expect(res.body.tiposDiscapacidad).toEqual(['tea'])
+      expect(res.body.necesidadesMovilidad).toEqual(['rampas'])
+      expect(res.body.areasInteres).toEqual(['arte', 'deporte'])
+      expect(res.body.condiciones).toEqual(['diabetes tipo 2'])
+
+      // El documento existe y las lecturas posteriores lo reflejan
+      const perfil = await request(http)
+        .get('/api/usuarios/perfil')
+        .set('Authorization', token('uid-pcd'))
+      expect(perfil.status).toBe(200)
+      expect(perfil.body.perfilNecesidades.etapaVida).toBe('adulto')
+      expect(perfil.body.perfilNecesidades.condiciones).toEqual(['diabetes tipo 2'])
+    })
+
+    it('200: actualización parcial conserva los campos no enviados', async () => {
+      await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({ etapaVida: 'adulto', areasInteres: ['arte'] })
+        .set('Authorization', token('uid-pcd'))
+
+      const res = await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({ condiciones: ['asma'] })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.etapaVida).toBe('adulto')
+      expect(res.body.areasInteres).toEqual(['arte'])
+      expect(res.body.condiciones).toEqual(['asma'])
+    })
+
+    it('200: PATCH funciona como alias del mismo PUT', async () => {
+      const res = await request(http)
+        .patch('/api/usuarios/perfil-necesidades')
+        .send({ etapaVida: 'joven_adulto' })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.etapaVida).toBe('joven_adulto')
+    })
+
+    it('200: invalida la caché ETag del perfil para no servir preferencias obsoletas', async () => {
+      const primera = await request(http)
+        .get('/api/usuarios/perfil')
+        .set('Authorization', token('uid-pcd'))
+      expect(primera.status).toBe(200)
+      const etag = primera.headers['etag']
+      expect(etag).toBeTruthy()
+
+      const guardado = await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({ etapaVida: 'adulto' })
+        .set('Authorization', token('uid-pcd'))
+      expect(guardado.status).toBe(200)
+
+      // Si la caché no se hubiera invalidado, esto respondería 304 con el
+      // perfil anterior (sin etapaVida) durante el TTL del ETag.
+      const segunda = await request(http)
+        .get('/api/usuarios/perfil')
+        .set('Authorization', token('uid-pcd'))
+        .set('If-None-Match', etag)
+
+      expect(segunda.status).toBe(200)
+      expect(segunda.body.perfilNecesidades.etapaVida).toBe('adulto')
+    })
+
+    it('400: sin campos para actualizar no toca la base', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({})
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(400)
+    })
+
+    it('400: tiposDiscapacidad debe ser un arreglo de cadenas', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({ tiposDiscapacidad: 'tea' })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(400)
+    })
+
+    it('401: sin token', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/perfil-necesidades')
+        .send({ etapaVida: 'adulto' })
+
+      expect(res.status).toBe(401)
+    })
+  })
+
   describe('POST /api/usuarios/vincular-pcd (solo tutor)', () => {
     it('401: sin token', async () => {
       const res = await request(http).post('/api/usuarios/vincular-pcd').send({ email: 'pcd@test.com' })

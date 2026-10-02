@@ -12,8 +12,10 @@ import { InstitutionsService } from './institutions.service'
 import { CsfQrService } from './csf-qr.service'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
-import { InstitucionDto, PaginaInstitucionesDto } from './dto/respuestas-institucion.dto'
+import { SubirDocumentoVerificacionDto } from './dto/subir-documento-verificacion.dto'
+import { InstitucionDto, PaginaInstitucionesDto, DocumentoVerificacionSubidoDto, EstadoVerificacionInstitucionDto } from './dto/respuestas-institucion.dto'
 import { Throttle } from '@nestjs/throttler'
+import { csfDocumentFileFilter } from '../../common/utils/image-filter'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
@@ -91,6 +93,68 @@ export class InstitutionsController {
       mensaje: 'Código QR de la CSF leído correctamente',
       urlSat,
     }
+  }
+
+  // ─── POST /instituciones/verificacion/documentos ─────────────────
+  @Post('verificacion/documentos')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 cargas por minuto
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('institucion', 'admin')
+  @ApiBearerAuth('jwt-auth')
+  @UseInterceptors(FileInterceptor('documento', {
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    fileFilter: csfDocumentFileFilter,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Subir documento de verificación (institución/empresa)',
+    description:
+      'Carga documentos de verificación de una cuenta institucional/empresarial (persona moral). ' +
+      'Requisito indispensable: `tipo=csf` (Constancia de Situación Fiscal). Opcional: ' +
+      '`tipo=identificacion_representante` (INE/pasaporte del representante legal). ' +
+      'La CURP NO es aplicable a personas morales: `numeroCurp` es opcional y se ignora por completo.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['documento', 'tipo'],
+      properties: {
+        documento: { type: 'string', format: 'binary', description: 'Archivo PDF o imagen (máx 10MB)' },
+        tipo: { type: 'string', enum: ['csf', 'identificacion_representante'], example: 'csf' },
+        numeroCurp: { type: 'string', description: 'Opcional e ignorado: la CURP no aplica a personas morales', nullable: true },
+      },
+    },
+  })
+  @ApiCreatedResponse({ type: DocumentoVerificacionSubidoDto, description: 'Documento subido' })
+  @ApiResponse({ status: 400, description: 'Sin archivo o tipo inválido' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere institución o admin)' })
+  @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
+  subirDocumentoVerificacion(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: SubirDocumentoVerificacionDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.svc.subirDocumentoVerificacion(user.id, dto.tipo, file!)
+  }
+
+  // ─── GET /instituciones/mi-institucion/estado-verificacion ───────
+  @Get('mi-institucion/estado-verificacion')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Estado de verificación de mi institución',
+    description:
+      'Lista de pasos de verificación válidos para personas morales: CSF (indispensable), ' +
+      'Aprobación del Administrador (indispensable) e Identificación del Representante Legal (opcional). ' +
+      'No incluye el paso de CURP: no aplica a instituciones/empresas.',
+  })
+  @ApiOkResponse({ type: EstadoVerificacionInstitucionDto, description: 'Estado de verificación con pasos y porcentaje' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
+  getEstadoVerificacion(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.getEstadoVerificacion(user.id)
   }
 
   // ─── GET /instituciones/mi-institucion ────────────────────────────

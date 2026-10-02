@@ -1,17 +1,22 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, HttpCode } from '@nestjs/common'
-import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiBody } from '@nestjs/swagger'
 import { CommunityService } from './community.service'
+import { EventosService } from './eventos.service'
 import { CrearPublicacionDto } from './dto/crear-publicacion.dto'
 import { CrearComentarioDto } from './dto/crear-comentario.dto'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
 import { CrearForoDto } from './dto/crear-foro.dto'
 import { CrearRespuestaForoDto } from './dto/crear-respuesta-foro.dto'
 import { ActualizarPublicacionDto } from './dto/actualizar-publicacion.dto'
+import { CrearEventoDto } from './dto/crear-evento.dto'
+import { ListarEventosDto } from './dto/listar-eventos.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
+import { CATEGORIAS_EVENTO } from '../../common/interfaces/firestore-documents.interface'
 import {
   GrupoDto, PaginaGruposDto, PublicacionDto, PaginaPublicacionesDto, ComentarioDto, PaginaComentariosDto,
   RespuestaMeGustaDto, RespuestaUnirseDto, RespuestaSalirDto, EstadisticasComunidadDto, PaginaMiembrosDto,
   ForoDto, PaginaForosDto, ForoConRespuestasDto, RespuestaForoDto,
+  EventoDto, PaginaEventosDto, RespuestaAsistenciaEventoDto,
 } from './dto/respuestas-comunidad.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
@@ -26,7 +31,10 @@ import { UseETag } from '../../common/decorators/use-etag.decorator'
 @ApiTags('Comunidad')
 @Controller('comunidad')
 export class CommunityController {
-  constructor(private readonly svc: CommunityService) {}
+  constructor(
+    private readonly svc: CommunityService,
+    private readonly eventos: EventosService,
+  ) {}
 
   @Get('grupos')
   @UseETag()
@@ -239,18 +247,105 @@ export class CommunityController {
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // Eventos de la comunidad (sección "Eventos" de Conectemos)
+  // ═══════════════════════════════════════════════════════════════════
+
+  @Get('eventos')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Listar eventos de la comunidad',
+    description: 'Lista los eventos activos ordenados por fecha de inicio (próximos primero), con paginación y filtros por categoría, día exacto (`fecha`) y fecha mínima (`desde`). Sin `fecha` ni `desde` retorna solo los próximos eventos desde ahora. Cada evento incluye `asisto` del usuario autenticado.',
+  })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'categoria', required: false, description: 'Filtrar por categoría', enum: CATEGORIAS_EVENTO })
+  @ApiQuery({ name: 'fecha', required: false, description: 'Día exacto del evento (YYYY-MM-DD)', example: '2026-10-15' })
+  @ApiQuery({ name: 'desde', required: false, description: 'Fecha/hora mínima de inicio (ISO 8601). Por defecto: ahora.', example: '2026-10-01T00:00:00.000Z' })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Buscar por título o descripción', example: 'taller' })
+  @ApiOkResponse({ type: PaginaEventosDto, description: 'Lista paginada de eventos' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  listarEventos(@Query() filtros: ListarEventosDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.eventos.listar(user.id, filtros.pagina, filtros.limite, {
+      categoria: filtros.categoria,
+      fecha: filtros.fecha,
+      desde: filtros.desde,
+      buscar: filtros.buscar,
+    })
+  }
+
+  @Get('eventos/:id')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Detalle de un evento', description: 'Retorna el evento con su organizador y la asistencia del usuario autenticado (`asisto`).' })
+  @ApiParam({ name: 'id', description: 'ID del evento' })
+  @ApiOkResponse({ type: EventoDto, description: 'Detalle del evento' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  obtenerEvento(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.eventos.obtenerDetalle(id, user.id)
+  }
+
+  @Post('eventos')
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 eventos por minuto
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('comunidad')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Crear evento', description: 'Publica un evento en la sección Eventos de la comunidad. Requiere el permiso de comunidad activo.' })
+  @ApiBody({ type: CrearEventoDto })
+  @ApiCreatedResponse({ type: EventoDto, description: 'Evento creado' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos (fechas o categoría)' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de comunidad desactivada para tu cuenta' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  crearEvento(@Body() dto: CrearEventoDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.eventos.crearEvento(user, dto)
+  }
+
+  @Post('eventos/:id/asistir')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 cambios de asistencia por minuto
+  @HttpCode(200)
+  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @Feature('comunidad')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Confirmar o cancelar asistencia', description: 'Alterna la asistencia del usuario al evento. Si ya estaba confirmada la cancela; si no, la confirma. `cantidadAsistentes` se actualiza atómicamente.' })
+  @ApiParam({ name: 'id', description: 'ID del evento' })
+  @ApiOkResponse({ type: RespuestaAsistenciaEventoDto, description: 'Estado de la asistencia tras el cambio' })
+  @ApiResponse({ status: 403, description: 'Funcionalidad de comunidad desactivada para tu cuenta' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  asistirAEvento(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.eventos.toggleAsistencia(id, user.id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // Espacio "Conectemos" (Contenido Creativo PCD)
   // ═══════════════════════════════════════════════════════════════════
 
   @Get('conectemos/publicaciones')
   @UseETag()
-  @ApiOperation({ summary: 'Galería Conectemos', description: 'Obtiene la galería pública de creaciones del espacio Conectemos (publicaciones con categoría creativa)' })
+  @ApiOperation({ summary: 'Galería Conectemos', description: 'Obtiene la galería visual del espacio Conectemos: SOLO publicaciones con categoría creativa Y adjuntos multimedia reales (imágenes, dibujos, banners, videos). Excluye publicaciones de solo texto, arreglos vacíos (`imagenes: []`, `multimedia: []`, `archivos: []`) y adjuntos únicamente documentales. Cada item trae `recursosVisuales`, `urlThumbnail` y `tipoMedia` para renderizar la cuadrícula.' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
   @ApiQuery({ name: 'categoriaCreativa', required: false, description: 'Filtrar por categoría: arte, dibujo, historia, general' })
   @ApiQuery({ name: 'buscar', required: false, description: 'Buscar en contenido' })
-  @ApiOkResponse({ type: PaginaPublicacionesDto, description: 'Galería paginada de creaciones' })
+  @ApiOkResponse({ type: PaginaPublicacionesDto, description: 'Galería paginada de creaciones visuales' })
   getConectemosPosts(@Query() query: Record<string, string>) {
+    const pagina = Number(query.pagina) || 1
+    const limite = Number(query.limite) || 20
+    return this.svc.getConectemosPosts(pagina, limite, query.categoriaCreativa, query.buscar)
+  }
+
+  @Get('galeria')
+  @UseETag()
+  @ApiOperation({ summary: 'Galería Conectemos (alias /galeria)', description: 'Alias REST del feed visual de la galería: mismos criterios y formato que `GET /conectemos/publicaciones` (solo publicaciones multimedia).' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'categoriaCreativa', required: false, description: 'Filtrar por categoría: arte, dibujo, historia, general' })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Buscar en contenido' })
+  @ApiOkResponse({ type: PaginaPublicacionesDto, description: 'Galería paginada de creaciones visuales' })
+  getGaleria(@Query() query: Record<string, string>) {
     const pagina = Number(query.pagina) || 1
     const limite = Number(query.limite) || 20
     return this.svc.getConectemosPosts(pagina, limite, query.categoriaCreativa, query.buscar)

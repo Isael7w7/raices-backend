@@ -216,9 +216,10 @@ export class VerificacionIdentidadInstitucionDto {
     type: 'object',
     properties: {
       estado: { type: 'string', example: 'aprobado', enum: ['sin_documentos', 'pendiente', 'aprobado', 'rechazado'] },
-      tieneCurp: { type: 'boolean', example: true },
-      tieneIdentificacion: { type: 'boolean', example: true },
-      puedeAprobarse: { type: 'boolean', example: true },
+      tieneCurp: { type: 'boolean', example: true, description: 'Informativo: la CURP no aplica a personas morales' },
+      tieneIdentificacion: { type: 'boolean', example: true, description: 'Identificación del representante (opcional)' },
+      tieneCsf: { type: 'boolean', example: true, description: 'Constancia de Situación Fiscal cargada (requisito indispensable)' },
+      puedeAprobarse: { type: 'boolean', example: true, description: 'true si la CSF está cargada: la CURP/identificación no son requisito' },
       motivo: { type: 'string', example: null, nullable: true, description: 'Razón por la que no puede aprobarse (si aplica)' },
     },
   })
@@ -226,6 +227,7 @@ export class VerificacionIdentidadInstitucionDto {
     estado: string
     tieneCurp: boolean
     tieneIdentificacion: boolean
+    tieneCsf: boolean
     puedeAprobarse: boolean
     motivo: string | null
   }

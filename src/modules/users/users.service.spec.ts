@@ -4,6 +4,7 @@ import { UsersService } from './users.service';
 import { FIRESTORE } from '../../database/firebase.provider';
 import { getMaxDependientesPorTutor } from '../../database/firestore.constants';
 import { StorageService } from '../storage/storage.service';
+import { ETagInterceptor } from '../../common/interceptors/etag.interceptor';
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
 
@@ -374,6 +375,112 @@ describe('UsersService', () => {
       const payload = mockDocRef.update.mock.calls[0][0];
       expect(JSON.parse(payload.historialEducacion)).toEqual(['universidad']);
       expect(JSON.parse(payload.historialTerapia)).toEqual(['nueva_terapia']);
+    });
+  });
+
+  // ── actualizarPreferenciasNecesidades ─────────────────────────────────────
+
+  describe('actualizarPreferenciasNecesidades', () => {
+    let limpiarCache: jest.SpyInstance;
+
+    beforeEach(() => {
+      limpiarCache = jest.spyOn(ETagInterceptor, 'clearUsuarioCache').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      limpiarCache.mockRestore();
+    });
+
+    function coleccionExistente(datos: Record<string, any>) {
+      return {
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'ext-1', data: () => datos }] }),
+        doc: jest.fn().mockReturnValue({ update: jest.fn().mockResolvedValue(undefined), set: jest.fn() }),
+      };
+    }
+
+    it('actualiza solo los campos enviados sobre el perfil extendido existente', async () => {
+      const coleccion = coleccionExistente({
+        usuarioId: 'user1',
+        etapaVida: 'nino',
+        tiposDiscapacidad: JSON.stringify(['visual']),
+      });
+      firestoreMock.collection.mockReturnValue(coleccion);
+
+      const resultado: any = await service.actualizarPreferenciasNecesidades('user1', {
+        etapaVida: 'adulto',
+        condiciones: ['diabetes tipo 2'],
+      });
+
+      const update = coleccion.doc.mock.results[0].value.update;
+      expect(update).toHaveBeenCalledTimes(1);
+      const payload = update.mock.calls[0][0];
+      expect(Object.keys(payload).sort()).toEqual(['condiciones', 'etapaVida']);
+      expect(payload.etapaVida).toBe('adulto');
+      expect(JSON.parse(payload.condiciones)).toEqual(['diabetes tipo 2']);
+
+      // Respuesta combinada: existentes + actualizados, arreglos JSON parseados
+      expect(resultado.etapaVida).toBe('adulto');
+      expect(resultado.condiciones).toEqual(['diabetes tipo 2']);
+      expect(resultado.tiposDiscapacidad).toEqual(['visual']);
+
+      expect(limpiarCache).toHaveBeenCalledWith('user1');
+    });
+
+    it('crea el documento en perfilesExtendidos cuando aún no existe', async () => {
+      const mockDocRef = { id: 'ext-nuevo', set: jest.fn().mockResolvedValue(undefined), update: jest.fn() };
+      firestoreMock.collection.mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+        doc: jest.fn().mockReturnValue(mockDocRef),
+      });
+
+      const resultado: any = await service.actualizarPreferenciasNecesidades('user1', {
+        tiposDiscapacidad: ['tea'],
+        areasInteres: ['arte'],
+        necesidadesMovilidad: ['rampas'],
+      });
+
+      expect(mockDocRef.set).toHaveBeenCalledTimes(1);
+      const payload = mockDocRef.set.mock.calls[0][0];
+      expect(payload.usuarioId).toBe('user1');
+      expect(payload.id).toBeDefined();
+      expect(JSON.parse(payload.tiposDiscapacidad)).toEqual(['tea']);
+      expect(JSON.parse(payload.areasInteres)).toEqual(['arte']);
+      expect(JSON.parse(payload.necesidadesMovilidad)).toEqual(['rampas']);
+
+      expect(resultado.tiposDiscapacidad).toEqual(['tea']);
+      expect(resultado.areasInteres).toEqual(['arte']);
+      expect(resultado.necesidadesMovilidad).toEqual(['rampas']);
+      expect(limpiarCache).toHaveBeenCalledWith('user1');
+    });
+
+    it('no pisa campos que no se envían (actualización parcial)', async () => {
+      const coleccion = coleccionExistente({
+        usuarioId: 'user1',
+        etapaVida: 'nino',
+        areasInteres: JSON.stringify(['deporte']),
+      });
+      firestoreMock.collection.mockReturnValue(coleccion);
+
+      const resultado: any = await service.actualizarPreferenciasNecesidades('user1', {
+        necesidadesMovilidad: ['silla_ruedas'],
+      });
+
+      const payload = coleccion.doc.mock.results[0].value.update.mock.calls[0][0];
+      expect(Object.keys(payload)).toEqual(['necesidadesMovilidad']);
+
+      expect(resultado.etapaVida).toBe('nino');
+      expect(resultado.areasInteres).toEqual(['deporte']);
+      expect(resultado.necesidadesMovilidad).toEqual(['silla_ruedas']);
+    });
+
+    it('lanza BadRequestException sin tocar Firestore cuando no hay campos', async () => {
+      await expect(service.actualizarPreferenciasNecesidades('user1', {})).rejects.toThrow(BadRequestException);
+      expect(firestoreMock.collection).not.toHaveBeenCalled();
+      expect(limpiarCache).not.toHaveBeenCalled();
     });
   });
 
@@ -1386,6 +1493,7 @@ describe('UsersService', () => {
 
   describe('getDependentPermissions', () => {
     const featuresPorDefecto = { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true }
+    const permisosPorDefecto = { instituciones: true, empleo: true, comunidad: true, puedeComentar: true, puedeInteractuar: true, accesoMultimedia: true, accesoChat: true }
 
     it('should return permissions of a flat dependiente owned by the tutor', async () => {
       const depData = {
@@ -1405,7 +1513,26 @@ describe('UsersService', () => {
         esCuentaVinculada: false,
         pcdUserId: null,
         features: { ...featuresPorDefecto, chat: false },
+        permisos: { ...permisosPorDefecto, accesoChat: false },
       })
+    })
+
+    it('should return saved tutor permisos merged with defaults and features mirror', async () => {
+      const depData = {
+        id: 'dep1', tutorId: 'user1', nombreCompleto: 'María García',
+        features: { ...featuresPorDefecto, descubrimiento: false },
+        permisos: { ...permisosPorDefecto, puedeComentar: false, empleo: true },
+      }
+
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(depData)) }),
+      })
+
+      const result: any = await service.getDependentPermissions('user1', 'dep1', 'padre_tutor')
+
+      expect(result.permisos.puedeComentar).toBe(false)
+      expect(result.permisos.instituciones).toBe(false) // espejo de descubrimiento
+      expect(result.permisos.puedeInteractuar).toBe(true)
     })
 
     it('should return real features from the PCD profile for a linked account', async () => {
@@ -1678,6 +1805,189 @@ describe('UsersService', () => {
       })
 
       await expect(service.updateLinkedPcdFeatures('tutor1', 'pcd1', { chat: false })).rejects.toThrow(ForbiddenException)
+    })
+  })
+
+  // ── actualizarPermisosDependiente ─────────────────────────────────────
+
+  describe('actualizarPermisosDependiente', () => {
+    const featuresPorDefecto = { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true }
+    const permisosPorDefecto = { instituciones: true, empleo: true, comunidad: true, puedeComentar: true, puedeInteractuar: true, accesoMultimedia: true, accesoChat: true }
+
+    it('should persist módulos y acciones of a flat dependiente and update features', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'user1', features: { ...featuresPorDefecto } })),
+          update: updateMock,
+        }),
+      })
+
+      const dto = {
+        instituciones: false, empleo: false, comunidad: true,
+        puedeComentar: false, puedeInteractuar: true, accesoMultimedia: true, accesoChat: false,
+      }
+      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', dto)
+
+      expect(updateMock).toHaveBeenCalledWith({
+        features: { ...featuresPorDefecto, descubrimiento: false, postulaciones: false, chat: false },
+        permisos: { ...permisosPorDefecto, instituciones: false, empleo: false, puedeComentar: false, accesoChat: false },
+      })
+      expect(result.dependienteId).toBe('dep1')
+      expect(result.permisos.puedeComentar).toBe(false)
+      expect(result.features.chat).toBe(false)
+      expect(result.features.resenas).toBe(true)
+    })
+
+    it('should only modify the sent fields (partial update)', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({
+            id: 'dep1', tutorId: 'user1',
+            features: { ...featuresPorDefecto, postulaciones: false },
+            permisos: { ...permisosPorDefecto, empleo: false },
+          })),
+          update: updateMock,
+        }),
+      })
+
+      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', { puedeComentar: false })
+
+      // Solo la acción enviada cambia; el resto de permisos y features se conservan
+      expect(result.permisos.puedeComentar).toBe(false)
+      expect(result.permisos.empleo).toBe(false)
+      expect(result.permisos.instituciones).toBe(true)
+      expect(result.features).toEqual({ ...featuresPorDefecto, postulaciones: false })
+      expect(updateMock).toHaveBeenCalled()
+    })
+
+    it('should accept classic feature names for backward compatibility', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'user1', features: { ...featuresPorDefecto } })),
+          update: updateMock,
+        }),
+      })
+
+      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', { chat: false, postulaciones: false, resenas: false })
+
+      expect(result.features.chat).toBe(false)
+      expect(result.features.postulaciones).toBe(false)
+      expect(result.features.resenas).toBe(false)
+      // El espejo refleja las features en los módulos/acciones equivalentes
+      expect(result.permisos.accesoChat).toBe(false)
+      expect(result.permisos.empleo).toBe(false)
+      expect(result.permisos.instituciones).toBe(true)
+      expect(result.permisos.puedeInteractuar).toBe(true)
+    })
+
+    it('should throw BadRequestException when no permissions are sent', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'user1' })),
+          update: jest.fn(),
+        }),
+      })
+
+      await expect(service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', {})).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw NotFoundException when dependiente does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+
+      await expect(service.actualizarPermisosDependiente('user1', 'ghost', 'padre_tutor', { comunidad: false })).rejects.toThrow(NotFoundException)
+    })
+
+    it('should throw ForbiddenException when the dependiente belongs to another tutor', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'other-user' })),
+          update: jest.fn(),
+        }),
+      })
+
+      await expect(service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', { comunidad: false })).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should allow an admin to update permissions of any dependiente', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'other-user', features: { ...featuresPorDefecto } })),
+          update: updateMock,
+        }),
+      })
+
+      const result: any = await service.actualizarPermisosDependiente('admin1', 'dep1', 'admin', { accesoChat: false })
+
+      expect(updateMock).toHaveBeenCalled()
+      expect(result.permisos.accesoChat).toBe(false)
+    })
+
+    it('should update the real PCD profile when the dependiente is a linked account', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      const perfilesCollection = {
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({
+            id: 'pcd1', tutorId: 'user1',
+            features: { ...featuresPorDefecto },
+            permisos: { ...permisosPorDefecto, puedeComentar: false },
+          })),
+          update: updateMock,
+        }),
+      }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ // dependiente doc
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1' })),
+          }),
+        })
+        .mockReturnValue(perfilesCollection) // perfil real de la PCD (fuente de verdad), get + update
+
+      const result: any = await service.actualizarPermisosDependiente('user1', 'pcd1', 'padre_tutor', { accesoChat: false, puedeComentar: true })
+
+      expect(updateMock).toHaveBeenCalledWith({
+        features: { ...featuresPorDefecto, chat: false },
+        permisos: { ...permisosPorDefecto, puedeComentar: true, accesoChat: false },
+      })
+      expect(result.features.chat).toBe(false)
+      expect(result.permisos.puedeComentar).toBe(true) // lo enviado gana sobre lo guardado
+    })
+
+    it('should throw ForbiddenException when the linked PCD belongs to another tutor', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1' })),
+          }),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', tutorId: 'other-tutor' })),
+            update: jest.fn(),
+          }),
+        })
+
+      await expect(service.actualizarPermisosDependiente('user1', 'pcd1', 'padre_tutor', { comunidad: false })).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should throw NotFoundException when the linked PCD profile does not exist', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue(mockDoc({ id: 'pcd1', tutorId: 'user1', esCuentaVinculada: true, pcdUserId: 'pcd1' })),
+          }),
+        })
+        .mockReturnValueOnce({
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+        })
+
+      await expect(service.actualizarPermisosDependiente('user1', 'pcd1', 'padre_tutor', { comunidad: false })).rejects.toThrow(NotFoundException)
     })
   })
 

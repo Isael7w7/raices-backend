@@ -248,6 +248,32 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ---
 
+### PUT `/usuarios/perfil-necesidades`
+**Descripción:** Actualizar preferencias y condiciones del perfil (formulario "Editar Preferencias"). Actualización **parcial**: solo se modifican los campos enviados; si el usuario no tiene documento en `perfilesExtendidos` se crea. Alias: `PATCH /usuarios/perfil-necesidades` (misma firma).  
+**Autenticación:** Bearer Token requerido (los cambios se aplican al usuario autenticado)
+
+**Request Body (todos los campos opcionales):**
+```json
+{
+  "tiposDiscapacidad": ["tea"],
+  "etapaVida": "adulto",
+  "necesidadesMovilidad": ["rampas"],
+  "areasInteres": ["arte", "deporte"],
+  "condiciones": ["diabetes tipo 2"]
+}
+```
+
+**Response (200):** perfil de necesidades completo con los campos actualizados (arreglos ya parseados).
+
+**Respuestas:**
+- `200`: Preferencias actualizadas
+- `400`: Datos inválidos (p. ej. `tiposDiscapacidad` no es arreglo) o sin campos para actualizar
+- `401`: No autorizado
+
+**Nota:** tras guardar se invalida la caché ETag del usuario, de modo que `GET /usuarios/perfil` (y el contexto que alimenta la historia personal de IA) no sirva preferencias obsoletas durante el TTL.
+
+---
+
 ### PUT `/usuarios/:id`
 **Descripción:** Editar datos básicos de cualquier usuario (alias administrativo; usa `nombreCompleto` o `nombre` + `apellido` y `email`)  
 **Autenticación:** Bearer Token requerido (rol: admin)
@@ -338,8 +364,62 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ---
 
 ### GET `/usuarios/dependientes/:id/permisos`
-**Descripción:** Obtener permisos de un dependiente  
+**Descripción:** Obtener permisos de un dependiente (features funcionales + permisos de los modales de tutor). Solo el tutor dueño o un administrador.  
 **Autenticación:** Bearer Token requerido
+
+**Response (200):**
+```json
+{
+  "dependienteId": "dep-uid",
+  "nombre": "María García",
+  "esCuentaVinculada": false,
+  "pcdUserId": null,
+  "features": { "chat": true, "postulaciones": true, "comunidad": true, "resenas": true, "descubrimiento": true, "favoritos": true, "multimedia": true },
+  "permisos": { "instituciones": true, "empleo": true, "comunidad": true, "puedeComentar": false, "puedeInteractuar": true, "accesoMultimedia": true, "accesoChat": true }
+}
+```
+
+---
+
+### PUT `/usuarios/dependientes/:id/permisos`
+**Descripción:** Guardar los permisos enviados por el modal de tutor (módulos + acciones). Solo se modifican los campos enviados; se persisten en `permisos` y se reflejan en `features`.  
+**Autenticación:** Bearer Token requerido (roles `padre_tutor`, `tutor` o `admin`)
+
+**Request Body (todos opcionales, booleanos):**
+```json
+{
+  "instituciones": true,
+  "empleo": true,
+  "comunidad": true,
+  "puedeComentar": false,
+  "puedeInteractuar": true,
+  "accesoMultimedia": true,
+  "accesoChat": true
+}
+```
+También acepta los nombres clásicos: `chat`, `postulaciones`, `resenas`, `descubrimiento`, `favoritos`, `multimedia`.
+
+**Response (200):**
+```json
+{
+  "dependienteId": "dep-uid",
+  "features": { "chat": true, "postulaciones": true, "comunidad": true, "resenas": true, "descubrimiento": true, "favoritos": true, "multimedia": true },
+  "permisos": { "instituciones": true, "empleo": true, "comunidad": true, "puedeComentar": false, "puedeInteractuar": true, "accesoMultimedia": true, "accesoChat": true }
+}
+```
+- `400` - El body no trae permisos
+- `403` - El dependiente no pertenece al tutor autenticado
+- `404` - Dependiente no encontrado
+
+---
+
+### PATCH `/usuarios/dependientes/:id/permisos`
+**Descripción:** Alias del PUT anterior (mismo DTO, servicio y respuesta).
+
+---
+
+### Rutas de tutor `/tutores/dependientes/:id/permisos`
+**Descripción:** `GET` / `PUT` / `PATCH` con el mismo comportamiento que los endpoints anteriores bajo el prefijo `/api/tutores`.
 
 ---
 
@@ -437,6 +517,65 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 - `404`: El usuario no tiene institución registrada (o ya fue eliminada)
 
 > Nota: rate limit de 5 eliminaciones por minuto. Una segunda llamada después de eliminar responde `404`.
+
+---
+
+### POST `/instituciones/verificacion/documentos`
+**Descripción:** Subir documento de verificación de una institución/empresa (persona moral). Requisito indispensable: `tipo=csf` (Constancia de Situación Fiscal). Opcional: `tipo=identificacion_representante` (INE/pasaporte del representante legal). La CURP **no aplica** a personas morales: `numeroCurp` es opcional y se ignora por completo.  
+**Autenticación:** Bearer Token requerido (rol: institución, empresa o admin)  
+**Rate limit:** 5 cargas por minuto
+
+**Request Body** (`multipart/form-data`):
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `documento` | file | Sí | PDF o imagen (PNG, JPEG, WebP), máx. 10 MB |
+| `tipo` | string | Sí | `csf` \| `identificacion_representante` |
+| `numeroCurp` | string | No | Opcional e ignorado (la CURP no aplica a personas morales) |
+
+**Response `201`:**
+```json
+{
+  "tipo": "csf",
+  "urlDocumento": "https://storage.googleapis.com/raices-bucket/instituciones/a1b2.pdf",
+  "estado": "pendiente",
+  "fechaSubida": "2026-10-01T12:00:00.000Z"
+}
+```
+> Con `tipo=csf` la URL se persiste en `instituciones/{id}.documentoCsf` (+ `fechaDocumentoCsf`), que es lo que habilita la aprobación del administrador. Con `tipo=identificacion_representante` el documento se registra como `identificacion_oficial` del usuario (queda `pendiente` de revisión).
+
+**Errores:**
+- `400`: Sin archivo, archivo no permitido o `tipo` inválido
+- `401`: No autenticado
+- `403`: Rol insuficiente (se requiere institución/empresa o admin)
+- `404`: El usuario no tiene institución registrada
+
+---
+
+### GET `/instituciones/mi-institucion/estado-verificacion`
+**Descripción:** Pasos de verificación válidos para personas morales: **CSF** (indispensable), **Aprobación del Administrador** (indispensable) e **Identificación del Representante Legal** (opcional). No incluye paso de CURP: no aplica a instituciones/empresas.  
+**Autenticación:** Bearer Token requerido
+
+**Response `200`:**
+```json
+{
+  "institucionId": "uid-inst",
+  "nombre": "Centro de Rehabilitación",
+  "verificada": false,
+  "porcentaje": 50,
+  "pasos": [
+    { "clave": "csf", "titulo": "Constancia de Situación Fiscal (CSF)", "obligatorio": true, "completado": true, "descripcion": "Documento fiscal de la persona moral (RFC). Requisito indispensable." },
+    { "clave": "aprobacion_admin", "titulo": "Aprobación del Administrador", "obligatorio": true, "completado": false, "descripcion": "Revisión y aprobación del equipo administrativo." },
+    { "clave": "identificacion_representante", "titulo": "Identificación del Representante Legal", "obligatorio": false, "completado": false, "descripcion": "INE o pasaporte del representante (opcional; la CURP no aplica a personas morales)." }
+  ],
+  "pasosPendientes": ["aprobacion_admin"],
+  "documentosFaltantes": []
+}
+```
+> `porcentaje` se calcula **solo sobre los pasos obligatorios** (CSF + aprobación): sin CSF = 0, con CSF = 50, con CSF + aprobación = 100. `documentosFaltantes` solo puede contener `"csf"`.
+
+**Errores:**
+- `401`: No autenticado
+- `404`: El usuario no tiene institución registrada
 
 ---
 
@@ -1162,14 +1301,49 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ---
 
 ### GET `/administracion/instituciones/pendientes`
-**Descripción:** Listar instituciones pendientes de aprobación  
+**Descripción:** Listar instituciones pendientes de aprobación. Cada ítem incluye `representante` y `verificacionIdentidad` (`estado`, `tieneCurp`, `tieneIdentificacion`, `tieneCsf`, `puedeAprobarse`)  
 **Autenticación:** Bearer Token requerido (rol: admin)
 
 ---
 
-### POST `/administracion/instituciones/:id/aprobar`
-**Descripción:** Aprobar institución  
+### GET `/administracion/instituciones/:id/verificacion-identidad`
+**Descripción:** Estado de verificación de una institución/empresa (persona moral). `verificacionIdentidad.puedeAprobarse` es `true` cuando existe **CSF**; la CURP no es requisito y la identificación del representante es opcional  
 **Autenticación:** Bearer Token requerido (rol: admin)
+
+**Response `200`** (fragmento):
+```json
+{
+  "institucionId": "uid-inst",
+  "nombreInstitucion": "Centro Vida",
+  "representante": { "usuarioId": "uid-inst", "nombre": "Representante", "email": "r@test.com", "curp": null },
+  "verificacionIdentidad": {
+    "estado": "sin_documentos",
+    "tieneCurp": false,
+    "tieneIdentificacion": false,
+    "tieneCsf": true,
+    "puedeAprobarse": true,
+    "motivo": null
+  },
+  "documentos": []
+}
+```
+
+**Errores:**
+- `404`: Institución no encontrada
+
+---
+
+### POST `/administracion/instituciones/:id/aprobar`
+**Descripción:** Aprobar institución. **Requisito indispensable: la CSF** (`instituciones/{id}.documentoCsf`), subida vía `POST /instituciones/verificacion/documentos (tipo=csf)`. La CURP no aplica a personas morales y la identificación del representante legal es opcional: ninguna de las dos se exige  
+**Autenticación:** Bearer Token requerido (rol: admin)
+
+**Response:** `204 No Content` (queda `verificada: true` y `activa: true`)
+
+**Errores:**
+- `400`: Falta la Constancia de Situación Fiscal (CSF)
+- `401`: No autenticado
+- `403`: Rol insuficiente
+- `404`: Institución no encontrada
 
 ---
 

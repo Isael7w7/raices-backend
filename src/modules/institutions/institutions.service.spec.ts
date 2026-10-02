@@ -4,6 +4,8 @@ import { plainToInstance } from 'class-transformer'
 import { InstitutionsService } from './institutions.service'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { FIRESTORE } from '../../database/firebase.provider'
+import { StorageService } from '../storage/storage.service'
+import { UsersService } from '../users/users.service'
 
 // ─── Mock helpers ────────────────────────────────────────────────────────
 
@@ -42,14 +44,28 @@ function mockCollection(opts: {
 describe('InstitutionsService', () => {
   let service: InstitutionsService
   let firestoreMock: Record<string, any>
+  const storageMock = { upload: jest.fn() }
+  const usersMock = { subirDocumentoIdentidad: jest.fn() }
 
   beforeEach(async () => {
     firestoreMock = { collection: jest.fn() }
+    storageMock.upload.mockClear()
+    usersMock.subirDocumentoIdentidad.mockClear()
+    storageMock.upload.mockResolvedValue('https://storage.googleapis.com/raices-bucket/instituciones/csf.pdf')
+    usersMock.subirDocumentoIdentidad.mockResolvedValue({
+      tipo: 'identificacion_oficial',
+      urlDocumento: 'https://storage.googleapis.com/raices-bucket/identidad/ine.pdf',
+      estado: 'pendiente',
+      fechaSubida: '2026-08-13T00:00:00.000Z',
+      numeroCurp: null,
+    })
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InstitutionsService,
         { provide: FIRESTORE, useValue: firestoreMock },
+        { provide: StorageService, useValue: storageMock },
+        { provide: UsersService, useValue: usersMock },
       ],
     }).compile()
 
@@ -683,6 +699,160 @@ describe('InstitutionsService', () => {
       })
 
       await expect(service.remove('nonexistent', 'user1', 'admin')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── Verificación de personas morales (CSF, sin CURP) ───────────────
+
+  describe('getEstadoVerificacion', () => {
+    /** Monta instituciones (doc canónico) + documentosIdentidad del usuario */
+    function mockInstitucion(data: Record<string, any> | null, docsIdentidad: any[] = []) {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'instituciones') {
+          return {
+            doc: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue(mockDoc(data, data !== null)),
+              update: updateMock,
+            }),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
+          }
+        }
+        return {
+          doc: jest.fn(),
+          where: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({
+            empty: docsIdentidad.length === 0,
+            docs: docsIdentidad.map(d => ({ data: () => d })),
+            size: docsIdentidad.length,
+          }),
+        }
+      })
+      return updateMock
+    }
+
+    it('should return CSF + admin approval steps without any CURP step', async () => {
+      mockInstitucion({ nombre: 'Centro Vida', activa: true, documentoCsf: 'https://storage/csf.pdf', verificada: false })
+
+      const res = await service.getEstadoVerificacion('inst-1')
+
+      expect(res.institucionId).toBe('inst-1')
+      expect(res.verificada).toBe(false)
+      expect(res.pasos.map(p => p.clave)).toEqual(['csf', 'aprobacion_admin', 'identificacion_representante'])
+      expect(res.pasos.some(p => p.clave === 'curp')).toBe(false)
+      expect(res.pasos.find(p => p.clave === 'csf')?.completado).toBe(true)
+      expect(res.pasos.find(p => p.clave === 'csf')?.obligatorio).toBe(true)
+      expect(res.pasos.find(p => p.clave === 'aprobacion_admin')?.completado).toBe(false)
+      expect(res.pasos.find(p => p.clave === 'identificacion_representante')?.obligatorio).toBe(false)
+      expect(res.porcentaje).toBe(50)
+      expect(res.pasosPendientes).toEqual(['aprobacion_admin'])
+      expect(res.documentosFaltantes).toEqual([])
+    })
+
+    it('should require the CSF as the indispensable document (no CURP)', async () => {
+      mockInstitucion({ nombre: 'Centro Vida', activa: true, verificada: false })
+
+      const res = await service.getEstadoVerificacion('inst-1')
+
+      expect(res.pasosPendientes).toEqual(['csf', 'aprobacion_admin'])
+      expect(res.documentosFaltantes).toEqual(['csf'])
+      expect(res.porcentaje).toBe(0)
+      // La CURP jamás aparece como paso ni como requisito
+      expect(res.pasos.map(p => p.clave)).not.toContain('curp')
+      expect(res.documentosFaltantes).not.toContain('curp')
+    })
+
+    it('should reach 100% when the CSF is uploaded and the admin approves', async () => {
+      mockInstitucion({ nombre: 'Centro Vida', activa: true, documentoCsf: 'https://storage/csf.pdf', verificada: true })
+
+      const res = await service.getEstadoVerificacion('inst-1')
+
+      expect(res.porcentaje).toBe(100)
+      expect(res.pasosPendientes).toEqual([])
+      expect(res.verificada).toBe(true)
+    })
+
+    it('should not count the optional representative identification in the percentage', async () => {
+      mockInstitucion(
+        { nombre: 'Centro Vida', activa: true, documentoCsf: 'https://storage/csf.pdf', verificada: false },
+        [{ tipo: 'identificacion_oficial', estado: 'pendiente', usuarioId: 'inst-1' }],
+      )
+
+      const res = await service.getEstadoVerificacion('inst-1')
+
+      expect(res.pasos.find(p => p.clave === 'identificacion_representante')?.completado).toBe(true)
+      expect(res.porcentaje).toBe(50)
+    })
+
+    it('should throw NotFoundException when the user has no institution', async () => {
+      mockInstitucion(null)
+
+      await expect(service.getEstadoVerificacion('ghost')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  describe('subirDocumentoVerificacion', () => {
+    function mockInstitucion(data: Record<string, any> | null) {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'instituciones') {
+          return {
+            doc: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue(mockDoc(data, data !== null)),
+              update: updateMock,
+            }),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
+          }
+        }
+        return { doc: jest.fn(), where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }) }
+      })
+      return updateMock
+    }
+
+    const archivo = { buffer: Buffer.from('%PDF-1.4 csf'), originalname: 'csf.pdf' } as Express.Multer.File
+
+    it('should upload the CSF (indispensable) and persist documentoCsf', async () => {
+      const updateMock = mockInstitucion({ nombre: 'Centro Vida', activa: true, verificada: false })
+
+      const res = await service.subirDocumentoVerificacion('inst-1', 'csf', archivo)
+
+      expect(storageMock.upload).toHaveBeenCalledWith(archivo.buffer, 'csf.pdf', 'instituciones')
+      expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+        documentoCsf: 'https://storage.googleapis.com/raices-bucket/instituciones/csf.pdf',
+        fechaDocumentoCsf: expect.any(String),
+      }))
+      expect(res.tipo).toBe('csf')
+      expect(res.estado).toBe('pendiente')
+      expect(res.urlDocumento).toContain('csf.pdf')
+    })
+
+    it('should upload the optional representative identification without requiring CURP', async () => {
+      mockInstitucion({ nombre: 'Centro Vida', activa: true })
+
+      const res = await service.subirDocumentoVerificacion('inst-1', 'identificacion_representante', archivo)
+
+      expect(usersMock.subirDocumentoIdentidad).toHaveBeenCalledWith('inst-1', 'identificacion_oficial', archivo)
+      expect(res.tipo).toBe('identificacion_representante')
+      expect(res.estado).toBe('pendiente')
+      expect(res.urlDocumento).toContain('ine.pdf')
+    })
+
+    it('should throw BadRequestException when no file is provided', async () => {
+      mockInstitucion({ nombre: 'Centro Vida', activa: true })
+
+      await expect(service.subirDocumentoVerificacion('inst-1', 'csf', undefined as any)).rejects.toThrow(BadRequestException)
+      expect(storageMock.upload).not.toHaveBeenCalled()
+    })
+
+    it('should throw NotFoundException when the user has no institution', async () => {
+      mockInstitucion(null)
+
+      await expect(service.subirDocumentoVerificacion('ghost', 'csf', archivo)).rejects.toThrow(NotFoundException)
     })
   })
 })
