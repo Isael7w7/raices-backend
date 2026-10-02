@@ -161,6 +161,7 @@
 | Endpoint | Método | Descripción | Auth |
 |----------|--------|-------------|------|
 | `/api/usuarios/perfil` | GET | Perfil completo del usuario | ✅ |
+| `/api/usuarios/buscar` | GET | Buscar usuarios para iniciar chat (parcial, sin mayúsculas/acentos) | ✅ |
 | `/api/usuarios/perfil` | PUT | Actualizar perfil básico | ✅ |
 | `/api/usuarios/:id` | PUT | Editar datos básicos de cualquier usuario (solo admin) | ✅ Roles |
 | `/api/usuarios/perfil-pcd/:pcdUserId` | GET | Ver perfil PCD (tutor/institución) | ✅ Roles |
@@ -276,7 +277,7 @@
 | `/api/comunidad/publicaciones/:id/comentarios` | POST | Crear comentario | ✅ + Feature |
 | `/api/comunidad/publicaciones/:id/me-gusta` | POST | Alternar me gusta | ✅ + Feature |
 | `/api/comunidad/estadisticas` | GET | Métricas de comunidad | — |
-| `/api/comunidad/miembros` | GET | Testimonios públicos de miembros | — |
+| `/api/comunidad/miembros` | GET | Testimonios públicos de miembros (con `?buscar=` busca por nombre/ciudad/profesión) | — |
 | `/api/comunidad/foros` | GET | Listar foros institucionales | — |
 | `/api/comunidad/foros` | POST | Crear foro (solo institución/admin) | ✅ Rol |
 | `/api/comunidad/foros/:id` | GET | Detalle de foro con respuestas | — |

@@ -174,6 +174,41 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ## 👤 Usuarios
 
+### GET `/usuarios/buscar`
+**Descripción:** Buscar usuarios para iniciar una conversación (modal "Nuevo mensaje"). Coincidencia parcial sobre nombre, email, ciudad o profesión, insensible a mayúsculas y acentos. Excluye la cuenta propia.  
+**Autenticación:** Bearer Token requerido
+
+**Query Params:**
+| Param | Tipo | Descripción |
+|-------|------|-------------|
+| `q` | string | Texto a buscar (parcial). Opcional: sin `q` retorna todos los usuarios activos |
+| `pagina` | number | Página (default 1) |
+| `limite` | number | Elementos por página (default 20, máx 100) |
+
+**Response (200):**
+```json
+{
+  "datos": [
+    {
+      "id": "uid-abc123",
+      "nombreCompleto": "María García",
+      "urlAvatar": "https://.../avatar.jpg",
+      "rol": "pcd",
+      "ciudad": "Mérida",
+      "profesion": "Terapeuta"
+    }
+  ],
+  "total": 1,
+  "pagina": 1,
+  "limite": 20,
+  "totalPaginas": 1
+}
+```
+
+> Nota: `email` participa en el matching pero no se devuelve en la respuesta (evita enumeración de correos).
+
+---
+
 ### GET `/usuarios/perfil`
 **Descripción:** Obtener perfil completo del usuario  
 **Autenticación:** Bearer Token requerido

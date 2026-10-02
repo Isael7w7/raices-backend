@@ -271,4 +271,30 @@ describe('Comunidad: Foros, Conectemos y Roles (E2E)', () => {
       expect(res.body.datos[0].etiquetaRol).toBe('Padre / Tutor')
     })
   })
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Miembros de la comunidad (buscador del modal "Nuevo mensaje")
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('GET /api/comunidad/miembros?buscar=', () => {
+    it('200: público sin token, sin bio no aparece en el listado normal', async () => {
+      const res = await request(http).get('/api/comunidad/miembros')
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(0)
+    })
+
+    it('200: buscar por nombre parcial insensible a mayúsculas y acentos incluye a usuarios sin bio', async () => {
+      const res = await request(http).get('/api/comunidad/miembros?buscar=ANA')
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(1)
+      expect(res.body.datos[0].id).toBe('uid-pcd')
+      expect(res.body.datos[0].nombreCompleto).toBe('Ana PCD')
+    })
+
+    it('200: sin coincidencias retorna lista vacía (lo que el front debe mostrar como "no encontrados")', async () => {
+      const res = await request(http).get('/api/comunidad/miembros?buscar=zzz-no-existe')
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(0)
+    })
+  })
 })

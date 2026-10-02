@@ -10,6 +10,7 @@ import { StorageService } from '../storage/storage.service'
 import { ValidationService } from '../ai/validation.service'
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import { obtenerDocumentosPorIds, obtenerDocumentosPorCampo, registrarDependienteVinculado, parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
+import { coincideBusqueda } from '../../common/utils/busqueda'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
@@ -588,6 +589,42 @@ export class UsersService {
         dep.etapaVida = ext.etapaVida ?? dep.etapaVida ?? null
       }
     }
+  }
+
+  /**
+   * Busca usuarios activos para iniciar una conversación (modal "Nuevo mensaje").
+   * Coincidencia parcial insensible a mayúsculas y acentos sobre nombreCompleto,
+   * email, ciudad y profesion. Excluye la propia cuenta.
+   *
+   * Nota: el email participa en el matching pero NO se devuelve en la respuesta
+   * (evita que cualquier autenticado enumeré correos); el front solo necesita
+   * id/nombre/avatar para abrir el hilo de chat.
+   */
+  async buscarUsuarios(
+    usuarioId: string,
+    termino = '',
+    pagina = 1,
+    limite = 20,
+  ): Promise<RespuestaPaginada<Record<string, unknown>>> {
+    const snap = await this.col(COLECCIONES.perfiles).where('activo', '==', true).get()
+
+    const encontrados = snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as Record<string, unknown>))
+      .filter(u => u.id !== usuarioId)
+      .filter(u => coincideBusqueda(termino, u.nombreCompleto as string, u.email as string, u.ciudad as string, u.profesion as string))
+      .sort((a, b) => String(a.nombreCompleto ?? '').localeCompare(String(b.nombreCompleto ?? ''), 'es'))
+      .map(u => ({
+        id: u.id,
+        nombreCompleto: u.nombreCompleto ?? 'Usuario',
+        urlAvatar: u.urlAvatar ?? null,
+        rol: u.rol ?? null,
+        ciudad: u.ciudad ?? null,
+        profesion: u.profesion ?? null,
+      }))
+
+    const total = encontrados.length
+    const inicio = (pagina - 1) * limite
+    return paginar(encontrados.slice(inicio, inicio + limite), total, pagina, limite)
   }
 
   /**

@@ -3,6 +3,7 @@ import { Firestore, FieldValue, Query, DocumentData } from 'firebase-admin/fires
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
+import { coincideBusqueda } from '../../common/utils/busqueda'
 import type { PerfilDoc, InstitucionDoc } from '../../common/interfaces/firestore-documents.interface'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
@@ -432,9 +433,12 @@ export class CommunityService {
 
   /**
    * Devuelve miembros/testimonios públicos de la comunidad.
-   * Solo usuarios activos que tengan una bio configurada.
+   * Sin `buscar`: solo usuarios activos que tengan bio (testimonios).
+   * Con `buscar`: busca entre TODOS los perfiles activos por nombre/ciudad/
+   * profesión con coincidencia parcial insensible a mayúsculas y acentos
+   * (los usuarios sin bio también deben ser localizables para iniciar chats).
    */
-  async getMembers(pagina = 1, limite = 20): Promise<RespuestaPaginada<MiembroComunidad>> {
+  async getMembers(pagina = 1, limite = 20, buscar?: string): Promise<RespuestaPaginada<MiembroComunidad>> {
     try {
       const snap = await this.db.collection(COLECCIONES.perfiles)
         .where('activo', '==', true)
@@ -454,8 +458,14 @@ export class CommunityService {
         }
       }) as MiembroComunidad[]
 
-      // Solo usuarios que tengan bio (testimonios)
-      miembros = miembros.filter(m => m.bio)
+      if (buscar) {
+        // Búsqueda (modal "Nuevo mensaje"): cualquier perfil activo, no solo
+        // testimonios, para que un usuario sin bio también sea localizable.
+        miembros = miembros.filter(m => coincideBusqueda(buscar, m.nombreCompleto, m.ciudad, m.profesion))
+      } else {
+        // Listado de testimonios: solo usuarios que tengan bio configurada
+        miembros = miembros.filter(m => m.bio)
+      }
 
       // Aleatorizar para que la sección se sienta dinámica
       miembros.sort(() => Math.random() - 0.5)
