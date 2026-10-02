@@ -4,6 +4,7 @@ import { RoutesService } from './routes.service'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto, RutaDesarrolloDto, PasoRutaDto, ResumenRutasDto, RutaPersonalizadaResponseDto, MiRutaResponseDto } from './dto/ruta-desarrollo.dto'
 import { RoutesAnalyticsService } from './routes-analytics.service'
 import { Throttle } from '@nestjs/throttler'
+import { throttlePorEntorno } from '../../common/utils/throttle'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
@@ -57,6 +58,16 @@ export class RoutesController {
     return this.svc.obtenerMiRuta(user.id)
   }
 
+  // IMPORTANTE: declararse ANTES de @Get(':id'). Nest registra las rutas en
+  // orden; si ':id' va primero, captura '/analytics' y responde 404.
+  @Get('analytics')
+  @UseETag()
+  @ApiOperation({ summary: 'Analytics de rutas', description: 'Resumen de métricas: tasas de completado por discapacidad, pasos más completados, tiempo promedio.' })
+  @ApiOkResponse({ description: 'Resumen de analytics' })
+  async obtenerAnalytics() {
+    return this.analytics.obtenerResumen()
+  }
+
   @Get(':id')
   @UseETag()
   @ApiOperation({ summary: 'Detalle de ruta', description: 'Detalle completo de una ruta con sus pasos.' })
@@ -103,16 +114,8 @@ export class RoutesController {
   // Generación personalizada (Día Cero + Algoritmo Evolutivo)
   // ═══════════════════════════════════════════════════════════════════
 
-  @Get('analytics')
-  @UseETag()
-  @ApiOperation({ summary: 'Analytics de rutas', description: 'Resumen de métricas: tasas de completado por discapacidad, pasos más completados, tiempo promedio.' })
-  @ApiOkResponse({ description: 'Resumen de analytics' })
-  async obtenerAnalytics() {
-    return this.analytics.obtenerResumen()
-  }
-
   @Post('generar-personalizada')
-  @Throttle({ default: { limit: 3, ttl: 60000 } }) // 3 generaciones por minuto
+  @Throttle(throttlePorEntorno(3, 30, 60000)) // 3 generaciones/min en prod · 30/min en dev/staging
   @HttpCode(201)
   @ApiOperation({
     summary: 'Generar ruta personalizada',

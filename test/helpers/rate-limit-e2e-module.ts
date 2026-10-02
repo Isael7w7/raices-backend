@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
+import { ThrottlerModule } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
+import { CustomThrottlerGuard } from '../../src/common/guards/custom-throttler.guard'
 import { DatabaseModule } from '../../src/database/database.module'
 import { AuthModule } from '../../src/modules/auth/auth.module'
 import { UsersModule } from '../../src/modules/users/users.module'
@@ -44,7 +45,9 @@ import { AiModule } from '../../src/modules/ai/ai.module'
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      // El mismo guard de producción: corrige el EmptyError de RxJS y devuelve
+      // el cuerpo 429 { statusCode, message, ttl } que consume el Frontend.
+      useClass: CustomThrottlerGuard,
     },
   ],
 })

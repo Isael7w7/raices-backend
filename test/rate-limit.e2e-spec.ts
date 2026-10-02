@@ -284,6 +284,11 @@ describe('Rate Limiting (E2E) — ThrottlerGuard', () => {
       expect(res.status).toBe(429)
       expect(res.body).toHaveProperty('statusCode', 429)
       expect(res.body).toHaveProperty('message')
+      expect(typeof res.body.message).toBe('string')
+      expect(res.body.message.length).toBeGreaterThan(0)
+      // `ttl` = segundos restantes hasta reiniciar la ventana (para el Frontend)
+      expect(typeof res.body.ttl).toBe('number')
+      expect(res.body.ttl).toBeGreaterThanOrEqual(1)
     })
   })
 
