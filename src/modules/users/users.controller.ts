@@ -395,30 +395,32 @@ export class UsersController {
 
   @Put('dependientes/:dependienteId/permisos')
   @UseGuards(RolesGuard)
-  @Roles('padre_tutor', 'tutor')
+  @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Guardar permisos de dependiente (PUT)', description: 'Persiste los módulos (Configurar opciones) y acciones (Permisos de acceso) enviados por el modal de tutor. Solo se modifican los campos enviados. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
   @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
   @ApiBody({ type: ActualizarPermisosDependienteDto })
   @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
   @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 403, description: 'El dependiente no pertenece al tutor autenticado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   saveDependentPermissionsPut(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
-    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, dto)
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, user.rol, dto)
   }
 
   @Patch('dependientes/:dependienteId/permisos')
   @UseGuards(RolesGuard)
-  @Roles('padre_tutor', 'tutor')
+  @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Guardar permisos de dependiente (PATCH)', description: 'Mismo comportamiento que PUT /dependientes/:dependienteId/permisos: persiste los módulos y acciones del modal de tutor junto con las features funcionales que aplican los guards.' })
   @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
   @ApiBody({ type: ActualizarPermisosDependienteDto })
   @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
   @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 403, description: 'El dependiente no pertenece al tutor autenticado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   saveDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
-    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, dto)
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, user.rol, dto)
   }
 
   @Patch('vincular-pcd/:pcdId/features')

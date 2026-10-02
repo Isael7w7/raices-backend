@@ -45,17 +45,17 @@ describe('TutoresController', () => {
     expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor', 'admin'])
   })
 
-  it('registra PUT y PATCH tutores/dependientes/:dependienteId/permisos con roles tutor', () => {
+  it('registra PUT y PATCH tutores/dependientes/:dependienteId/permisos con roles tutor/admin', () => {
     const put = (TutoresController.prototype as any).guardarPermisosPut
     const patch = (TutoresController.prototype as any).guardarPermisosPatch
 
     expect(Reflect.getMetadata(PATH_METADATA, put)).toBe('dependientes/:dependienteId/permisos')
     expect(Reflect.getMetadata(METHOD_METADATA, put)).toBe(RequestMethod.PUT)
-    expect(Reflect.getMetadata('roles', put)).toEqual(['padre_tutor', 'tutor'])
+    expect(Reflect.getMetadata('roles', put)).toEqual(['padre_tutor', 'tutor', 'admin'])
 
     expect(Reflect.getMetadata(PATH_METADATA, patch)).toBe('dependientes/:dependienteId/permisos')
     expect(Reflect.getMetadata(METHOD_METADATA, patch)).toBe(RequestMethod.PATCH)
-    expect(Reflect.getMetadata('roles', patch)).toEqual(['padre_tutor', 'tutor'])
+    expect(Reflect.getMetadata('roles', patch)).toEqual(['padre_tutor', 'tutor', 'admin'])
   })
 
   it('delega GET en UsersService con el usuario y rol autenticados', async () => {
@@ -74,10 +74,10 @@ describe('TutoresController', () => {
     const dto = { accesoChat: false, puedeComentar: false }
 
     const putResult = await controller.guardarPermisosPut(user as any, 'dep1', dto as any)
-    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenCalledWith('tutor-1', 'dep1', dto)
+    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenCalledWith('tutor-1', 'dep1', 'padre_tutor', dto)
     expect(putResult.permisos.accesoChat).toBe(false)
 
     await controller.guardarPermisosPatch(user as any, 'dep1', dto as any)
-    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenLastCalledWith('tutor-1', 'dep1', dto)
+    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenLastCalledWith('tutor-1', 'dep1', 'padre_tutor', dto)
   })
 })

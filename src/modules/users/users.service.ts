@@ -963,16 +963,20 @@ export class UsersService {
   /**
    * Guarda los permisos de los modales de tutor ("Configurar opciones" y
    * "Permisos de acceso") sobre un dependiente plano o la cuenta PCD
-   * vinculada. Verifica que el usuario autenticado sea el tutor dueño y
-   * persiste tanto `permisos` (estado de los controles) como `features`
-   * (aplicación real de los módulos/acciones).
+   * vinculada. Verifica que el usuario autenticado sea el tutor dueño o
+   * tenga rol admin (403 en caso contrario) y persiste tanto `permisos`
+   * (estado de los controles) como `features` (aplicación real de los
+   * módulos/acciones).
    */
-  async actualizarPermisosDependiente(usuarioId: string, dependienteId: string, dto: ActualizarPermisosDependienteDto) {
+  async actualizarPermisosDependiente(usuarioId: string, dependienteId: string, rol: string, dto: ActualizarPermisosDependienteDto) {
     const doc = await this.col(COLECCIONES.dependientes).doc(dependienteId).get()
-    if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
+    if (!doc.exists) {
       throw new NotFoundException('Dependiente no encontrado')
     }
     const data = doc.data()!
+    if (data.tutorId !== usuarioId && rol !== 'admin') {
+      throw new ForbiddenException('Este dependiente no pertenece a tu cuenta')
+    }
 
     // Nombres clásicos de features enviados por clientes anteriores
     const legacy: Partial<FeatureFlags> = {}
@@ -1004,7 +1008,7 @@ export class UsersService {
       const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdId).get()
       if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
       const pcd = pcdDoc.data()!
-      if (pcd.tutorId !== usuarioId) {
+      if (pcd.tutorId !== usuarioId && rol !== 'admin') {
         throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como tutor')
       }
 

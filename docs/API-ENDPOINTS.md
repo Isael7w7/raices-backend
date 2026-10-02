@@ -383,7 +383,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ### PUT `/usuarios/dependientes/:id/permisos`
 **Descripción:** Guardar los permisos enviados por el modal de tutor (módulos + acciones). Solo se modifican los campos enviados; se persisten en `permisos` y se reflejan en `features`.  
-**Autenticación:** Bearer Token requerido (rol tutor)
+**Autenticación:** Bearer Token requerido (roles `padre_tutor`, `tutor` o `admin`)
 
 **Request Body (todos opcionales, booleanos):**
 ```json
@@ -408,7 +408,8 @@ También acepta los nombres clásicos: `chat`, `postulaciones`, `resenas`, `desc
 }
 ```
 - `400` - El body no trae permisos
-- `404` - Dependiente no encontrado (o pertenece a otro tutor)
+- `403` - El dependiente no pertenece al tutor autenticado
+- `404` - Dependiente no encontrado
 
 ---
 

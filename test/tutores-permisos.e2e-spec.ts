@@ -141,7 +141,7 @@ describe('Tutores: permisos de dependiente (E2E)', () => {
       expect(res.status).toBe(400)
     })
 
-    it('404: cuando el dependiente pertenece a otro tutor (no escribe nada)', async () => {
+    it('403: cuando el dependiente pertenece a otro tutor (no escribe nada)', async () => {
       await sembrarDependiente('dep-ajeno', { tutorId: 'otro-tutor' })
 
       const res = await request(http)
@@ -149,8 +149,25 @@ describe('Tutores: permisos de dependiente (E2E)', () => {
         .send({ accesoChat: false })
         .set('Authorization', token('uid-tutor'))
 
-      expect(res.status).toBe(404)
+      expect(res.status).toBe(403)
       expect((await leerDoc('dependientes', 'dep-ajeno')).features).toEqual(featuresPorDefecto)
+    })
+
+    it('200: un administrador puede actualizar permisos de cualquier dependiente', async () => {
+      await sembrarPerfil({ id: 'uid-admin', email: 'admin@test.com', rol: 'admin', activo: true, nombreCompleto: 'Admin' })
+
+      const res = await request(http)
+        .put('/api/usuarios/dependientes/dep-1/permisos')
+        .send({ accesoChat: false, empleo: false })
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.permisos.accesoChat).toBe(false)
+
+      const guardado = await leerDoc('dependientes', 'dep-1')
+      expect(guardado.permisos.accesoChat).toBe(false)
+      expect(guardado.features.chat).toBe(false)
+      expect(guardado.features.postulaciones).toBe(false)
     })
   })
 

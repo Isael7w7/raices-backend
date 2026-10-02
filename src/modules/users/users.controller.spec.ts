@@ -67,7 +67,7 @@ describe('UsersController', () => {
     expect(metodos.indexOf('getDependentPermissions')).toBeLessThan(metodos.indexOf('getDependent'))
   })
 
-  it('registra PATCH dependientes/:dependienteId/permisos con roles tutor', () => {
+  it('registra PATCH dependientes/:dependienteId/permisos con roles tutor/admin', () => {
     const handler = (UsersController.prototype as any).saveDependentPermissions
 
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('dependientes/:dependienteId/permisos')
@@ -76,10 +76,10 @@ describe('UsersController', () => {
     const guards = Reflect.getMetadata('__guards__', handler) ?? []
     expect(guards).toContain(RolesGuard)
 
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor'])
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor', 'admin'])
   })
 
-  it('registra PUT dependientes/:dependienteId/permisos con roles tutor', () => {
+  it('registra PUT dependientes/:dependienteId/permisos con roles tutor/admin', () => {
     const handler = (UsersController.prototype as any).saveDependentPermissionsPut
 
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('dependientes/:dependienteId/permisos')
@@ -88,7 +88,7 @@ describe('UsersController', () => {
     const guards = Reflect.getMetadata('__guards__', handler) ?? []
     expect(guards).toContain(RolesGuard)
 
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor'])
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor', 'admin'])
 
     // La ruta estática de permisos debe declararse después de getDependentPermissions
     // y sin chocar con @Put('dependientes/:id') (3 segmentos vs 2)
@@ -117,12 +117,12 @@ describe('UsersController', () => {
 
     const result = await controller.saveDependentPermissionsPut(user as any, 'dep1', dto as any)
 
-    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenCalledWith('tutor-1', 'dep1', dto)
+    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenCalledWith('tutor-1', 'dep1', 'padre_tutor', dto)
     expect(result.features.chat).toBe(false)
     expect(result.permisos.accesoChat).toBe(false)
 
     await controller.saveDependentPermissions(user as any, 'dep1', dto as any)
-    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenLastCalledWith('tutor-1', 'dep1', dto)
+    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenLastCalledWith('tutor-1', 'dep1', 'padre_tutor', dto)
   })
 
   it('rechaza POST vincular-pcd sin email con 400 (sin llamar al servicio)', async () => {

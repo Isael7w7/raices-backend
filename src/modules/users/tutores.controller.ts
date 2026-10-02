@@ -35,7 +35,7 @@ export class TutoresController {
 
   @Put('dependientes/:dependienteId/permisos')
   @UseGuards(RolesGuard)
-  @Roles('padre_tutor', 'tutor')
+  @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
     summary: 'Guardar permisos de dependiente (tutor, PUT)',
@@ -45,14 +45,15 @@ export class TutoresController {
   @ApiBody({ type: ActualizarPermisosDependienteDto })
   @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
   @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 403, description: 'El dependiente no pertenece al tutor autenticado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   guardarPermisosPut(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
-    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, dto)
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, user.rol, dto)
   }
 
   @Patch('dependientes/:dependienteId/permisos')
   @UseGuards(RolesGuard)
-  @Roles('padre_tutor', 'tutor')
+  @Roles('padre_tutor', 'tutor', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({
     summary: 'Guardar permisos de dependiente (tutor, PATCH)',
@@ -62,8 +63,9 @@ export class TutoresController {
   @ApiBody({ type: ActualizarPermisosDependienteDto })
   @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
   @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 403, description: 'El dependiente no pertenece al tutor autenticado' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
   guardarPermisosPatch(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
-    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, dto)
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, user.rol, dto)
   }
 }

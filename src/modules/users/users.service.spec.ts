@@ -1827,7 +1827,7 @@ describe('UsersService', () => {
         instituciones: false, empleo: false, comunidad: true,
         puedeComentar: false, puedeInteractuar: true, accesoMultimedia: true, accesoChat: false,
       }
-      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', dto)
+      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', dto)
 
       expect(updateMock).toHaveBeenCalledWith({
         features: { ...featuresPorDefecto, descubrimiento: false, postulaciones: false, chat: false },
@@ -1852,7 +1852,7 @@ describe('UsersService', () => {
         }),
       })
 
-      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', { puedeComentar: false })
+      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', { puedeComentar: false })
 
       // Solo la acción enviada cambia; el resto de permisos y features se conservan
       expect(result.permisos.puedeComentar).toBe(false)
@@ -1871,7 +1871,7 @@ describe('UsersService', () => {
         }),
       })
 
-      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', { chat: false, postulaciones: false, resenas: false })
+      const result: any = await service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', { chat: false, postulaciones: false, resenas: false })
 
       expect(result.features.chat).toBe(false)
       expect(result.features.postulaciones).toBe(false)
@@ -1891,7 +1891,7 @@ describe('UsersService', () => {
         }),
       })
 
-      await expect(service.actualizarPermisosDependiente('user1', 'dep1', {})).rejects.toThrow(BadRequestException)
+      await expect(service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', {})).rejects.toThrow(BadRequestException)
     })
 
     it('should throw NotFoundException when dependiente does not exist', async () => {
@@ -1899,10 +1899,10 @@ describe('UsersService', () => {
         doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
       })
 
-      await expect(service.actualizarPermisosDependiente('user1', 'ghost', { comunidad: false })).rejects.toThrow(NotFoundException)
+      await expect(service.actualizarPermisosDependiente('user1', 'ghost', 'padre_tutor', { comunidad: false })).rejects.toThrow(NotFoundException)
     })
 
-    it('should throw NotFoundException when the dependiente belongs to another tutor', async () => {
+    it('should throw ForbiddenException when the dependiente belongs to another tutor', async () => {
       firestoreMock.collection.mockReturnValue({
         doc: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'other-user' })),
@@ -1910,7 +1910,22 @@ describe('UsersService', () => {
         }),
       })
 
-      await expect(service.actualizarPermisosDependiente('user1', 'dep1', { comunidad: false })).rejects.toThrow(NotFoundException)
+      await expect(service.actualizarPermisosDependiente('user1', 'dep1', 'padre_tutor', { comunidad: false })).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should allow an admin to update permissions of any dependiente', async () => {
+      const updateMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue(mockDoc({ id: 'dep1', tutorId: 'other-user', features: { ...featuresPorDefecto } })),
+          update: updateMock,
+        }),
+      })
+
+      const result: any = await service.actualizarPermisosDependiente('admin1', 'dep1', 'admin', { accesoChat: false })
+
+      expect(updateMock).toHaveBeenCalled()
+      expect(result.permisos.accesoChat).toBe(false)
     })
 
     it('should update the real PCD profile when the dependiente is a linked account', async () => {
@@ -1934,7 +1949,7 @@ describe('UsersService', () => {
         })
         .mockReturnValue(perfilesCollection) // perfil real de la PCD (fuente de verdad), get + update
 
-      const result: any = await service.actualizarPermisosDependiente('user1', 'pcd1', { accesoChat: false, puedeComentar: true })
+      const result: any = await service.actualizarPermisosDependiente('user1', 'pcd1', 'padre_tutor', { accesoChat: false, puedeComentar: true })
 
       expect(updateMock).toHaveBeenCalledWith({
         features: { ...featuresPorDefecto, chat: false },
@@ -1958,7 +1973,7 @@ describe('UsersService', () => {
           }),
         })
 
-      await expect(service.actualizarPermisosDependiente('user1', 'pcd1', { comunidad: false })).rejects.toThrow(ForbiddenException)
+      await expect(service.actualizarPermisosDependiente('user1', 'pcd1', 'padre_tutor', { comunidad: false })).rejects.toThrow(ForbiddenException)
     })
 
     it('should throw NotFoundException when the linked PCD profile does not exist', async () => {
@@ -1972,7 +1987,7 @@ describe('UsersService', () => {
           doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
         })
 
-      await expect(service.actualizarPermisosDependiente('user1', 'pcd1', { comunidad: false })).rejects.toThrow(NotFoundException)
+      await expect(service.actualizarPermisosDependiente('user1', 'pcd1', 'padre_tutor', { comunidad: false })).rejects.toThrow(NotFoundException)
     })
   })
 

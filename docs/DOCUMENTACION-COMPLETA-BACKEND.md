@@ -178,8 +178,8 @@
 | `/api/usuarios/dependientes` | POST | Agregar dependiente | ✅ + Guard límite |
 | `/api/usuarios/dependientes/:id` | GET/PUT/DELETE | CRUD dependiente | ✅ |
 | `/api/usuarios/dependientes/:dependienteId/permisos` | GET | Permisos del dependiente (features + permisos de los modales de tutor) | ✅ Roles |
-| `/api/usuarios/dependientes/:dependienteId/permisos` | PUT | Guardar módulos y acciones del tutor (parcial, solo campos enviados) | ✅ Tutor |
-| `/api/usuarios/dependientes/:dependienteId/permisos` | PATCH | Alias del PUT anterior | ✅ Tutor |
+| `/api/usuarios/dependientes/:dependienteId/permisos` | PUT | Guardar módulos y acciones del tutor (parcial, solo campos enviados) | ✅ Roles (tutor/admin) |
+| `/api/usuarios/dependientes/:dependienteId/permisos` | PATCH | Alias del PUT anterior | ✅ Roles (tutor/admin) |
 | `/api/usuarios/mis-personas` | GET | Lista consolidada (paginada) | ✅ |
 | `/api/usuarios/vincular-pcd` | POST | Vincular PCD por email | ✅ Tutor |
 | `/api/usuarios/desvincular-pcd/:pcdUserId` | DELETE | Desvincular PCD | ✅ Tutor |
@@ -215,8 +215,9 @@ guards. Solo se modifican los campos enviados; los módulos/acciones con
 equivalente funcional quedan reflejados en `features` (espejo). También se
 aceptan los nombres clásicos (`chat`, `postulaciones`, `resenas`,
 `descubrimiento`, `favoritos`, `multimedia`) por compatibilidad. Respuesta
-`400` si el body no trae permisos y `404` si el dependiente no pertenece al
-tutor autenticado.
+`400` si el body no trae permisos, `403` si el dependiente no pertenece al
+tutor autenticado (el rol `admin` puede actualizar cualquiera) y `404` si el
+dependiente no existe.
 
 ---
 
@@ -228,8 +229,8 @@ servicio, validaciones y respuestas que `/api/usuarios/dependientes/:id/permisos
 | Endpoint | Método | Descripción | Auth |
 |----------|--------|-------------|------|
 | `/api/tutores/dependientes/:dependienteId/permisos` | GET | Permisos del dependiente (features + permisos) | ✅ Roles |
-| `/api/tutores/dependientes/:dependienteId/permisos` | PUT | Guardar módulos y acciones del tutor | ✅ Tutor |
-| `/api/tutores/dependientes/:dependienteId/permisos` | PATCH | Alias del PUT anterior | ✅ Tutor |
+| `/api/tutores/dependientes/:dependienteId/permisos` | PUT | Guardar módulos y acciones del tutor | ✅ Roles (tutor/admin) |
+| `/api/tutores/dependientes/:dependienteId/permisos` | PATCH | Alias del PUT anterior | ✅ Roles (tutor/admin) |
 
 ---
 
