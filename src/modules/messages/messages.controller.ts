@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { MessagesService } from './messages.service'
 import { EnviarDto } from './dto/enviar.dto'
-import { ConversacionDto, MensajeDto } from './dto/respuestas-mensajes.dto'
+import { ConversacionDto, MensajeDto, EliminarConversacionDto } from './dto/respuestas-mensajes.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
@@ -20,8 +20,8 @@ export class MessagesController {
 
   @Get('conversaciones')
   @UseETag()
-  @ApiOperation({ summary: 'Lista de conversaciones' })
-  @ApiOkResponse({ type: [ConversacionDto], description: 'Lista de conversaciones con socio, último mensaje y conteo de no leídos' })
+  @ApiOperation({ summary: 'Lista de conversaciones', description: 'Devuelve el historial agrupado por socio. Si el socio es un usuario eliminado (perfil inexistente o cuenta desactivada), el historial se conserva y la conversación llega marcada con `isDeleted: true` para que el cliente la muestre como "Usuario Eliminado" y bloquee el envío.' })
+  @ApiOkResponse({ type: [ConversacionDto], description: 'Lista de conversaciones con socio, último mensaje, conteo de no leídos y el estado del destinatario' })
   conversations(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.getConversations(user.id)
   }
@@ -64,5 +64,18 @@ export class MessagesController {
   @ApiResponse({ status: 403, description: 'No puedes marcar tu propia conversación' })
   marcarLeida(@Param('userId') socioId: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.marcarConversacionLeida(user.id, socioId)
+  }
+
+  @Delete('conversacion/:userId')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Eliminar conversación',
+    description: 'Quita la conversación de la lista del usuario autenticado. Es un borrado lógico por usuario (`eliminadoPor`): los mensajes no se destruyen en Firestore y la contraparte conserva su propio historial. Siempre responde 200, incluso si la conversación ya no existía.',
+  })
+  @ApiParam({ name: 'userId', description: 'ID del usuario con quien se tiene la conversación' })
+  @ApiOkResponse({ type: EliminarConversacionDto, description: 'Confirmación de eliminación del historial' })
+  @ApiResponse({ status: 403, description: 'No puedes eliminar tu propia conversación' })
+  eliminarConversacion(@Param('userId') socioId: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.deleteConversation(user.id, socioId)
   }
 }

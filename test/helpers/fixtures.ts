@@ -41,6 +41,11 @@ export async function leerDoc(coleccion: string, id: string): Promise<any> {
   return snap.exists ? snap.data() : null
 }
 
+/** Siembra un mensaje directo con id determinista (para probar el borrado lógico) */
+export async function sembrarMensaje(datos: any): Promise<void> {
+  await dbE2E().collection('mensajesDirectos').doc(datos.id).set(datos)
+}
+
 export function token(uid: string): string {
   return `Bearer ${uid}`
 }
