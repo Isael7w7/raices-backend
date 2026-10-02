@@ -282,7 +282,12 @@
 | `/api/comunidad/foros` | POST | Crear foro (solo institución/admin) | ✅ Rol |
 | `/api/comunidad/foros/:id` | GET | Detalle de foro con respuestas | — |
 | `/api/comunidad/foros/:id/respuestas` | POST | Responder pregunta detonante | ✅ |
-| `/api/comunidad/conectemos/publicaciones` | GET | Galería "Conectemos" (contenido creativo PCD) | — |
+| `/api/comunidad/eventos` | GET | Listar eventos (próximos; filtros `?categoria=&fecha=&desde=&buscar=`) | ✅ |
+| `/api/comunidad/eventos` | POST | Crear evento | ✅ + Feature `comunidad` |
+| `/api/comunidad/eventos/:id` | GET | Detalle de evento (organizador y `asisto`) | ✅ |
+| `/api/comunidad/eventos/:id/asistir` | POST | Confirmar/cancelar asistencia (toggle) | ✅ + Feature `comunidad` |
+| `/api/comunidad/conectemos/publicaciones` | GET | Galería "Conectemos" (solo publicaciones multimedia: `mediaUrl`, `recursosVisuales`, `urlThumbnail`, `tipoMedia`) | — |
+| `/api/comunidad/galeria` | GET | Alias público del mismo feed de galería | — |
 
 ---
 

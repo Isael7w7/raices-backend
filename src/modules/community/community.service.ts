@@ -8,6 +8,7 @@ import type { PerfilDoc, InstitucionDoc } from '../../common/interfaces/firestor
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
+import { tieneMultimediaGaleria, construirItemGaleria, ItemGaleria } from './multimedia-galeria'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
 import { CrearForoDto } from './dto/crear-foro.dto'
 import { CrearRespuestaForoDto } from './dto/crear-respuesta-foro.dto'
@@ -628,12 +629,25 @@ export class CommunityService {
   // Espacio "Conectemos" (Contenido Creativo PCD)
   // ═══════════════════════════════════════════════════════════════════
 
-  async getConectemosPosts(pagina = 1, limite = 20, categoriaCreativa?: string, buscar?: string): Promise<RespuestaPaginada<PublicacionDoc & { id: string }>> {
+  /**
+   * Galería "Conectemos": feed EXCLUSIVAMENTE multimedia.
+   *
+   * Solo publicaciones con `categoriaCreativa` que además tengan al menos un
+   * adjunto visual real (imagen, dibujo, banner, video...). Se excluyen las de
+   * solo texto, las que traen arreglos vacíos (`imagenes: []`, `multimedia: []`,
+   * `archivos: []`) y las cuyos adjuntos son únicamente documentos no gráficos.
+   *
+   * Cada item incluye `recursosVisuales` (URLs) y `urlThumbnail` para poder
+   * renderizar la cuadrícula/feed sin consultas extra.
+   */
+  async getConectemosPosts(pagina = 1, limite = 20, categoriaCreativa?: string, buscar?: string): Promise<RespuestaPaginada<PublicacionDoc & { id: string } & ItemGaleria>> {
     const q: Query = this.db.collection(COLECCIONES.publicaciones)
       .where('categoriaCreativa', '!=', null)
 
     const snap = await q.get()
-    let publicaciones = snap.docs.map(d => extraerDoc<PublicacionDoc>(d))
+    let publicaciones = snap.docs
+      .map(d => extraerDoc<PublicacionDoc>(d))
+      .filter(tieneMultimediaGaleria)
 
     if (categoriaCreativa) {
       publicaciones = publicaciones.filter(p => p.categoriaCreativa === categoriaCreativa)
@@ -656,7 +670,7 @@ export class CommunityService {
     const enriquecidas = publicaciones.map(p => {
       const autor = mapaAutores.get(p.autorId) ?? AUTOR_NO_DISPONIBLE
       return {
-        ...p,
+        ...construirItemGaleria(p),
         nombreCompleto: autor.nombreCompleto,
         rol: autor.rol ?? null,
         etiquetaRol: etiquetaRol(autor.rol),

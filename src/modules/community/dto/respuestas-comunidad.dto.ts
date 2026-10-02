@@ -123,3 +123,35 @@ export class ForoConRespuestasDto extends ForoDto {
   @ApiProperty({ type: [Object], description: 'Respuestas agrupadas por pregunta detonante' })
   preguntasConRespuestas!: { pregunta: string; respuestas: RespuestaForoDto[] }[]
 }
+
+// ─── Eventos de la comunidad ───────────────────────────────────────
+
+export class EventoDto {
+  @ApiProperty({ example: 'evento-uid' }) id!: string
+  @ApiProperty({ example: 'user-uid', description: 'Usuario que creó el evento' }) creadorId!: string
+  @ApiProperty({ example: 'Taller de arte inclusivo' }) titulo!: string
+  @ApiProperty({ example: 'Sesión abierta para crear con materiales reciclados.', nullable: true }) descripcion!: string | null
+  @ApiProperty({ example: 'taller', description: 'Categoría del evento' }) categoria!: string
+  @ApiProperty({ example: '2026-10-15T10:00:00.000Z', description: 'Fecha/hora de inicio (ISO 8601)' }) fechaInicio!: string
+  @ApiProperty({ example: '2026-10-15T12:00:00.000Z', nullable: true }) fechaFin!: string | null
+  @ApiProperty({ example: 'Auditorio municipal, Mérida', nullable: true }) ubicacion!: string | null
+  @ApiProperty({ example: 'https://storage.../banner.jpg', nullable: true, description: 'Banner/imagen del evento' }) urlImagen!: string | null
+  @ApiProperty({ example: 12, description: 'Total de asistentes confirmados' }) cantidadAsistentes!: number
+  @ApiProperty({ example: true }) activo!: boolean
+  @ApiProperty({ example: '2026-09-01T00:00:00.000Z' }) fechaCreacion!: string
+  @ApiPropertyOptional({ example: false, description: 'Si el usuario autenticado ya confirmó asistencia' }) asisto?: boolean
+  @ApiPropertyOptional({ example: 'Ana PCD', nullable: true, description: 'Nombre del organizador' }) nombreCreador?: string | null
+  @ApiPropertyOptional({ example: 'https://storage.../avatar.jpg', nullable: true, description: 'Avatar del organizador' }) urlAvatarCreador?: string | null
+}
+
+export class PaginaEventosDto extends RespuestaPaginadaDto<EventoDto> {
+  @ApiProperty({ type: [EventoDto] }) datos!: EventoDto[]
+}
+
+export class RespuestaAsistenciaEventoDto {
+  @ApiProperty({ example: true, description: 'true = asistencia confirmada; false = asistencia cancelada' })
+  asistiendo!: boolean
+
+  @ApiProperty({ example: 13, description: 'Total de asistentes tras el cambio' })
+  cantidadAsistentes!: number
+}

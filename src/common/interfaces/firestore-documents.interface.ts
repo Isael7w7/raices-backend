@@ -240,6 +240,51 @@ export interface PublicacionDoc {
   cantidadMeGustas?: number
   fechaCreacion?: string
   fechaActualizacion?: string
+  /** Adjuntos visuales (imágenes / dibujos / banners). Pueden venir vacíos. */
+  imagenes?: (string | null)[]
+  /** Adjuntos multimedia mixtos (imágenes y videos). Pueden venir vacíos. */
+  multimedia?: (string | null)[]
+  /** Adjuntos de archivo: pueden contener documentos no gráficos (PDF, TXT...). */
+  archivos?: (string | null)[]
+  /** Miniatura dedicada del feed (si el cliente la generó/alimentó). */
+  urlThumbnail?: string | null
+  /** Alias alternativo de miniatura usado por clientes antiguos. */
+  thumbnailUrl?: string | null
+}
+
+/** Categorías permitidas para los eventos de la comunidad. */
+export const CATEGORIAS_EVENTO = ['taller', 'deporte', 'cultural', 'encuentro', 'voluntariado', 'otro'] as const
+
+export type CategoriaEvento = (typeof CATEGORIAS_EVENTO)[number]
+
+/**
+ * Documento de la colección `eventos` (sección "Eventos" de la comunidad).
+ */
+export interface EventoDoc {
+  id?: string
+  creadorId?: string
+  titulo?: string
+  descripcion?: string | null
+  categoria?: CategoriaEvento | string
+  /** ISO 8601 (acecha fecha simple `YYYY-MM-DD`). */
+  fechaInicio?: string
+  fechaFin?: string | null
+  ubicacion?: string | null
+  urlImagen?: string | null
+  cantidadAsistentes?: number
+  activo?: boolean
+  fechaCreacion?: string
+}
+
+/**
+ * Documento de la colección `asistenciasEvento` (participación de un usuario
+ * en un evento). ID determinista `eventoId_usuarioId`.
+ */
+export interface AsistenciaEventoDoc {
+  id?: string
+  eventoId?: string
+  usuarioId?: string
+  fechaCreacion?: string
 }
 
 /**

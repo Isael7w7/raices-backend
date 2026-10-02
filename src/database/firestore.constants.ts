@@ -12,6 +12,9 @@ export const COLECCIONES = {
   meGustas: 'meGustas',
   grupos: 'grupos',
   miembrosGrupo: 'miembrosGrupo',
+  // Eventos de la comunidad (sección "Eventos" de Conectemos) y sus asistencias
+  eventos: 'eventos',
+  asistenciasEvento: 'asistenciasEvento',
   mensajesDirectos: 'mensajesDirectos',
   // Borrado lógico de conversaciones: un doc por (usuario, socio) que oculta
   // la conversación solo para ese usuario sin borrar los mensajes.

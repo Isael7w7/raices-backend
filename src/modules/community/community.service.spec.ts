@@ -576,20 +576,83 @@ describe('CommunityService', () => {
   })
 
   describe('getConectemosPosts', () => {
-    it('should return posts with categoriaCreativa', async () => {
-      const posts = [
-        { id: 'p1', autorId: 'u1', contenido: 'Mi arte', categoriaCreativa: 'arte', fechaCreacion: '2024-01-01' },
-      ]
-      const authorData = { nombreCompleto: 'Ana', rol: 'pcd', urlAvatar: 'url' }
-
+    function mockGaleria(posts: any[], autores: any[] = []) {
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: posts.map(p => ({ id: p.id, data: () => p })) }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u1', data: () => authorData }], size: 1 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: autores, size: autores.length }) })
+    }
+
+    it('should return multimedia posts with categoriaCreativa and gallery fields', async () => {
+      mockGaleria(
+        [{ id: 'p1', autorId: 'u1', contenido: 'Mi arte', categoriaCreativa: 'arte', fechaCreacion: '2024-01-01', mediaUrl: 'https://storage/arte.jpg' }],
+        [{ id: 'u1', data: () => ({ nombreCompleto: 'Ana', rol: 'pcd', urlAvatar: 'url' }) }],
+      )
 
       const result = await service.getConectemosPosts()
       expect(result.datos).toHaveLength(1)
       expect(result.datos[0].categoriaCreativa).toBe('arte')
       expect(result.datos[0].etiquetaRol).toBe('Persona con discapacidad')
+      // Formato visual para la cuadrícula de la galería
+      expect(result.datos[0].mediaUrl).toBe('https://storage/arte.jpg')
+      expect(result.datos[0].recursosVisuales).toEqual(['https://storage/arte.jpg'])
+      expect(result.datos[0].urlThumbnail).toBe('https://storage/arte.jpg')
+      expect(result.datos[0].tipoMedia).toBe('imagen')
+    })
+
+    it('excluye publicaciones creativas de solo texto', async () => {
+      mockGaleria([
+        { id: 'p1', autorId: 'u1', contenido: 'Solo texto', categoriaCreativa: 'historia', fechaCreacion: '2024-01-01', mediaUrl: null },
+        { id: 'p2', autorId: 'u1', contenido: 'Otra sin media', categoriaCreativa: 'arte', fechaCreacion: '2024-01-02' },
+      ])
+
+      const result = await service.getConectemosPosts()
+      expect(result.datos).toHaveLength(0)
+      expect(result.total).toBe(0)
+    })
+
+    it('excluye publicaciones con arreglos de multimedia vacíos', async () => {
+      mockGaleria([
+        { id: 'p1', autorId: 'u1', contenido: 'Arte', categoriaCreativa: 'arte', fechaCreacion: '2024-01-01', imagenes: [], multimedia: [], archivos: [] },
+      ])
+
+      const result = await service.getConectemosPosts()
+      expect(result.datos).toHaveLength(0)
+    })
+
+    it('excluye publicaciones cuyo único adjunto es un documento no gráfico', async () => {
+      mockGaleria([
+        { id: 'p1', autorId: 'u1', contenido: 'Documento', categoriaCreativa: 'general', fechaCreacion: '2024-01-01', mediaUrl: 'https://storage/acta.pdf' },
+      ])
+
+      const result = await service.getConectemosPosts()
+      expect(result.datos).toHaveLength(0)
+    })
+
+    it('incluye publicaciones con imágenes en arreglos y expone la miniatura', async () => {
+      mockGaleria([
+        {
+          id: 'p1', autorId: 'u1', contenido: 'Dibujo', categoriaCreativa: 'dibujo', fechaCreacion: '2024-01-01',
+          mediaUrl: null, imagenes: ['https://storage/dibujo.png'], archivos: [],
+        },
+      ])
+
+      const result = await service.getConectemosPosts()
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].mediaUrl).toBe('https://storage/dibujo.png')
+      expect(result.datos[0].recursosVisuales).toEqual(['https://storage/dibujo.png'])
+      expect(result.datos[0].urlThumbnail).toBe('https://storage/dibujo.png')
+    })
+
+    it('filtra por categoría creativa solo entre publicaciones multimedia', async () => {
+      mockGaleria([
+        { id: 'p1', autorId: 'u1', contenido: 'Arte', categoriaCreativa: 'arte', fechaCreacion: '2024-01-01', mediaUrl: 'https://storage/arte.jpg' },
+        { id: 'p2', autorId: 'u1', contenido: 'Historia', categoriaCreativa: 'historia', fechaCreacion: '2024-01-02', mediaUrl: 'https://storage/historia.jpg' },
+        { id: 'p3', autorId: 'u1', contenido: 'Arte sin media', categoriaCreativa: 'arte', fechaCreacion: '2024-01-03' },
+      ])
+
+      const result = await service.getConectemosPosts(1, 20, 'arte')
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].id).toBe('p1')
     })
   })
 
