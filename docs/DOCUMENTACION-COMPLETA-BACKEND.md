@@ -168,6 +168,8 @@
 | `/api/usuarios/avatar` | POST | Subir foto de perfil (5MB, imagen) | ✅ |
 | `/api/usuarios/avatar` | DELETE | Eliminar foto de perfil | ✅ |
 | `/api/usuarios/perfil-necesidades` | POST | Guardar perfil de necesidades | ✅ |
+| `/api/usuarios/perfil-necesidades` | PUT | Actualizar preferencias/condiciones (parcial: `tiposDiscapacidad`, `etapaVida`, `necesidadesMovilidad`, `areasInteres`, `condiciones`) | ✅ |
+| `/api/usuarios/perfil-necesidades` | PATCH | Alias del PUT anterior | ✅ |
 | `/api/usuarios/escalas-vida` | POST | Guardar evaluación "Cómo vives hoy" | ✅ |
 | `/api/usuarios/documento-identidad` | POST | Subir documento (CURP/identificación) | ✅ |
 | `/api/usuarios/estado-validacion-identidad` | GET | Estado de validación | ✅ |

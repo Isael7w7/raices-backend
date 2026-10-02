@@ -14,7 +14,9 @@ import { coincideBusqueda } from '../../common/utils/busqueda'
 import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
+import { ActualizarPerfilNecesidadesDto } from './dto/actualizar-perfil-necesidades.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
+import { ETagInterceptor } from '../../common/interceptors/etag.interceptor'
 
 @Injectable()
 export class UsersService {
@@ -41,32 +43,7 @@ export class UsersService {
 
     const resultado: Record<string, unknown> = {
       ...perfil,
-      perfilNecesidades: perfilExtendido ? {
-        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
-        severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
-        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
-        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
-        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
-        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
-        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
-        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
-        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
-        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
-        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
-        etapaVida: perfilExtendido.etapaVida ?? null,
-        preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
-        nivelApoyo: perfilExtendido.nivelApoyo ?? null,
-        // ── Campos Spec MVP Raíces ──
-        escalasVida: perfilExtendido.escalasVida ?? null,
-        tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
-        requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
-        temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
-        preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
-        areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
-        viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
-        historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
-        tonoContextual: perfilExtendido.tonoContextual ?? null,
-      } : null,
+      perfilNecesidades: perfilExtendido ? this.perfilNecesidadesDe(perfilExtendido) : null,
     }
 
     // Para usuarios institución, adjuntar los datos básicos de su institución.
@@ -247,6 +224,85 @@ export class UsersService {
       nivelApoyo: carga.nivelApoyo,
     }
     return perfilGuardado
+  }
+
+  /**
+   * Mapea el documento de `perfilesExtendidos` al objeto `perfilNecesidades`
+   * de las respuestas: los arreglos guardados como JSON se devuelven como
+   * arreglos y los campos ausentes conservan su valor por defecto.
+   */
+  private perfilNecesidadesDe(perfilExtendido: DocumentData) {
+    return {
+      tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
+      severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
+      modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
+      necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
+      accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
+      zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
+      necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
+      metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
+      areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
+      historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
+      historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
+      etapaVida: perfilExtendido.etapaVida ?? null,
+      preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
+      nivelApoyo: perfilExtendido.nivelApoyo ?? null,
+      // ── Campos Spec MVP Raíces ──
+      escalasVida: perfilExtendido.escalasVida ?? null,
+      tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
+      requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
+      temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
+      preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
+      areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
+      viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
+      historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
+      tonoContextual: perfilExtendido.tonoContextual ?? null,
+      condiciones: this.parsearCampoJson(perfilExtendido.condiciones),
+    }
+  }
+
+  /**
+   * Actualización parcial de preferencias y condiciones del perfil
+   * (formulario "Editar Preferencias", `PUT/PATCH /usuarios/perfil-necesidades`).
+   *
+   * Solo modifica los campos enviados; si el usuario aún no tiene documento en
+   * `perfilesExtendidos` lo crea. Al terminar invalida la caché ETag del
+   * usuario para que las lecturas con `@UseETag` (incluida la que el frontend
+   * usa como contexto de la historia personal de IA) no sirvan datos
+   * obsoletos durante el TTL de la caché.
+   */
+  async actualizarPreferenciasNecesidades(usuarioId: string, dto: ActualizarPerfilNecesidadesDto) {
+    const carga: Record<string, unknown> = {}
+    if (dto.tiposDiscapacidad !== undefined) carga.tiposDiscapacidad = JSON.stringify(dto.tiposDiscapacidad)
+    if (dto.etapaVida !== undefined) carga.etapaVida = dto.etapaVida
+    if (dto.necesidadesMovilidad !== undefined) carga.necesidadesMovilidad = JSON.stringify(dto.necesidadesMovilidad)
+    if (dto.areasInteres !== undefined) carga.areasInteres = JSON.stringify(dto.areasInteres)
+    if (dto.condiciones !== undefined) carga.condiciones = JSON.stringify(dto.condiciones)
+
+    if (Object.keys(carga).length === 0) {
+      throw new BadRequestException('No se recibieron campos para actualizar')
+    }
+
+    const existe = await this.col(COLECCIONES.perfilesExtendidos)
+      .where('usuarioId', '==', usuarioId).limit(1).get()
+
+    let datosActualizados: DocumentData
+    if (!existe.empty) {
+      const docId = existe.docs[0].id
+      const actuales = (existe.docs[0].data() ?? {}) as DocumentData
+      datosActualizados = { ...actuales, ...carga }
+      await this.col(COLECCIONES.perfilesExtendidos).doc(docId).update(carga)
+    } else {
+      const ref = this.col(COLECCIONES.perfilesExtendidos).doc()
+      datosActualizados = { id: ref.id, usuarioId, ...carga }
+      await ref.set(datosActualizados)
+    }
+
+    // Invalidación de caché: sin esto, GET /usuarios/perfil (con @UseETag)
+    // devolvería 304 con la preferencia anterior hasta expirar el TTL.
+    ETagInterceptor.clearUsuarioCache(usuarioId)
+
+    return this.perfilNecesidadesDe(datosActualizados)
   }
 
   // ─── Escalas "Cómo vives hoy" ─────────────────────────────────────
@@ -508,32 +564,7 @@ export class UsersService {
       esMiPcd: true,
       tutorId: perfil.tutorId ?? null,
       // Datos extendidos de la PCD
-      perfilNecesidades: perfilExtendido ? {
-        tiposDiscapacidad: this.parsearCampoJson(perfilExtendido.tiposDiscapacidad),
-        severidadDiscapacidad: perfilExtendido.severidadDiscapacidad ?? null,
-        modosComunicacion: this.parsearCampoJson(perfilExtendido.modosComunicacion),
-        necesidadesMovilidad: this.parsearCampoJson(perfilExtendido.necesidadesMovilidad),
-        accesoTecnologia: this.parsearCampoJson(perfilExtendido.accesoTecnologia),
-        zonasPreferidas: this.parsearCampoJson(perfilExtendido.zonasPreferidas),
-        necesidades: this.parsearCampoJson(perfilExtendido.necesidades),
-        metasActuales: this.parsearCampoJson(perfilExtendido.metasActuales),
-        areasApoyo: this.parsearCampoJson(perfilExtendido.areasApoyo),
-        historialEducacion: this.parsearCampoJson(perfilExtendido.historialEducacion),
-        historialTerapia: this.parsearCampoJson(perfilExtendido.historialTerapia),
-        etapaVida: perfilExtendido.etapaVida ?? null,
-        preocupacionesActuales: perfilExtendido.preocupacionesActuales ?? null,
-        nivelApoyo: perfilExtendido.nivelApoyo ?? null,
-        // Campos Spec MVP Raíces
-        escalasVida: perfilExtendido.escalasVida ?? null,
-        tieneDiagnostico: perfilExtendido.tieneDiagnostico ?? null,
-        requiereEvaluacion: perfilExtendido.requiereEvaluacion ?? false,
-        temporalidadOrigen: perfilExtendido.temporalidadOrigen ?? null,
-        preferenciaFormato: perfilExtendido.preferenciaFormato ?? null,
-        areasInteres: this.parsearCampoJson(perfilExtendido.areasInteres),
-        viabilidadEconomica: perfilExtendido.viabilidadEconomica ?? null,
-        historialInstituciones: this.parsearCampoJson(perfilExtendido.historialInstituciones),
-        tonoContextual: perfilExtendido.tonoContextual ?? null,
-      } : null,
+      perfilNecesidades: perfilExtendido ? this.perfilNecesidadesDe(perfilExtendido) : null,
     }
 
     return resultado

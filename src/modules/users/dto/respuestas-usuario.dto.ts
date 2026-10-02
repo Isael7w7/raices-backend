@@ -63,6 +63,9 @@ export class PerfilNecesidadesDto {
   @ApiPropertyOptional({ example: ['educacion', 'comunidad'], type: [String], nullable: true, description: 'Áreas de interés del usuario' })
   areasInteres?: string[] | null
 
+  @ApiPropertyOptional({ example: ['diabetes tipo 2'], type: [String], nullable: true, description: 'Condiciones médicas o diagnósticos asociados' })
+  condiciones?: string[] | null
+
   @ApiPropertyOptional({ example: 'bajo_costo', nullable: true, description: 'Viabilidad económica' })
   viabilidadEconomica?: string | null
 

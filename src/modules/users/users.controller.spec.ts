@@ -18,6 +18,7 @@ describe('UsersController', () => {
     updateDependentFeatures: jest.fn(),
     deleteAccount: jest.fn(),
     linkPcdToTutor: jest.fn(),
+    actualizarPreferenciasNecesidades: jest.fn(),
   }
 
   const mockAdminSvc = {
@@ -131,6 +132,56 @@ describe('UsersController', () => {
 
     const metodos = Object.getOwnPropertyNames(UsersController.prototype)
     expect(metodos.indexOf('updateProfile')).toBeLessThan(metodos.indexOf('updateUserPorId'))
+  })
+
+  // ── PUT/PATCH perfil-necesidades (preferencias) ───────────────────────────
+
+  it('registra PUT perfil-necesidades con JwtAuthGuard y ANTES de la ruta paramétrica :id', () => {
+    const handler = (UsersController.prototype as any).actualizarPreferenciasNecesidades
+
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('perfil-necesidades')
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.PUT)
+
+    const guards = Reflect.getMetadata('__guards__', handler) ?? []
+    expect(guards).toContain(JwtAuthGuard)
+
+    // La ruta estática debe declararse antes de @Put(':id'), que si no la capturaría
+    const metodos = Object.getOwnPropertyNames(UsersController.prototype)
+    expect(metodos.indexOf('actualizarPreferenciasNecesidades')).toBeLessThan(metodos.indexOf('updateUserPorId'))
+  })
+
+  it('registra PATCH perfil-necesidades como alias con JwtAuthGuard', () => {
+    const handler = (UsersController.prototype as any).actualizarPreferenciasNecesidadesPatch
+
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('perfil-necesidades')
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.PATCH)
+
+    const guards = Reflect.getMetadata('__guards__', handler) ?? []
+    expect(guards).toContain(JwtAuthGuard)
+  })
+
+  it('delega PUT perfil-necesidades en el servicio con el usuario autenticado', async () => {
+    mockSvc.actualizarPreferenciasNecesidades.mockResolvedValue({ etapaVida: 'adulto', condiciones: ['diabetes'] })
+
+    const user = { id: 'u-1', email: 'u@test.com', rol: 'pcd', nombreCompleto: 'U', verificado: false, tutorId: null, features: {} }
+    const dto = { etapaVida: 'adulto', condiciones: ['diabetes'] }
+
+    const result = await controller.actualizarPreferenciasNecesidades(user as any, dto as any)
+
+    expect(mockSvc.actualizarPreferenciasNecesidades).toHaveBeenCalledWith('u-1', dto)
+    expect(result.etapaVida).toBe('adulto')
+  })
+
+  it('delega PATCH perfil-necesidades en el mismo servicio', async () => {
+    mockSvc.actualizarPreferenciasNecesidades.mockResolvedValue({ tiposDiscapacidad: ['tea'] })
+
+    const user = { id: 'u-1', email: 'u@test.com', rol: 'pcd', nombreCompleto: 'U', verificado: false, tutorId: null, features: {} }
+    const dto = { tiposDiscapacidad: ['tea'] }
+
+    const result = await controller.actualizarPreferenciasNecesidadesPatch(user as any, dto as any)
+
+    expect(mockSvc.actualizarPreferenciasNecesidades).toHaveBeenCalledWith('u-1', dto)
+    expect(result.tiposDiscapacidad).toEqual(['tea'])
   })
 
   it('delega en AdminService al editar un usuario por id', async () => {

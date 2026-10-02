@@ -164,6 +164,7 @@ export interface PerfilExtendidoDoc {
   viabilidadEconomica?: string
   historialInstituciones?: string
   tonoContextual?: string
+  condiciones?: string
 }
 
 /**

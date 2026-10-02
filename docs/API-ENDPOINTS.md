@@ -248,6 +248,32 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ---
 
+### PUT `/usuarios/perfil-necesidades`
+**Descripción:** Actualizar preferencias y condiciones del perfil (formulario "Editar Preferencias"). Actualización **parcial**: solo se modifican los campos enviados; si el usuario no tiene documento en `perfilesExtendidos` se crea. Alias: `PATCH /usuarios/perfil-necesidades` (misma firma).  
+**Autenticación:** Bearer Token requerido (los cambios se aplican al usuario autenticado)
+
+**Request Body (todos los campos opcionales):**
+```json
+{
+  "tiposDiscapacidad": ["tea"],
+  "etapaVida": "adulto",
+  "necesidadesMovilidad": ["rampas"],
+  "areasInteres": ["arte", "deporte"],
+  "condiciones": ["diabetes tipo 2"]
+}
+```
+
+**Response (200):** perfil de necesidades completo con los campos actualizados (arreglos ya parseados).
+
+**Respuestas:**
+- `200`: Preferencias actualizadas
+- `400`: Datos inválidos (p. ej. `tiposDiscapacidad` no es arreglo) o sin campos para actualizar
+- `401`: No autorizado
+
+**Nota:** tras guardar se invalida la caché ETag del usuario, de modo que `GET /usuarios/perfil` (y el contexto que alimenta la historia personal de IA) no sirva preferencias obsoletas durante el TTL.
+
+---
+
 ### PUT `/usuarios/:id`
 **Descripción:** Editar datos básicos de cualquier usuario (alias administrativo; usa `nombreCompleto` o `nombre` + `apellido` y `email`)  
 **Autenticación:** Bearer Token requerido (rol: admin)

@@ -230,6 +230,59 @@ describe('ETagInterceptor', () => {
     });
   });
 
+  describe('clearUsuarioCache (invalidación tras actualizar preferencias)', () => {
+    it('solo elimina las entradas del usuario indicado', () => {
+      const bodyA = { id: 'usuario-a', etapaVida: 'nino' };
+      const etagA = `"${createHash('md5').update(JSON.stringify(bodyA)).digest('hex')}"`;
+      const bodyB = { id: 'usuario-b', etapaVida: 'adulto' };
+      const etagB = `"${createHash('md5').update(JSON.stringify(bodyB)).digest('hex')}"`;
+
+      // Poblar la caché de ambos usuarios (misma URL)
+      interceptor.intercept(
+        mockExecutionContext(mockRequest('GET', {}, { user: { id: 'usuario-a' } }), mockResponse()),
+        mockCallHandler(bodyA),
+      ).subscribe();
+      interceptor.intercept(
+        mockExecutionContext(mockRequest('GET', {}, { user: { id: 'usuario-b' } }), mockResponse()),
+        mockCallHandler(bodyB),
+      ).subscribe();
+
+      ETagInterceptor.clearUsuarioCache('usuario-a');
+
+      // usuario-a: sin caché → vuelve a ejecutar el handler (datos frescos).
+      // El cuerpo cambió (como tras guardar preferencias) → responde 200.
+      const bodyA2 = { id: 'usuario-a', etapaVida: 'adulto' };
+      const resA = mockResponse();
+      const ctxA = mockExecutionContext(
+        mockRequest('GET', { 'if-none-match': etagA }, { user: { id: 'usuario-a' } }),
+        resA,
+      );
+      const handleA = jest.fn(() => of(bodyA2));
+      let resultA: any;
+      interceptor.intercept(ctxA, { handle: handleA } as any).subscribe((r) => (resultA = r));
+
+      expect(handleA).toHaveBeenCalledTimes(1);
+      expect(resultA).toEqual(bodyA2);
+      expect(resA.status).not.toHaveBeenCalledWith(304);
+
+      // usuario-b: su caché sigue intacta → responde 304 sin ejecutar el handler
+      const resB = mockResponse();
+      const ctxB = mockExecutionContext(
+        mockRequest('GET', { 'if-none-match': etagB }, { user: { id: 'usuario-b' } }),
+        resB,
+      );
+      const handleB = jest.fn(() => of(bodyB));
+      interceptor.intercept(ctxB, { handle: handleB } as any).subscribe();
+
+      expect(handleB).not.toHaveBeenCalled();
+      expect(resB.status).toHaveBeenCalledWith(304);
+    });
+
+    it('no falla con usuarios sin entradas en caché', () => {
+      expect(() => ETagInterceptor.clearUsuarioCache('sin-entradas')).not.toThrow();
+    });
+  });
+
   describe('Non-GET requests', () => {
     it('should pass through POST requests without ETag logic', () => {
       const body = { created: true };
