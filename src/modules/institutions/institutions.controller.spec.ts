@@ -266,7 +266,11 @@ describe('InstitutionsController', () => {
       expect(guards).toContain(JwtAuthGuard)
       expect(guards).toContain(RolesGuard)
 
-      expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'admin'])
+      // La empresa comparte la entidad institución y se registra con `rol: 'empresa'`
+      // (auth.service.registrar). Si no se admitiera aquí, su CSF no tendría
+      // ningún endpoint: /usuarios/documento-identidad rechaza 'csf' con 400 y no
+      // escribe `documentoCsf`, que es lo que el admin revisa para aprobar.
+      expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'empresa', 'admin'])
 
       const metodos = Object.getOwnPropertyNames(InstitutionsController.prototype)
       expect(metodos.indexOf('subirDocumentoVerificacion')).toBeLessThan(metodos.indexOf('update'))

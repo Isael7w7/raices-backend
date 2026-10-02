@@ -99,7 +99,13 @@ export class InstitutionsController {
   @Post('verificacion/documentos')
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 cargas por minuto
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('institucion', 'admin')
+  // La empresa se registra con `rol: 'empresa'` y comparte la entidad institución
+  // (`instituciones/{uid}` con `tipo: 'empresa'`, ver auth.service.registrar),
+  // así que debe poder subir su CSF por aquí: si se queda fuera, el único
+  // endpoint de identidad disponible es /usuarios/documento-identidad, que
+  // rechaza 'csf' con 400 y además no alimenta `documentoCsf`, que es el campo
+  // que el admin lee para decidir si la persona moral puede aprobarse.
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @UseInterceptors(FileInterceptor('documento', {
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
