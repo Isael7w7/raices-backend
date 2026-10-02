@@ -57,6 +57,7 @@ interface InstitucionSort {
   usuarioId?: string
   creadoPor?: string
   activa?: boolean
+  documentoCsf?: string | null
   tiposDiscapacidad?: string[] | string
 }
 
@@ -371,6 +372,8 @@ export class AdminService {
       const tieneCurp = docsIdentidad.some(d => d.tipo === 'curp')
       const tieneIdentificacion = docsIdentidad.some(d => d.tipo === 'identificacion_oficial')
       const estadoIdentidad = perfil?.estadoValidacionIdentidad ?? 'sin_documentos'
+      // Personas morales: lo indispensable es la CSF (la CURP no aplica).
+      const tieneCsf = typeof inst.documentoCsf === 'string' && inst.documentoCsf.length > 0
 
       return {
         ...inst,
@@ -385,7 +388,8 @@ export class AdminService {
           estado: estadoIdentidad,
           tieneCurp,
           tieneIdentificacion,
-          puedeAprobarse: estadoIdentidad === 'aprobado',
+          tieneCsf,
+          puedeAprobarse: tieneCsf,
         },
       }
     })
@@ -399,57 +403,16 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Institución no encontrada')
     const inst = doc.data()!
 
-    // ── Validación de identidad del representante legal ──
-    // La institución solo se puede aprobar si su representante tiene
-    // identidad verificada (CURP + identificación oficial aprobados).
-    const usuarioId = inst.usuarioId ?? inst.creadoPor
-    if (usuarioId) {
-      const perfilDoc = await this.col(COLECCIONES.perfiles).doc(usuarioId).get()
-      if (perfilDoc.exists) {
-        const perfil = perfilDoc.data()!
-        const estadoIdentidad = perfil.estadoValidacionIdentidad ?? 'sin_documentos'
-
-        if (estadoIdentidad !== 'aprobado') {
-          // Verificar qué documentos faltan para dar un mensaje más claro
-          const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
-            .where('usuarioId', '==', usuarioId).get()
-          const documentos = docsSnap.docs.map(d => d.data())
-          const tieneCurp = documentos.some(d => d.tipo === 'curp')
-          const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
-
-          const faltantes: string[] = []
-          if (!tieneCurp) faltantes.push('CURP')
-          if (!tieneIdentificacion) faltantes.push('Identificación oficial (INE/pasaporte)')
-
-          if (faltantes.length > 0) {
-            throw new BadRequestException(
-              `No se puede aprobar la institución: el representante legal aún no ha subido ${faltantes.join(' y ')}. ` +
-              `Estado actual: ${estadoIdentidad}. ` +
-              `El representante debe subir sus documentos en /api/usuarios/documento-identidad y esperar la revisión de un administrador.`
-            )
-          }
-
-          // Tiene documentos pero están pendientes o rechazados
-          if (estadoIdentidad === 'pendiente') {
-            throw new BadRequestException(
-              `No se puede aprobar la institución: los documentos de identidad del representante están pendientes de revisión. ` +
-              `El representante debe esperar a que un administrador revise sus documentos.`
-            )
-          }
-
-          if (estadoIdentidad === 'rechazado') {
-            const ultimoDoc = documentos
-              .filter(d => d.estado === 'rechazado')
-              .sort((a, b) => (b.fechaSubida ?? '').localeCompare(a.fechaSubida ?? ''))[0]
-
-            throw new BadRequestException(
-              `No se puede aprobar la institución: los documentos de identidad del representante fueron rechazados. ` +
-              `Motivo: ${ultimoDoc?.motivoRechazo ?? 'No especificado'}. ` +
-              `El representante debe subir nuevos documentos en /api/usuarios/documento-identidad.`
-            )
-          }
-        }
-      }
+    // ── Requisitos de una persona moral (institución/empresa) ──
+    // INDISPENSABLE: la Constancia de Situación Fiscal (CSF). La
+    // identificación del representante legal es opcional y la CURP no aplica
+    // a personas morales, así que no se exige ningún documento de identidad.
+    if (!inst.documentoCsf) {
+      throw new BadRequestException(
+        'No se puede aprobar la institución: falta la Constancia de Situación Fiscal (CSF), ' +
+        'requisito indispensable para personas morales. Sube el documento con ' +
+        'POST /api/instituciones/verificacion/documentos (tipo=csf) y vuelve a intentarlo.'
+      )
     }
 
     // Aprobar deja la institución verificada Y activa: así puede aparecer en el
@@ -1027,6 +990,7 @@ export class AdminService {
     const inst = instDoc.data()!
 
     const usuarioId = inst.usuarioId ?? inst.creadoPor
+    const tieneCsf = typeof inst.documentoCsf === 'string' && inst.documentoCsf.length > 0
     if (!usuarioId) {
       return {
         institucionId,
@@ -1036,8 +1000,11 @@ export class AdminService {
           estado: 'sin_documentos',
           tieneCurp: false,
           tieneIdentificacion: false,
-          puedeAprobarse: false,
-          motivo: 'No se encontró el representante legal de la institución',
+          tieneCsf,
+          puedeAprobarse: tieneCsf,
+          motivo: tieneCsf
+            ? null
+            : 'Falta la Constancia de Situación Fiscal (CSF), requisito indispensable para personas morales',
         },
         documentos: [],
       }
@@ -1060,23 +1027,13 @@ export class AdminService {
     const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
     const estadoIdentidad = perfil?.estadoValidacionIdentidad ?? 'sin_documentos'
 
-    // Determinar si puede aprobarse
-    const puedeAprobarse = estadoIdentidad === 'aprobado'
-    let motivo = null
-    if (!puedeAprobarse) {
-      const faltantes: string[] = []
-      if (!tieneCurp) faltantes.push('CURP')
-      if (!tieneIdentificacion) faltantes.push('Identificación oficial')
-
-      if (faltantes.length > 0) {
-        motivo = `Faltan documentos: ${faltantes.join(', ')}`
-      } else if (estadoIdentidad === 'pendiente') {
-        motivo = 'Documentos pendientes de revisión por administrador'
-      } else if (estadoIdentidad === 'rechazado') {
-        const rechazado = documentos.find(d => d.estado === 'rechazado')
-        motivo = `Documentos rechazados: ${rechazado?.motivoRechazo ?? 'Sin motivo especificado'}`
-      }
-    }
+    // Personas morales: lo indispensable es la CSF. La identificación del
+    // representante es opcional y la CURP no aplica, así que ninguna de las
+    // dos bloquea la aprobación.
+    const puedeAprobarse = tieneCsf
+    const motivo = puedeAprobarse
+      ? null
+      : 'Falta la Constancia de Situación Fiscal (CSF), requisito indispensable para personas morales'
 
     return {
       institucionId,
@@ -1091,6 +1048,7 @@ export class AdminService {
         estado: estadoIdentidad,
         tieneCurp,
         tieneIdentificacion,
+        tieneCsf,
         puedeAprobarse,
         motivo,
       },

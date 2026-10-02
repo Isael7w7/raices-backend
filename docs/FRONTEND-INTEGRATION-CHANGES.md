@@ -1,8 +1,8 @@
 # 📋 Guía de Integración Frontend — Cambios Backend MVP Raíces
 
-> **Última actualización:** 27 de agosto de 2026
+> **Última actualización:** 02 de octubre de 2026
 > **Estado:** Activo — se actualiza con cada cambio realizado
-> **Última versión:** v1.7 (Flujo conectado: Identidad + Institución)
+> **Última versión:** v1.8 (Verificación de personas morales: CSF sin CURP)
 
 ---
 
@@ -18,6 +18,7 @@
 | v1.5 | 13/08/2026 | Fecha nacimiento, domicilio, rol institucional — COBERTURA 100% | 6 archivos |
 | v1.6 | 13/08/2026 | Documentación Swagger/OpenAPI actualizada (105 endpoints) | 3 archivos |
 | v1.7 | 27/08/2026 | Flujo conectado: identidad del representante + aprobación de institución | 4 archivos |
+| v1.8 | 02/10/2026 | Instituciones/empresas: CSF como requisito indispensable, CURP eliminada del flujo, nuevos endpoints de verificación | 6 archivos |
 
 ---
 
@@ -444,25 +445,26 @@ Institución solo se puede aprobar SI:
     curp: string | null
   }
 
-  // NUEVO en v1.7: Estado de verificación de identidad
+  // NUEVO en v1.7: Estado de verificación (v1.8: se exige CSF, no CURP)
   verificacionIdentidad: {
     estado: 'sin_documentos' | 'pendiente' | 'aprobado' | 'rechazado'
-    tieneCurp: boolean          // true si ya subió CURP
-    tieneIdentificacion: boolean // true si ya subió identificación oficial
-    puedeAprobarse: boolean     // true SOLO si estado === 'aprobado'
+    tieneCurp: boolean          // informativo: la CURP no aplica a personas morales
+    tieneIdentificacion: boolean // true si el representante subió identificación (opcional)
+    tieneCsf: boolean           // NUEVO v1.8: CSF cargada (requisito indispensable)
+    puedeAprobarse: boolean     // NUEVO v1.8: true SOLO si tieneCsf === true
   }
 }]
 ```
 
 **Uso en frontend:**
-- Si `puedeAprobarse === true` → Mostrar botón "Aprobar"
-- Si `puedeAprobarse === false` → Mostrar tooltip con razón (faltan documentos, pendientes, rechazados)
+- Si `puedeAprobarse === true` → Mostrar botón "Aprobar" (no se pide CURP ni identificación)
+- Si `puedeAprobarse === false` → Mostrar tooltip con motivo: falta la CSF (`tieneCsf === false`)
 
 ---
 
 ### Endpoint: `GET /api/administracion/instituciones/:id/verificacion-identidad`
 
-**Descripción:** Consulta detallada del estado de verificación de identidad del representante legal de una institución. Útil para mostrar un modal/panel antes de aprobar.
+**Descripción:** Consulta detallada del estado de verificación de una institución/empresa (persona moral). Útil para mostrar un modal/panel antes de aprobar. En v1.8 el criterio de aprobación es la **CSF**: la CURP no aplica y la identificación del representante es opcional.
 
 **Parámetros:**
 | Param | Tipo | Descripción |
@@ -484,10 +486,11 @@ Institución solo se puede aprobar SI:
 
   verificacionIdentidad: {
     estado: 'sin_documentos' | 'pendiente' | 'aprobado' | 'rechazado'
-    tieneCurp: boolean
-    tieneIdentificacion: boolean
-    puedeAprobarse: boolean
-    motivo: string | null  // Razón por la que no puede aprobarse
+    tieneCurp: boolean          // informativo: la CURP no aplica a personas morales
+    tieneIdentificacion: boolean // identificación del representante (opcional)
+    tieneCsf: boolean           // NUEVO v1.8: CSF cargada (requisito indispensable)
+    puedeAprobarse: boolean     // NUEVO v1.8: true SOLO si tieneCsf === true
+    motivo: string | null       // p.ej. "Falta la Constancia de Situación Fiscal (CSF)..."
   }
 
   documentos: [{
@@ -516,10 +519,25 @@ Institución solo se puede aprobar SI:
     "estado": "sin_documentos",
     "tieneCurp": false,
     "tieneIdentificacion": false,
+    "tieneCsf": false,
     "puedeAprobarse": false,
-    "motivo": "Faltan documentos: CURP, Identificación oficial"
+    "motivo": "Falta la Constancia de Situación Fiscal (CSF), requisito indispensable para personas morales"
   },
   "documentos": []
+}
+```
+
+**Ejemplo de respuesta cuando SÍ puede aprobarse (sin CURP ni identificación):**
+```json
+{
+  "verificacionIdentidad": {
+    "estado": "sin_documentos",
+    "tieneCurp": false,
+    "tieneIdentificacion": false,
+    "tieneCsf": true,
+    "puedeAprobarse": true,
+    "motivo": null
+  }
 }
 ```
 
@@ -527,35 +545,26 @@ Institución solo se puede aprobar SI:
 
 ### Endpoint: `POST /api/administracion/instituciones/:id/aprobar` (CAMBIADO)
 
-**⚠️ CAMBIO en v1.7:** Ahora valida la identidad del representante antes de aprobar.
+**⚠️ CAMBIO en v1.8:** Para personas morales lo indispensable es la **CSF**. Se eliminó la exigencia de CURP e identificación del representante.
 
 **Respuestas:**
 | Codigo | Descripcion |
 |--------|-------------|
-| 204 | Institucion aprobada (identidad verificada) |
-| 400 | Identidad del representante no verificada |
+| 204 | Institucion aprobada (`verificada: true`, `activa: true`) |
+| 400 | Falta la Constancia de Situación Fiscal (CSF) |
 | 404 | Institucion no encontrada |
 
-**Errores 400 posibles:**
+**Único error 400 posible:**
 ```json
-// Sin documentos
 {
   "statusCode": 400,
-  "message": "No se puede aprobar la institución: el representante legal aún no ha subido CURP e Identificación oficial. Estado actual: sin_documentos. El representante debe subir sus documentos en /api/usuarios/documento-identidad y esperar la revisión de un administrador."
-}
-
-// Documentos pendientes
-{
-  "statusCode": 400,
-  "message": "No se puede aprobar la institución: los documentos de identidad del representante están pendientes de revisión."
-}
-
-// Documentos rechazados
-{
-  "statusCode": 400,
-  "message": "No se puede aprobar la institución: los documentos de identidad del representante fueron rechazados. Motivo: CURP ilegible."
+  "message": "No se puede aprobar la institución: falta la Constancia de Situación Fiscal (CSF), requisito indispensable para personas morales. Sube el documento con POST /api/instituciones/verificacion/documentos (tipo=csf) y vuelve a intentarlo."
 }
 ```
+
+**Nuevo endpoint de carga de documentos (v1.8):**
+- `POST /api/instituciones/verificacion/documentos` — `multipart/form-data` con `documento` (PDF/imagen ≤10 MB) y `tipo` = `csf` | `identificacion_representante`. `numeroCurp` es opcional y se **ignora**.
+- `GET /api/instituciones/mi-institucion/estado-verificacion` — pasos de verificación **sin CURP**: `csf` (obligatorio), `aprobacion_admin` (obligatorio), `identificacion_representante` (opcional), con `porcentaje` (0/50/100) y `documentosFaltantes` (solo `["csf"]`).
 
 ---
 
@@ -565,11 +574,11 @@ Institución solo se puede aprobar SI:
 1. Admin entra a "Instituciones Pendientes"
    GET /api/administracion/instituciones/pendientes
 
-2. Ve lista con estado de identidad de cada representante:
-   - 🟢 Aprobado → Puede aprobar
-   - 🟡 Pendiente → Esperar
-   - 🔴 Rechazado → Representante debe subir nuevos docs
-   - ⚪ Sin docs → Representante debe subir documentos
+2. Ve lista con el estado de verificación de cada institución:
+   - 🟢 tieneCsf true → Puede aprobar (CSF cargada)
+   - 🔴 tieneCsf false → Falta la CSF: indicar al representante que la suba
+     con POST /api/instituciones/verificacion/documentos (tipo=csf)
+   - CURP y identificación del representante: informativas, no bloquean
 
 3. Para ver detalle, hace click en una institución:
    GET /api/administracion/instituciones/:id/verificacion-identidad

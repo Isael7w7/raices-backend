@@ -25,6 +25,7 @@ describe('Administración (E2E) — autorización por rol', () => {
     await sembrarInstitucion({
       id: 'inst-pendiente', nombre: 'Pendiente', categoria: 'funcional',
       activa: true, verificada: false, creadoPor: 'uid-owner', fechaCreacion: '2026-01-02T00:00:00.000Z',
+      documentoCsf: 'https://storage.googleapis.com/raices-bucket/instituciones/csf.pdf',
     })
     await sembrarInstitucion({
       id: 'inst-verificada', nombre: 'Verificada', categoria: 'educativo',
@@ -73,6 +74,24 @@ describe('Administración (E2E) — autorización por rol', () => {
       const inst = await leerDoc('instituciones', 'inst-pendiente')
       expect(inst.verificada).toBe(true)
       expect(inst.activa).toBe(true)
+    })
+
+    it('400: no puede aprobarse sin la CSF (requisito indispensable de personas morales)', async () => {
+      await sembrarInstitucion({
+        id: 'inst-sin-csf', nombre: 'Sin CSF', categoria: 'funcional',
+        activa: true, verificada: false, creadoPor: 'uid-owner3', fechaCreacion: '2026-01-03T00:00:00.000Z',
+      })
+
+      const res = await request(http)
+        .post('/api/administracion/instituciones/inst-sin-csf/aprobar')
+        .set('Authorization', token('uid-admin'))
+
+      expect(res.status).toBe(400)
+      expect(res.body.message).toContain('Constancia de Situación Fiscal')
+      expect(res.body.message).not.toContain('CURP')
+
+      const inst = await leerDoc('instituciones', 'inst-sin-csf')
+      expect(inst.verificada).toBe(false)
     })
 
     it('403: PCD no puede aprobar instituciones', async () => {

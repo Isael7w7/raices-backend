@@ -88,6 +88,14 @@ export interface InstitucionDoc {
   usuarioId?: string
   activa?: boolean
   verificada?: boolean
+  /**
+   * Constancia de Situación Fiscal (CSF) de la persona moral: URL del
+   * documento. Es el requisito INDISPENSABLE de verificación para cuentas
+   * institucionales/empresariales (la CURP no aplica a personas morales).
+   */
+  documentoCsf?: string | null
+  /** Fecha de subida/actualización de la CSF */
+  fechaDocumentoCsf?: string
   calificacionPromedio?: number
   cantidadCalificaciones?: number
   ciudad?: string

@@ -10,5 +10,6 @@ import { AdminModule } from '../admin/admin.module'
   imports: [StorageModule, AiModule, AdminModule],
   controllers: [UsersController, TutoresController],
   providers: [UsersService],
+  exports: [UsersService],
 })
 export class UsersModule {}

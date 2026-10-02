@@ -249,11 +249,15 @@ servicio, validaciones y respuestas que `/api/usuarios/dependientes/:id/permisos
 | `/api/instituciones/:id` | PUT | Actualizar institución (admin/propietario) | ✅ |
 | `/api/instituciones/mi-institucion` | DELETE | Eliminar mi institución (soft-delete) | ✅ |
 | `/api/instituciones/:id` | DELETE | Eliminar institución (admin/propietario) | ✅ |
+| `/api/instituciones/verificacion/documentos` | POST | Subir documento de verificación (multipart: `documento` + `tipo`) | ✅ Rol institución |
+| `/api/instituciones/mi-institucion/estado-verificacion` | GET | Pasos de verificación con porcentaje (sin CURP) | ✅ |
 | `/api/instituciones/validar-csf-qr` | POST | Validar código QR de Constancia de Situación Fiscal | ✅ |
 
 **Categorías de instituciones:** funcional, educativo, laboral, social
 
 **Visibilidad:** Solo se muestran instituciones `activa=true` y `verificada=true` al público.
+
+> **Verificación de personas morales (institución/empresa):** la CURP **no aplica** y nunca se exige. El único requisito indispensable es la **CSF** (`tipo=csf` → `instituciones/{id}.documentoCsf`), subida con `POST /api/instituciones/verificacion/documentos`; la identificación del representante legal (`tipo=identificacion_representante`) es opcional. `GET /api/instituciones/mi-institucion/estado-verificacion` retorna los pasos válidos (`csf`, `aprobacion_admin`, `identificacion_representante` — nunca `curp`), `pasosPendientes`, `documentosFaltantes` (solo `["csf"]`) y un `porcentaje` calculado sobre los obligatorios: 0 sin CSF, 50 con CSF, 100 cuando además el administrador aprueba.
 
 ---
 
@@ -407,9 +411,9 @@ servicio, validaciones y respuestas que `/api/usuarios/dependientes/:id/permisos
 | `/api/administracion/auditoria` | GET | Logs de auditoría (paginado, filtrable) |
 | `/api/administracion/auditoria/estadisticas` | GET | Resumen de auditoría |
 | `/api/administracion/instituciones` | GET | Todas las instituciones |
-| `/api/administracion/instituciones/pendientes` | GET | Pendientes de aprobación |
-| `/api/administracion/instituciones/:id/verificacion-identidad` | GET | Estado verificación identidad |
-| `/api/administracion/instituciones/:id/aprobar` | POST | Aprobar institución |
+| `/api/administracion/instituciones/pendientes` | GET | Pendientes de aprobación (incluye `verificacionIdentidad.tieneCsf`) |
+| `/api/administracion/instituciones/:id/verificacion-identidad` | GET | Estado de verificación (CSF / documentos del representante) |
+| `/api/administracion/instituciones/:id/aprobar` | POST | Aprobar institución (400 si falta la CSF; nunca exige CURP) |
 | `/api/administracion/instituciones/:id/verificar` | PATCH | Alternar verificación |
 | `/api/administracion/instituciones/:id` | DELETE | Rechazar/eliminar institución |
 | `/api/administracion/usuarios` | GET | Todos los usuarios |

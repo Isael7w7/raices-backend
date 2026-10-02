@@ -15,7 +15,10 @@ import { InstitutionsController } from './institutions.controller'
 import { InstitutionsService } from './institutions.service'
 import { CsfQrService } from './csf-qr.service'
 import { FIRESTORE } from '../../database/firebase.provider'
-import { BadRequestException } from '@nestjs/common'
+import { BadRequestException, NotFoundException, RequestMethod } from '@nestjs/common'
+import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants'
+import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { RolesGuard } from '../../common/guards/roles.guard'
 
 describe('InstitutionsController', () => {
   let controller: InstitutionsController
@@ -30,6 +33,8 @@ describe('InstitutionsController', () => {
     update: jest.fn(),
     remove: jest.fn(),
     removeMine: jest.fn(),
+    subirDocumentoVerificacion: jest.fn(),
+    getEstadoVerificacion: jest.fn(),
   }
 
   const mockCsfQrService = {
@@ -243,6 +248,109 @@ describe('InstitutionsController', () => {
 
       expect(mockService.remove).toHaveBeenCalledWith('inst-1', 'user1', 'admin')
       expect(result).toEqual(removed)
+    })
+  })
+
+  // ── POST verificacion/documentos ────────────────────────────────────
+
+  const userInstitucion = { id: 'inst-1', email: 'i@test.com', rol: 'institucion', nombreCompleto: 'Institución', verificado: false, tutorId: null, features: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true } }
+
+  describe('subirDocumentoVerificacion', () => {
+    it('registers POST verificacion/documentos with guards and roles BEFORE the :id routes', () => {
+      const handler = (InstitutionsController.prototype as any).subirDocumentoVerificacion
+
+      expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('verificacion/documentos')
+      expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.POST)
+
+      const guards = Reflect.getMetadata('__guards__', handler) ?? []
+      expect(guards).toContain(JwtAuthGuard)
+      expect(guards).toContain(RolesGuard)
+
+      expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'admin'])
+
+      const metodos = Object.getOwnPropertyNames(InstitutionsController.prototype)
+      expect(metodos.indexOf('subirDocumentoVerificacion')).toBeLessThan(metodos.indexOf('update'))
+      expect(metodos.indexOf('subirDocumentoVerificacion')).toBeLessThan(metodos.indexOf('findOne'))
+    })
+
+    it('delegates to the service passing only user id, tipo and file (numeroCurp ignored)', async () => {
+      const file = { buffer: Buffer.from('%PDF-1.4'), originalname: 'csf.pdf' } as Express.Multer.File
+      const resultado = { tipo: 'csf', urlDocumento: 'https://storage/csf.pdf', estado: 'pendiente', fechaSubida: '2026-10-01T00:00:00.000Z' }
+      mockService.subirDocumentoVerificacion.mockResolvedValue(resultado)
+
+      const result = await controller.subirDocumentoVerificacion(
+        userInstitucion as any,
+        { tipo: 'csf', numeroCurp: 'GOME850101HDFXXX01' } as any,
+        file,
+      )
+
+      expect(mockService.subirDocumentoVerificacion).toHaveBeenCalledWith('inst-1', 'csf', file)
+      expect(result).toEqual(resultado)
+    })
+
+    it('delegates the optional representative identification without CURP', async () => {
+      const file = { buffer: Buffer.from('img'), originalname: 'ine.png' } as Express.Multer.File
+      const resultado = { tipo: 'identificacion_representante', urlDocumento: 'https://storage/ine.png', estado: 'pendiente', fechaSubida: '2026-10-01T00:00:00.000Z' }
+      mockService.subirDocumentoVerificacion.mockResolvedValue(resultado)
+
+      const result = await controller.subirDocumentoVerificacion(userInstitucion as any, { tipo: 'identificacion_representante' } as any, file)
+
+      expect(mockService.subirDocumentoVerificacion).toHaveBeenCalledWith('inst-1', 'identificacion_representante', file)
+      expect(result).toEqual(resultado)
+    })
+
+    it('propagates service errors (404 sin institución, 400 sin archivo)', async () => {
+      mockService.subirDocumentoVerificacion.mockRejectedValue(new BadRequestException('Debe adjuntar un archivo'))
+
+      await expect(
+        controller.subirDocumentoVerificacion(userInstitucion as any, { tipo: 'csf' } as any, undefined as any),
+      ).rejects.toThrow(BadRequestException)
+    })
+  })
+
+  // ── GET mi-institucion/estado-verificacion ──────────────────────────
+
+  describe('getEstadoVerificacion', () => {
+    it('registers GET mi-institucion/estado-verificacion with JwtAuthGuard and no RolesGuard', () => {
+      const handler = (InstitutionsController.prototype as any).getEstadoVerificacion
+
+      expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('mi-institucion/estado-verificacion')
+      expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.GET)
+
+      const guards = Reflect.getMetadata('__guards__', handler) ?? []
+      expect(guards).toContain(JwtAuthGuard)
+      expect(guards).not.toContain(RolesGuard)
+      expect(Reflect.getMetadata('roles', handler)).toBeUndefined()
+    })
+
+    it('delegates to the service with the authenticated user id', async () => {
+      const estado = {
+        institucionId: 'inst-1',
+        nombre: 'Centro',
+        verificada: false,
+        porcentaje: 50,
+        pasos: [
+          { clave: 'csf', etiqueta: 'Constancia de Situación Fiscal', obligatorio: true, completado: true },
+          { clave: 'aprobacion_admin', etiqueta: 'Aprobación del Administrador', obligatorio: true, completado: false },
+          { clave: 'identificacion_representante', etiqueta: 'Identificación del Representante Legal', obligatorio: false, completado: false },
+        ],
+        pasosPendientes: ['aprobacion_admin'],
+        documentosFaltantes: [] as string[],
+      }
+      mockService.getEstadoVerificacion.mockResolvedValue(estado)
+
+      const result = await controller.getEstadoVerificacion(userInstitucion as any)
+
+      expect(mockService.getEstadoVerificacion).toHaveBeenCalledWith('inst-1')
+      expect(result).toEqual(estado)
+      // La CURP no forma parte de los pasos de verificación
+      expect(result.pasos.some(p => p.clave === 'curp')).toBe(false)
+    })
+
+    it('propagates 404 when the user has no institution', async () => {
+      mockService.getEstadoVerificacion.mockRejectedValue(new NotFoundException('No tienes una institución registrada'))
+
+      await expect(controller.getEstadoVerificacion(userInstitucion as any)).rejects.toThrow(NotFoundException)
     })
   })
 })

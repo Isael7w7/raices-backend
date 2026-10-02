@@ -5,7 +5,10 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
+import { TipoDocumentoVerificacion } from './dto/subir-documento-verificacion.dto'
 import { InstitucionDoc } from '../../common/interfaces/firestore-documents.interface'
+import { StorageService } from '../storage/storage.service'
+import { UsersService } from '../users/users.service'
 
 /** Institución con ID resuelto, tal como se devuelve al cliente. */
 type InstitucionConId = InstitucionDoc & { id: string }
@@ -14,9 +17,33 @@ type InstitucionConId = InstitucionDoc & { id: string }
 export class InstitutionsService {
   private readonly logger = new Logger('InstitutionsService')
 
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly storage: StorageService,
+    private readonly users: UsersService,
+  ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
+
+  /**
+   * Resuelve el documento de la institución dueña de `usuarioId`:
+   * primero el canónico (id = UID, creado en el registro) y como respaldo
+   * los creados vía POST /instituciones (id aleatorio).
+   */
+  private async resolverInstitucion(usuarioId: string): Promise<{ id: string; data: InstitucionDoc }> {
+    const canonico = await this.col(COLECCIONES.instituciones).doc(usuarioId).get()
+    if (canonico.exists && canonico.data()?.activa !== false) {
+      return { id: usuarioId, data: canonico.data()! }
+    }
+
+    const snap = await this.col(COLECCIONES.instituciones)
+      .where('creadoPor', '==', usuarioId)
+      .limit(10)
+      .get()
+    const doc = snap.docs.find(d => d.data()?.activa !== false)
+    if (!doc) throw new NotFoundException('No tienes una institución registrada')
+    return { id: doc.id, data: doc.data()! }
+  }
 
   // ─── Listar instituciones (público) ────────────────────────────────
   async findAll(filtros: { page?: number; limit?: number; busqueda?: string; categoria?: string; ciudad?: string } = {}) {
@@ -317,6 +344,106 @@ export class InstitutionsService {
     }
 
     return carga
+  }
+
+  // ─── Verificación de cuentas institucionales (personas morales) ────
+
+  /**
+   * Sube un documento de verificación de la institución/empresa.
+   *
+   * - `csf` (indispensable): Constancia de Situación Fiscal, se guarda como
+   *   `documentoCsf` en el documento de la institución.
+   * - `identificacion_representante` (opcional): se registra como
+   *   identificación oficial del representante para revisión del administrador.
+   *
+   * Las personas morales no tienen CURP: el campo `numeroCurp` (si el cliente
+   * lo envía) se ignora por completo.
+   */
+  async subirDocumentoVerificacion(usuarioId: string, tipo: TipoDocumentoVerificacion, file: Express.Multer.File) {
+    if (!file?.buffer) throw new BadRequestException('No se proporcionó ningún archivo')
+
+    const institucion = await this.resolverInstitucion(usuarioId)
+
+    if (tipo === 'csf') {
+      const urlDocumento = await this.storage.upload(file.buffer, file.originalname, 'instituciones')
+      const fecha = new Date().toISOString()
+      await this.col(COLECCIONES.instituciones).doc(institucion.id).update({
+        documentoCsf: urlDocumento,
+        fechaDocumentoCsf: fecha,
+        fechaActualizacion: fecha,
+      })
+      this.logger.log(`CSF subida para la institución ${institucion.id}`)
+      return { tipo: 'csf', urlDocumento, estado: 'pendiente', fechaSubida: fecha }
+    }
+
+    // Identificación del representante: opcional. Se reutiliza el flujo de
+    // documentos de identidad (queda pendiente de revisión) sin exigir CURP.
+    const resultado = await this.users.subirDocumentoIdentidad(usuarioId, 'identificacion_oficial', file)
+    return {
+      tipo: 'identificacion_representante',
+      urlDocumento: resultado.urlDocumento,
+      estado: resultado.estado,
+      fechaSubida: resultado.fechaSubida,
+    }
+  }
+
+  /**
+   * Estado y porcentaje de verificación de la institución/empresa.
+   *
+   * Pasos válidos para personas morales (sin CURP):
+   *  1. `csf` — Constancia de Situación Fiscal (INDISPENSABLE)
+   *  2. `aprobacion_admin` — Aprobación del administrador (INDISPENSABLE)
+   *  3. `identificacion_representante` — identificación del representante
+   *     legal (OPCIONAL, no afecta el porcentaje)
+   */
+  async getEstadoVerificacion(usuarioId: string) {
+    const institucion = await this.resolverInstitucion(usuarioId)
+
+    const docsSnap = await this.col(COLECCIONES.documentosIdentidad)
+      .where('usuarioId', '==', usuarioId)
+      .get()
+    const documentos = docsSnap.docs.map(d => d.data())
+    const tieneIdentificacion = documentos.some(d => d.tipo === 'identificacion_oficial')
+
+    const tieneCsf = typeof institucion.data.documentoCsf === 'string' && institucion.data.documentoCsf.length > 0
+    const verificada = institucion.data.verificada === true
+
+    const pasos = [
+      {
+        clave: 'csf',
+        titulo: 'Constancia de Situación Fiscal (CSF)',
+        obligatorio: true,
+        completado: tieneCsf,
+        descripcion: 'Documento fiscal de la persona moral (RFC). Requisito indispensable.',
+      },
+      {
+        clave: 'aprobacion_admin',
+        titulo: 'Aprobación del Administrador',
+        obligatorio: true,
+        completado: verificada,
+        descripcion: 'Revisión y aprobación de un administrador de Raíces.',
+      },
+      {
+        clave: 'identificacion_representante',
+        titulo: 'Identificación del Representante Legal',
+        obligatorio: false,
+        completado: tieneIdentificacion,
+        descripcion: 'Opcional: INE/pasaporte del representante legal. La CURP no aplica a personas morales.',
+      },
+    ]
+
+    const obligatorios = pasos.filter(p => p.obligatorio)
+    const completados = obligatorios.filter(p => p.completado)
+
+    return {
+      institucionId: institucion.id,
+      nombre: institucion.data.nombre ?? null,
+      verificada,
+      porcentaje: Math.round((completados.length / obligatorios.length) * 100),
+      pasos,
+      pasosPendientes: obligatorios.filter(p => !p.completado).map(p => p.clave),
+      documentosFaltantes: tieneCsf ? [] : ['csf'],
+    }
   }
 
   private parsear(fila: InstitucionConId) {

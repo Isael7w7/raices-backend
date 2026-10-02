@@ -100,3 +100,67 @@ export class PaginaInstitucionesDto extends RespuestaPaginadaAnidadaDto<Instituc
   @ApiProperty({ description: 'Instituciones de la página', type: [InstitucionDto] })
   datos!: InstitucionDto[]
 }
+
+/** Documento de verificación subido (CSF o identificación del representante). */
+export class DocumentoVerificacionSubidoDto {
+  @ApiProperty({ enum: ['csf', 'identificacion_representante'], example: 'csf' })
+  tipo!: string
+
+  @ApiProperty({ example: 'https://storage.googleapis.com/raices-bucket/instituciones/inst-uid.pdf' })
+  urlDocumento!: string
+
+  @ApiProperty({ example: 'pendiente', enum: ['pendiente', 'aprobado', 'rechazado'] })
+  estado!: string
+
+  @ApiProperty({ example: '2026-08-13T00:00:00.000Z' })
+  fechaSubida!: string
+}
+
+/**
+ * Paso de verificación de una institución/empresa (persona moral).
+ * La CURP no existe como paso: no aplica a personas morales.
+ */
+export class PasoVerificacionDto {
+  @ApiProperty({ enum: ['csf', 'aprobacion_admin', 'identificacion_representante'], example: 'csf' })
+  clave!: string
+
+  @ApiProperty({ example: 'Constancia de Situación Fiscal (CSF)' })
+  titulo!: string
+
+  @ApiProperty({ example: true, description: 'true si es obligatorio para considerar verificada a la institución' })
+  obligatorio!: boolean
+
+  @ApiProperty({ example: false, description: 'true si el paso ya está completado' })
+  completado!: boolean
+
+  @ApiProperty({ example: 'Documento fiscal de la persona moral (RFC). Requisito indispensable.', nullable: true })
+  descripcion!: string | null
+}
+
+/**
+ * Estado de verificación de una institución/empresa: lista de pasos válidos
+ * para personas morales (CSF + Aprobación del Administrador; identificación
+ * del representante legal como opcional). No incluye CURP.
+ */
+export class EstadoVerificacionInstitucionDto {
+  @ApiProperty({ example: 'inst-uid' })
+  institucionId!: string
+
+  @ApiProperty({ example: 'Centro de Rehabilitación', nullable: true })
+  nombre!: string | null
+
+  @ApiProperty({ example: false, description: 'true cuando un administrador aprobó la institución' })
+  verificada!: boolean
+
+  @ApiProperty({ example: 50, description: 'Porcentaje sobre los pasos obligatorios (CSF + Aprobación del Administrador)' })
+  porcentaje!: number
+
+  @ApiProperty({ type: [PasoVerificacionDto] })
+  pasos!: PasoVerificacionDto[]
+
+  @ApiProperty({ type: [String], example: ['csf'], description: 'Claves de los pasos obligatorios pendientes' })
+  pasosPendientes!: string[]
+
+  @ApiProperty({ type: [String], example: ['csf'], description: 'Documentos indispensables que faltan (solo CSF; nunca CURP)' })
+  documentosFaltantes!: string[]
+}
