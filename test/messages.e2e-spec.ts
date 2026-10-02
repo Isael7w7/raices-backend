@@ -118,6 +118,76 @@ describe('Mensajes (E2E) — IDOR Protection', () => {
     })
   })
 
+  describe('DELETE /api/mensajes/conversaciones/:userId (borrar chat)', () => {
+    it('401: sin token', async () => {
+      const res = await request(http).delete('/api/mensajes/conversaciones/uid-bob')
+      expect(res.status).toBe(401)
+    })
+
+    it('403: no puede borrar la propia conversación', async () => {
+      const res = await request(http)
+        .delete('/api/mensajes/conversaciones/uid-alice')
+        .set('Authorization', token('uid-alice'))
+      expect(res.status).toBe(403)
+    })
+
+    it('404: conversación inexistente (protección IDOR)', async () => {
+      const res = await request(http)
+        .delete('/api/mensajes/conversaciones/uid-bob')
+        .set('Authorization', token('uid-alice'))
+      expect(res.status).toBe(404)
+    })
+
+    it('200: oculta la conversación solo para quien la borra', async () => {
+      await request(http)
+        .post('/api/mensajes/enviar/uid-bob')
+        .send({ contenido: 'Hola Bob' })
+        .set('Authorization', token('uid-alice'))
+
+      const res = await request(http)
+        .delete('/api/mensajes/conversaciones/uid-bob')
+        .set('Authorization', token('uid-alice'))
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ ocultado: true, socioId: 'uid-bob' })
+
+      // La lista de Alice ya no muestra la conversación...
+      const alice = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-alice'))
+      expect(alice.body).toHaveLength(0)
+
+      // ...pero Bob sigue viéndola (borrado lógico individual)
+      const bob = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-bob'))
+      expect(bob.body).toHaveLength(1)
+      expect(bob.body[0].socio.id).toBe('uid-alice')
+    })
+
+    it('200: un mensaje nuevo posterior reaparece la conversación borrada', async () => {
+      await request(http)
+        .post('/api/mensajes/enviar/uid-bob')
+        .send({ contenido: 'Primero' })
+        .set('Authorization', token('uid-alice'))
+      await request(http)
+        .delete('/api/mensajes/conversaciones/uid-bob')
+        .set('Authorization', token('uid-alice'))
+
+      // Bob responde después del borrado (pausa para que supere al milisegundo de ocultoEn)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await request(http)
+        .post('/api/mensajes/enviar/uid-alice')
+        .send({ contenido: 'Sigo aquí' })
+        .set('Authorization', token('uid-bob'))
+
+      const alice = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-alice'))
+      expect(alice.body).toHaveLength(1)
+      expect(alice.body[0].socio.id).toBe('uid-bob')
+    })
+  })
+
   describe('GET /api/mensajes/no-leidos', () => {
     it('401: sin token', async () => {
       const res = await request(http).get('/api/mensajes/no-leidos')

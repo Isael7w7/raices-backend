@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { ForbiddenException } from '@nestjs/common'
+import { ForbiddenException, NotFoundException } from '@nestjs/common'
 import { MessagesService } from './messages.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 
@@ -33,6 +33,8 @@ describe('MessagesService', () => {
       firestoreMock.collection
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: sentMsgs.map(m => ({ id: m.id, data: () => m })) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: receivedMsgs.map(m => ({ id: m.id, data: () => m })) }) })
+        // conversacionesOcultas: ninguna conversación oculta
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[] }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u2', data: () => ({ nombreCompleto: 'Pedro' }) }] }) })
 
       const result = await service.getConversations('u1')
@@ -47,6 +49,47 @@ describe('MessagesService', () => {
 
       const result = await service.getConversations('u1')
       expect(result).toHaveLength(0)
+    })
+
+    it('excluye conversaciones ocultas sin mensajes posteriores al borrado', async () => {
+      const sentMsgs = [{ id: 'm1', remitenteId: 'u1', destinatarioId: 'u2', contenido: 'Hola', fechaCreacion: '2024-01-01T00:00:00.000Z', leido: true }]
+      const receivedMsgs = [{ id: 'm2', remitenteId: 'u3', destinatarioId: 'u1', contenido: 'Hola 2', fechaCreacion: '2024-01-02T00:00:00.000Z', leido: false }]
+      // u2 fue ocultada después de todos los mensajes; u3 nunca
+      const ocultas = [{ id: 'u1_u2', data: () => ({ usuarioId: 'u1', socioId: 'u2', ocultoEn: '2024-06-01T00:00:00.000Z' }) }]
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: sentMsgs.map(m => ({ id: m.id, data: () => m })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: receivedMsgs.map(m => ({ id: m.id, data: () => m })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: ocultas }) })
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({
+            docs: [
+              { id: 'u2', data: () => ({ nombreCompleto: 'Pedro' }) },
+              { id: 'u3', data: () => ({ nombreCompleto: 'Ana' }) },
+            ],
+          }),
+        })
+
+      const result = await service.getConversations('u1')
+      expect(result).toHaveLength(1)
+      expect(result[0].socio.nombreCompleto).toBe('Ana')
+    })
+
+    it('reincluye conversación oculta cuando hay un mensaje posterior al borrado', async () => {
+      const sentMsgs = [{ id: 'm1', remitenteId: 'u1', destinatarioId: 'u2', contenido: 'Hola', fechaCreacion: '2024-01-01T00:00:00.000Z', leido: true }]
+      const receivedMsgs = [{ id: 'm2', remitenteId: 'u2', destinatarioId: 'u1', contenido: 'Nuevo', fechaCreacion: '2024-07-01T00:00:00.000Z', leido: false }]
+      const ocultas = [{ id: 'u1_u2', data: () => ({ usuarioId: 'u1', socioId: 'u2', ocultoEn: '2024-06-01T00:00:00.000Z' }) }]
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: sentMsgs.map(m => ({ id: m.id, data: () => m })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: receivedMsgs.map(m => ({ id: m.id, data: () => m })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: ocultas }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u2', data: () => ({ nombreCompleto: 'Pedro' }) }] }) })
+
+      const result = await service.getConversations('u1')
+      expect(result).toHaveLength(1)
+      expect(result[0].socio.nombreCompleto).toBe('Pedro')
     })
   })
 
@@ -231,6 +274,62 @@ describe('MessagesService', () => {
 
       expect(result).toEqual({ actualizados: 900 })
       expect(batch.commit).toHaveBeenCalledTimes(2) // 450 + 450
+    })
+  })
+
+  describe('ocultarConversacion (borrar chat)', () => {
+    it('rechaza borrar la propia conversación', async () => {
+      await expect(service.ocultarConversacion('u1', 'u1')).rejects.toThrow(ForbiddenException)
+      expect(firestoreMock.collection).not.toHaveBeenCalled()
+    })
+
+    it('retorna 404 cuando no hay mensajes entre ambos (protección IDOR)', async () => {
+      const vacio = { docs: [] as never[], empty: true }
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(vacio) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(vacio) })
+
+      await expect(service.ocultarConversacion('u1', 'stranger')).rejects.toThrow(NotFoundException)
+    })
+
+    it('crea el documento oculto y marca como leídos los recibidos', async () => {
+      const existe = { docs: [{ id: 'm1' }], empty: false }
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      const batch = { update: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) }
+      const noLeidos = { docs: [{ ref: { update: jest.fn() } }], empty: false }
+
+      firestoreMock.collection
+        // verificación de pertenencia (enviados/recibidos)
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(existe) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], empty: true }) })
+        // doc de conversación oculta
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+        // marcarConversacionLeida → mensajes sin leer
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(noLeidos) })
+      firestoreMock.batch.mockReturnValue(batch)
+
+      const result = await service.ocultarConversacion('u1', 'u2')
+
+      expect(result).toEqual({ ocultado: true, socioId: 'u2' })
+      expect(setMock).toHaveBeenCalledWith({ usuarioId: 'u1', socioId: 'u2', ocultoEn: expect.any(String) })
+      expect(batch.commit).toHaveBeenCalledTimes(1)
+    })
+
+    it('sin mensajes sin leer no crea batch de lectura', async () => {
+      const existe = { docs: [{ id: 'm1' }], empty: false }
+      const setMock = jest.fn().mockResolvedValue(undefined)
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(existe) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], empty: true }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ empty: true, docs: [] as never[] }) })
+
+      const result = await service.ocultarConversacion('u1', 'u2')
+
+      expect(result.ocultado).toBe(true)
+      expect(firestoreMock.batch).not.toHaveBeenCalled()
     })
   })
 })

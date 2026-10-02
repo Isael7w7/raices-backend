@@ -1,4 +1,4 @@
-import { Injectable, Inject, ForbiddenException } from '@nestjs/common'
+import { Injectable, Inject, ForbiddenException, NotFoundException } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -27,9 +27,26 @@ export class MessagesService {
     const mensajes = [...enviadosSnap.docs, ...recibidosSnap.docs].map(d => ({ id: d.id, ...d.data() } as MensajeDirectoDoc & { id: string }))
 
     const socios = new Map<string, MensajeDirectoDoc & { id: string }>()
+    const ultimaFecha = new Map<string, number>()
     for (const msg of mensajes) {
       const socioId = msg.remitenteId === usuarioId ? msg.destinatarioId : msg.remitenteId
       if (!socios.has(socioId)) socios.set(socioId, msg)
+      const fecha = new Date(msg.fechaCreacion ?? 0).getTime()
+      if ((ultimaFecha.get(socioId) ?? 0) < fecha) ultimaFecha.set(socioId, fecha)
+    }
+    if (socios.size === 0) return []
+
+    // Conversaciones borradas lógicamente por este usuario: se ocultan de la
+    // lista hasta que exista un mensaje posterior al borrado (nuevo del    // socio o enviado por el propio usuario).
+    const ocultasSnap = await this.db.collection(COLECCIONES.conversacionesOcultas)
+      .where('usuarioId', '==', usuarioId).get()
+    const ocultas = new Map<string, number>()
+    ocultasSnap.docs.forEach(d => {
+      const data = d.data() as { socioId?: string; ocultoEn?: string }
+      if (data.socioId) ocultas.set(data.socioId, new Date(data.ocultoEn ?? 0).getTime())
+    })
+    for (const [socioId, ocultoEn] of ocultas) {
+      if ((ultimaFecha.get(socioId) ?? 0) <= ocultoEn) socios.delete(socioId)
     }
     if (socios.size === 0) return []
 
@@ -101,6 +118,44 @@ export class MessagesService {
     }
     await ref.set(msg)
     return msg
+  }
+
+  /**
+   * Borrado lógico de una conversación: la oculta SOLO para el usuario
+   * actual sin eliminar mensajes (el socio conserva su historial).
+   *
+   * Protecciones:
+   * - 403 si se intenta borrar la "propia" conversación (socio == usuario).
+   * - 404 si no existe ningún mensaje entre ambos (IDOR: un tercero no puede
+   *   borrar conversaciones ajenas conociendo los IDs).
+   *
+   * Al ocultarla también se marcan como leídos los mensajes recibidos para
+   * que el badge de no leídos no muestre un chat que ya no está en la lista.
+   */
+  async ocultarConversacion(usuarioId: string, socioId: string): Promise<{ ocultado: boolean; socioId: string }> {
+    if (usuarioId === socioId) {
+      throw new ForbiddenException('No puedes borrar tu propia conversación')
+    }
+
+    const [enviados, recibidos] = await Promise.all([
+      this.db.collection(COLECCIONES.mensajesDirectos)
+        .where('remitenteId', '==', usuarioId).where('destinatarioId', '==', socioId).limit(1).get(),
+      this.db.collection(COLECCIONES.mensajesDirectos)
+        .where('remitenteId', '==', socioId).where('destinatarioId', '==', usuarioId).limit(1).get(),
+    ])
+    if (enviados.empty && recibidos.empty) {
+      throw new NotFoundException('Conversación no encontrada')
+    }
+
+    await this.db.collection(COLECCIONES.conversacionesOcultas).doc(`${usuarioId}_${socioId}`).set({
+      usuarioId,
+      socioId,
+      ocultoEn: new Date().toISOString(),
+    })
+
+    await this.marcarConversacionLeida(usuarioId, socioId)
+
+    return { ocultado: true, socioId }
   }
 
   async getUnreadCount(usuarioId: string): Promise<number> {

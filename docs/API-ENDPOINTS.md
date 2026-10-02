@@ -922,6 +922,29 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ---
 
+### DELETE `/mensajes/conversaciones/:userId`
+**Descripción:** Borrar una conversación (borrado lógico). La conversación se oculta SOLO para el usuario autenticado; el socio conserva su historial. Los mensajes recibidos sin leer se marcan como leídos (el badge queda limpio). Si llega un mensaje nuevo posterior al borrado, la conversación vuelve a aparecer en la lista.  
+**Autenticación:** Bearer Token requerido
+
+**Path Params:**
+| Param | Descripción |
+|-------|-------------|
+| `userId` | ID del socio de la conversación a borrar |
+
+**Response (200):**
+```json
+{
+  "ocultado": true,
+  "socioId": "usr-abc123"
+}
+```
+
+**Errores:**
+- `403` — No puedes borrar tu propia conversación
+- `404` — Conversación no encontrada (no hay mensajes entre ambos; protección IDOR)
+
+---
+
 ## ⭐ Favoritos
 
 ### GET `/favoritos`

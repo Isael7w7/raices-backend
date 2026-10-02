@@ -1,8 +1,8 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Patch, Delete, Param, Body, UseGuards, HttpCode } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger'
 import { MessagesService } from './messages.service'
 import { EnviarDto } from './dto/enviar.dto'
-import { ConversacionDto, MensajeDto } from './dto/respuestas-mensajes.dto'
+import { ConversacionDto, MensajeDto, RespuestaOcultarConversacionDto } from './dto/respuestas-mensajes.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
@@ -64,5 +64,21 @@ export class MessagesController {
   @ApiResponse({ status: 403, description: 'No puedes marcar tu propia conversación' })
   marcarLeida(@Param('userId') socioId: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.marcarConversacionLeida(user.id, socioId)
+  }
+
+  @Delete('conversaciones/:userId')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 borrados por minuto
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({
+    summary: 'Borrar conversación',
+    description: 'Borrado lógico: oculta la conversación SOLO para el usuario autenticado (el socio conserva su historial). Si llega un mensaje nuevo posterior al borrado, la conversación vuelve a aparecer en la lista.',
+  })
+  @ApiParam({ name: 'userId', description: 'ID del socio de la conversación a borrar' })
+  @ApiOkResponse({ type: RespuestaOcultarConversacionDto, description: 'Conversación oculta para el usuario actual' })
+  @ApiResponse({ status: 403, description: 'No puedes borrar tu propia conversación' })
+  @ApiResponse({ status: 404, description: 'Conversación no encontrada (no hay mensajes entre ambos)' })
+  deleteConversation(@Param('userId') socioId: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.ocultarConversacion(user.id, socioId)
   }
 }

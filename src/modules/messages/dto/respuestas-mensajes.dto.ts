@@ -22,3 +22,16 @@ export class MensajeDto {
   @ApiProperty({ example: false }) leido!: boolean
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' }) fechaCreacion!: string
 }
+
+/**
+ * Respuesta del borrado lógico de una conversación: la conversación se
+ * oculta SOLO para el usuario que la borra (el socio conserva su historial).
+ * Si llega un mensaje nuevo posterior al borrado, la conversación reaparece.
+ */
+export class RespuestaOcultarConversacionDto {
+  @ApiProperty({ example: true, description: 'true si la conversación quedó oculta para el usuario actual' })
+  ocultado!: boolean
+
+  @ApiProperty({ example: 'user-uid', description: 'Socio de la conversación borrada' })
+  socioId!: string
+}

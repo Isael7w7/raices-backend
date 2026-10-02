@@ -296,6 +296,8 @@
 | `/api/mensajes/no-leidos` | GET | Conteo de no leídos | ✅ |
 | `/api/mensajes/con/:userId` | GET | Mensajes con un usuario | ✅ |
 | `/api/mensajes/enviar/:userId` | POST | Enviar mensaje | ✅ + Feature `chat` |
+| `/api/mensajes/leer/:userId` | PATCH | Marcar conversación como leída | ✅ |
+| `/api/mensajes/conversaciones/:userId` | DELETE | Borrar conversación (oculta solo para el usuario actual) | ✅ |
 
 ---
 
