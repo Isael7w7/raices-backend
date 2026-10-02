@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { NotFoundException, BadRequestException } from '@nestjs/common'
+import { NotFoundException, BadRequestException, ConflictException } from '@nestjs/common'
 import { AdminService } from './admin.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -398,6 +398,89 @@ describe('AdminService', () => {
       })
 
       await expect(service.changeUserRole('nonexistent', 'admin', 'admin-1')).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── updateUser ──────────────────────────────────────────────────────
+
+  describe('updateUser', () => {
+    function mockPerfil(docData: Record<string, any> | null, existe = true, docId = 'u1') {
+      const snapshot = mockDoc(docData, existe, docId)
+      return {
+        snapshot,
+        updateMock: snapshot.ref.update,
+        colecciones: () => ({
+          doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(snapshot) }),
+          where: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+              get: jest.fn().mockResolvedValue({ empty: true, docs: [], size: 0 }),
+            }),
+          }),
+        }),
+      }
+    }
+
+    it('should update nombreCompleto and email', async () => {
+      const { snapshot, updateMock, colecciones } = mockPerfil({ email: 'obj@test.com', nombreCompleto: 'Obj', rol: 'pcd' })
+      firestoreMock.collection.mockReturnValue(colecciones())
+
+      const result = await service.updateUser('u1', { nombreCompleto: 'Nuevo Nombre', email: 'nuevo@test.com' })
+
+      expect(updateMock).toHaveBeenCalledWith({ nombreCompleto: 'Nuevo Nombre', email: 'nuevo@test.com' })
+      expect(result).toMatchObject({ id: 'u1', nombreCompleto: 'Nuevo Nombre', email: 'nuevo@test.com' })
+      expect(snapshot.exists).toBe(true)
+    })
+
+    it('should combine nombre and apellido into nombreCompleto', async () => {
+      const { updateMock, colecciones } = mockPerfil({ email: 'obj@test.com', nombreCompleto: 'Obj' })
+      firestoreMock.collection.mockReturnValue(colecciones())
+
+      await service.updateUser('u1', { nombre: 'Ana', apellido: 'Torres' })
+
+      expect(updateMock).toHaveBeenCalledWith({ nombreCompleto: 'Ana Torres' })
+    })
+
+    it('should throw ConflictException when email belongs to another account', async () => {
+      const snapshot = mockDoc({ email: 'obj@test.com' }, true, 'u1')
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(snapshot) }),
+        where: jest.fn().mockReturnValue({
+          limit: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue({ empty: false, docs: [{ id: 'otro-usuario' }], size: 1 }),
+          }),
+        }),
+      })
+
+      await expect(service.updateUser('u1', { email: 'taken@test.com' })).rejects.toThrow(ConflictException)
+      expect(snapshot.ref.update).not.toHaveBeenCalled()
+    })
+
+    it('should not throw ConflictException when the email is the user own', async () => {
+      const { updateMock, colecciones } = mockPerfil({ email: 'obj@test.com' })
+      firestoreMock.collection.mockReturnValue(colecciones())
+
+      const result = await service.updateUser('u1', { email: 'obj@test.com' })
+
+      expect(updateMock).toHaveBeenCalledWith({ email: 'obj@test.com' })
+      expect(result.email).toBe('obj@test.com')
+    })
+
+    it('should not write when dto is empty', async () => {
+      const { updateMock, colecciones } = mockPerfil({ email: 'obj@test.com', nombreCompleto: 'Obj' })
+      firestoreMock.collection.mockReturnValue(colecciones())
+
+      const result = await service.updateUser('u1', {})
+
+      expect(updateMock).not.toHaveBeenCalled()
+      expect(result.nombreCompleto).toBe('Obj')
+    })
+
+    it('should throw NotFoundException when user does not exist', async () => {
+      firestoreMock.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }),
+      })
+
+      await expect(service.updateUser('nonexistent', { nombreCompleto: 'X' })).rejects.toThrow(NotFoundException)
     })
   })
 

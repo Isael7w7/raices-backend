@@ -4,8 +4,11 @@ import { Response } from 'express'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { MultimediaMagicBytesValidator } from '../../common/validators/multimedia-magic-bytes.validator'
 import { imageFileFilter } from '../../common/utils/image-filter'
-import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiConsumes, ApiBody } from '@nestjs/swagger'
+import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, ApiNoContentResponse, ApiBearerAuth, ApiParam, ApiQuery, ApiConsumes, ApiBody } from '@nestjs/swagger'
 import { UsersService } from './users.service'
+import { AdminService } from '../admin/admin.service'
+import { ActualizarUsuarioDto } from '../admin/dto/actualizar-usuario.dto'
+import { UsuarioAdminDto } from '../admin/dto/respuestas-admin.dto'
 import { StorageService } from '../storage/storage.service'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
 import { GuardarEscalasVidaDto } from './dto/guardar-escalas-vida.dto'
@@ -14,7 +17,7 @@ import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
 import { DocumentoIdentidadSubidoDto, EstadoValidacionIdentidadDto } from './dto/documento-identidad.dto'
-import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, PaginaMisPersonasDto } from './dto/respuestas-usuario.dto'
+import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, PaginaMisPersonasDto, PaginaUsuariosBusquedaDto } from './dto/respuestas-usuario.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
@@ -36,6 +39,7 @@ export class UsersController {
   constructor(
     private readonly svc: UsersService,
     private readonly storage: StorageService,
+    private readonly adminService: AdminService,
     @Optional() private readonly config?: ConfigService,
   ) {}
 
@@ -45,6 +49,25 @@ export class UsersController {
   @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil completo' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   profile(@CurrentUser() user: CurrentUserPayload) { return this.svc.getProfile(user.id) }
+
+  @Get('buscar')
+  @UseETag()
+  @ApiOperation({
+    summary: 'Buscar usuarios para iniciar una conversación',
+    description: 'Coincidencia parcial sobre nombre, email, ciudad o profesión, insensible a mayúsculas y acentos. Excluye la cuenta propia. Pensado para el modal "Nuevo mensaje" del chat.',
+  })
+  @ApiQuery({ name: 'q', required: false, description: 'Texto a buscar (parcial)', example: 'josé' })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiOkResponse({ type: PaginaUsuariosBusquedaDto, description: 'Usuarios que coinciden con la búsqueda' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  buscarUsuarios(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('q') q?: string,
+    @Query() paginacion?: PaginacionDto,
+  ) {
+    return this.svc.buscarUsuarios(user.id, q ?? '', paginacion?.pagina ?? 1, paginacion?.limite ?? 20)
+  }
 
   // ═══════════════════════════════════════════════════════════════════
   // Visibilidad diferenciada Cuidador/Padre ↔ PCD
@@ -74,6 +97,25 @@ export class UsersController {
   @ApiOkResponse({ type: PerfilUsuarioDto, description: 'Perfil actualizado' })
   updateProfile(@CurrentUser() user: CurrentUserPayload, @Body() dto: ActualizarPerfilDto) {
     return this.svc.updateProfile(user.id, dto)
+  }
+
+  @Put(':id')
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Editar datos básicos de un usuario (solo admin)',
+    description: 'Actualización parcial de nombreCompleto (o nombre + apellido) y email de cualquier cuenta. Devuelve 409 si el correo ya pertenece a otra cuenta.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del usuario a editar' })
+  @ApiBody({ type: ActualizarUsuarioDto })
+  @ApiOkResponse({ type: UsuarioAdminDto, description: 'Usuario actualizado' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos (correo malformado)' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  @ApiResponse({ status: 404, description: 'Usuario no encontrado' })
+  @ApiResponse({ status: 409, description: 'El correo ya está en uso por otra cuenta' })
+  updateUserPorId(@Param('id') id: string, @Body() dto: ActualizarUsuarioDto) {
+    return this.adminService.updateUser(id, dto)
   }
 
   @Post('avatar')

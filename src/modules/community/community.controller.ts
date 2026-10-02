@@ -174,12 +174,13 @@ export class CommunityController {
 
   @Get('miembros')
   @UseETag()
-  @ApiOperation({ summary: 'Miembros/testimonios públicos', description: 'Retorna perfiles activos con bio para la sección de testimonios de la comunidad. Endpoint público, sin autenticación.' })
+  @ApiOperation({ summary: 'Miembros/testimonios públicos', description: 'Retorna perfiles activos con bio para la sección de testimonios de la comunidad. Endpoint público, sin autenticación. Acepta `buscar` para filtrar por nombre/ciudad/profesión (parcial, sin distinguir mayúsculas ni acentos).' })
   @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
   @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Texto a buscar en nombre, ciudad o profesión', example: 'josé' })
   @ApiOkResponse({ type: PaginaMiembrosDto, description: 'Lista paginada de miembros con testimonios' })
   members(@Query() paginacion: PaginacionDto) {
-    return this.svc.getMembers(paginacion.pagina, paginacion.limite)
+    return this.svc.getMembers(paginacion.pagina, paginacion.limite, paginacion.buscar)
   }
 
   // ═══════════════════════════════════════════════════════════════════

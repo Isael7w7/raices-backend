@@ -58,6 +58,7 @@ export const AUDIT_ACCIONES = {
   // Usuarios
   TOGGLE_USUARIO_ACTIVO: 'toggle_usuario_activo',
   CAMBIAR_ROL_USUARIO: 'cambiar_rol_usuario',
+  ACTUALIZAR_USUARIO: 'actualizar_usuario',
   ELIMINAR_USUARIO: 'eliminar_usuario',
 
   // Reseñas

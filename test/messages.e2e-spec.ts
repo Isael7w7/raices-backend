@@ -162,92 +162,73 @@ describe('Mensajes (E2E) — IDOR Protection', () => {
     })
   })
 
-  describe('DELETE /api/mensajes/conversacion/:userId', () => {
-    beforeEach(async () => {
-      await sembrarMensaje({ id: 'd-1', remitenteId: 'uid-alice', destinatarioId: 'uid-bob', contenido: 'Hola Bob', leido: true, fechaCreacion: '2026-01-01' })
-      await sembrarMensaje({ id: 'd-2', remitenteId: 'uid-bob', destinatarioId: 'uid-alice', contenido: 'Hola Alice', leido: true, fechaCreacion: '2026-01-02' })
-    })
-
+  describe('DELETE /api/mensajes/conversaciones/:userId (borrar chat)', () => {
     it('401: sin token', async () => {
-      const res = await request(http).delete('/api/mensajes/conversacion/uid-bob')
+      const res = await request(http).delete('/api/mensajes/conversaciones/uid-bob')
       expect(res.status).toBe(401)
     })
 
-    it('200: elimina la conversación de la lista del usuario', async () => {
+    it('403: no puede borrar la propia conversación', async () => {
       const res = await request(http)
-        .delete('/api/mensajes/conversacion/uid-bob')
+        .delete('/api/mensajes/conversaciones/uid-alice')
+        .set('Authorization', token('uid-alice'))
+      expect(res.status).toBe(403)
+    })
+
+    it('404: conversación inexistente (protección IDOR)', async () => {
+      const res = await request(http)
+        .delete('/api/mensajes/conversaciones/uid-bob')
+        .set('Authorization', token('uid-alice'))
+      expect(res.status).toBe(404)
+    })
+
+    it('200: oculta la conversación solo para quien la borra', async () => {
+      await request(http)
+        .post('/api/mensajes/enviar/uid-bob')
+        .send({ contenido: 'Hola Bob' })
         .set('Authorization', token('uid-alice'))
 
+      const res = await request(http)
+        .delete('/api/mensajes/conversaciones/uid-bob')
+        .set('Authorization', token('uid-alice'))
       expect(res.status).toBe(200)
-      expect(res.body.exito).toBe(true)
-      expect(res.body.eliminados).toBe(2)
+      expect(res.body).toEqual({ ocultado: true, socioId: 'uid-bob' })
 
-      const lista = await request(http)
+      // La lista de Alice ya no muestra la conversación...
+      const alice = await request(http)
         .get('/api/mensajes/conversaciones')
         .set('Authorization', token('uid-alice'))
-      expect(lista.body).toHaveLength(0)
+      expect(alice.body).toHaveLength(0)
+
+      // ...pero Bob sigue viéndola (borrado lógico individual)
+      const bob = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-bob'))
+      expect(bob.body).toHaveLength(1)
+      expect(bob.body[0].socio.id).toBe('uid-alice')
     })
 
-    it('200: es idempotente (repetir la llamada no falla)', async () => {
-      await request(http).delete('/api/mensajes/conversacion/uid-bob').set('Authorization', token('uid-alice'))
-      const res = await request(http)
-        .delete('/api/mensajes/conversacion/uid-bob')
+    it('200: un mensaje nuevo posterior reaparece la conversación borrada', async () => {
+      await request(http)
+        .post('/api/mensajes/enviar/uid-bob')
+        .send({ contenido: 'Primero' })
+        .set('Authorization', token('uid-alice'))
+      await request(http)
+        .delete('/api/mensajes/conversaciones/uid-bob')
         .set('Authorization', token('uid-alice'))
 
-      expect(res.status).toBe(200)
-      expect(res.body.eliminados).toBe(0)
-    })
+      // Bob responde después del borrado (pausa para que supere al milisegundo de ocultoEn)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await request(http)
+        .post('/api/mensajes/enviar/uid-alice')
+        .send({ contenido: 'Sigo aquí' })
+        .set('Authorization', token('uid-bob'))
 
-    it('200: devuelve exito aunque la conversación nunca haya existido', async () => {
-      const res = await request(http)
-        .delete('/api/mensajes/conversacion/uid-charlie')
+      const alice = await request(http)
+        .get('/api/mensajes/conversaciones')
         .set('Authorization', token('uid-alice'))
-
-      expect(res.status).toBe(200)
-      expect(res.body.exito).toBe(true)
-    })
-
-    it('no destruye los mensajes ni el historial de la contraparte', async () => {
-      await request(http).delete('/api/mensajes/conversacion/uid-bob').set('Authorization', token('uid-alice'))
-
-      // Los documentos siguen en Firestore, marcados solo para quien eliminó.
-      expect(await leerDoc('mensajesDirectos', 'd-1')).toMatchObject({ contenido: 'Hola Bob', eliminadoPor: ['uid-alice'] })
-      expect(await leerDoc('mensajesDirectos', 'd-2')).toMatchObject({ contenido: 'Hola Alice', eliminadoPor: ['uid-alice'] })
-
-      // Bob sigue viendo su conversación; Alice ya no.
-      const listaBob = await request(http).get('/api/mensajes/conversaciones').set('Authorization', token('uid-bob'))
-      expect(listaBob.body).toHaveLength(1)
-
-      const conAlice = await request(http).get('/api/mensajes/con/uid-alice').set('Authorization', token('uid-bob'))
-      expect(conAlice.status).toBe(200)
-      expect(conAlice.body).toHaveLength(2)
-    })
-
-    it('403: tras eliminarla, no se puede reabrir por URL directa', async () => {
-      await request(http).delete('/api/mensajes/conversacion/uid-bob').set('Authorization', token('uid-alice'))
-      const res = await request(http)
-        .get('/api/mensajes/con/uid-bob')
-        .set('Authorization', token('uid-alice'))
-
-      expect(res.status).toBe(403)
-    })
-
-    it('403: no se puede eliminar la propia conversación', async () => {
-      const res = await request(http)
-        .delete('/api/mensajes/conversacion/uid-alice')
-        .set('Authorization', token('uid-alice'))
-
-      expect(res.status).toBe(403)
-    })
-
-    it('no borra conversaciones con otros socios', async () => {
-      await sembrarMensaje({ id: 'd-3', remitenteId: 'uid-alice', destinatarioId: 'uid-charlie', contenido: 'Hola Charlie', leido: true, fechaCreacion: '2026-01-03' })
-
-      await request(http).delete('/api/mensajes/conversacion/uid-bob').set('Authorization', token('uid-alice'))
-
-      const lista = await request(http).get('/api/mensajes/conversaciones').set('Authorization', token('uid-alice'))
-      expect(lista.body).toHaveLength(1)
-      expect(lista.body[0].socio.id).toBe('uid-charlie')
+      expect(alice.body).toHaveLength(1)
+      expect(alice.body[0].socio.id).toBe('uid-bob')
     })
   })
 

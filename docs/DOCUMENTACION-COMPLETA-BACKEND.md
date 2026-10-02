@@ -161,7 +161,9 @@
 | Endpoint | Método | Descripción | Auth |
 |----------|--------|-------------|------|
 | `/api/usuarios/perfil` | GET | Perfil completo del usuario | ✅ |
+| `/api/usuarios/buscar` | GET | Buscar usuarios para iniciar chat (parcial, sin mayúsculas/acentos) | ✅ |
 | `/api/usuarios/perfil` | PUT | Actualizar perfil básico | ✅ |
+| `/api/usuarios/:id` | PUT | Editar datos básicos de cualquier usuario (solo admin) | ✅ Roles |
 | `/api/usuarios/perfil-pcd/:pcdUserId` | GET | Ver perfil PCD (tutor/institución) | ✅ Roles |
 | `/api/usuarios/avatar` | POST | Subir foto de perfil (5MB, imagen) | ✅ |
 | `/api/usuarios/avatar` | DELETE | Eliminar foto de perfil | ✅ |
@@ -275,7 +277,7 @@
 | `/api/comunidad/publicaciones/:id/comentarios` | POST | Crear comentario | ✅ + Feature |
 | `/api/comunidad/publicaciones/:id/me-gusta` | POST | Alternar me gusta | ✅ + Feature |
 | `/api/comunidad/estadisticas` | GET | Métricas de comunidad | — |
-| `/api/comunidad/miembros` | GET | Testimonios públicos de miembros | — |
+| `/api/comunidad/miembros` | GET | Testimonios públicos de miembros (con `?buscar=` busca por nombre/ciudad/profesión) | — |
 | `/api/comunidad/foros` | GET | Listar foros institucionales | — |
 | `/api/comunidad/foros` | POST | Crear foro (solo institución/admin) | ✅ Rol |
 | `/api/comunidad/foros/:id` | GET | Detalle de foro con respuestas | — |
@@ -294,6 +296,8 @@
 | `/api/mensajes/no-leidos` | GET | Conteo de no leídos | ✅ |
 | `/api/mensajes/con/:userId` | GET | Mensajes con un usuario | ✅ |
 | `/api/mensajes/enviar/:userId` | POST | Enviar mensaje | ✅ + Feature `chat` |
+| `/api/mensajes/leer/:userId` | PATCH | Marcar conversación como leída | ✅ |
+| `/api/mensajes/conversaciones/:userId` | DELETE | Borrar conversación (oculta solo para el usuario actual) | ✅ |
 
 ---
 
@@ -364,6 +368,8 @@
 | `/api/administracion/instituciones/:id/verificar` | PATCH | Alternar verificación |
 | `/api/administracion/instituciones/:id` | DELETE | Rechazar/eliminar institución |
 | `/api/administracion/usuarios` | GET | Todos los usuarios |
+| `/api/administracion/usuarios/:id` | PATCH | Editar nombre/correo (409 si el correo ya existe) |
+| `/api/administracion/usuarios/:id` | PUT | Editar nombre/correo (alias de PATCH) |
 | `/api/administracion/usuarios/:id/activo` | PATCH | Activar/desactivar usuario |
 | `/api/administracion/usuarios/:id/rol` | PATCH | Cambiar rol |
 | `/api/administracion/usuarios/:id` | DELETE | Eliminar cuenta |

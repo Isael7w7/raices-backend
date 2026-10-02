@@ -806,6 +806,77 @@ describe('UsersService', () => {
     })
   })
 
+  // ── buscarUsuarios ────────────────────────────────────────────────
+
+  describe('buscarUsuarios', () => {
+    function setupPerfiles(docs: any[]) {
+      firestoreMock.collection.mockReturnValueOnce({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs }),
+      })
+    }
+
+    const perfiles = [
+      { id: 'uid-1', data: () => ({ id: 'uid-1', nombreCompleto: 'José Pérez', email: 'jose@x.com', activo: true, rol: 'pcd', ciudad: 'Mérida' }) },
+      { id: 'uid-2', data: () => ({ id: 'uid-2', nombreCompleto: 'Ana López', email: 'ana@x.com', activo: true, rol: 'tutor', profesion: 'Terapeuta' }) },
+      { id: 'uid-3', data: () => ({ id: 'uid-3', nombreCompleto: 'Pedro Gómez', email: 'pedro@x.com', activo: true, rol: 'pcd' }) },
+    ]
+
+    it('coincide sin importar mayúsculas ni acentos', async () => {
+      setupPerfiles(perfiles)
+      const result: any = await service.buscarUsuarios('uid-own', 'JOSE')
+      expect(result.total).toBe(1)
+      expect(result.datos[0].id).toBe('uid-1')
+    })
+
+    it('coincide por email de forma parcial pero no lo devuelve en la respuesta', async () => {
+      setupPerfiles(perfiles)
+      const result: any = await service.buscarUsuarios('uid-own', 'ana@x')
+      expect(result.total).toBe(1)
+      expect(result.datos[0].id).toBe('uid-2')
+      expect(result.datos[0].email).toBeUndefined()
+    })
+
+    it('coincide por ciudad y profesión', async () => {
+      setupPerfiles(perfiles)
+      const porCiudad: any = await service.buscarUsuarios('uid-own', 'mérida')
+      expect(porCiudad.datos[0].id).toBe('uid-1')
+
+      setupPerfiles(perfiles)
+      const porProfesion: any = await service.buscarUsuarios('uid-own', 'terapeuta')
+      expect(porProfesion.datos[0].id).toBe('uid-2')
+    })
+
+    it('excluye la propia cuenta', async () => {
+      setupPerfiles(perfiles)
+      const result: any = await service.buscarUsuarios('uid-1', '')
+      expect(result.datos.map((u: any) => u.id)).not.toContain('uid-1')
+      expect(result.total).toBe(2)
+    })
+
+    it('sin término retorna todos los activos ordenados por nombre', async () => {
+      setupPerfiles(perfiles)
+      const result: any = await service.buscarUsuarios('uid-own', '')
+      expect(result.total).toBe(3)
+      expect(result.datos.map((u: any) => u.nombreCompleto)).toEqual(['Ana López', 'José Pérez', 'Pedro Gómez'])
+    })
+
+    it('retorna página vacía cuando nada coincide', async () => {
+      setupPerfiles(perfiles)
+      const result: any = await service.buscarUsuarios('uid-own', 'zzz-no-existe')
+      expect(result.total).toBe(0)
+      expect(result.datos).toHaveLength(0)
+    })
+
+    it('pagina los resultados', async () => {
+      setupPerfiles(perfiles)
+      const result: any = await service.buscarUsuarios('uid-own', '', 2, 2)
+      expect(result.pagina).toBe(2)
+      expect(result.limite).toBe(2)
+      expect(result.datos).toHaveLength(1)
+    })
+  })
+
   // ── getMisPersonas ────────────────────────────────────────────────
 
   describe('getMisPersonas', () => {

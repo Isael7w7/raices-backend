@@ -1,5 +1,5 @@
-import { Injectable, Inject, NotFoundException, BadRequestException, Logger, Optional } from '@nestjs/common'
-import { Firestore } from 'firebase-admin/firestore'
+import { Injectable, Inject, NotFoundException, BadRequestException, ConflictException, Logger, Optional } from '@nestjs/common'
+import { Firestore, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 import { getAuth } from 'firebase-admin/auth'
@@ -12,6 +12,7 @@ import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/
 import { extractStoragePath } from '../../common/utils/storage-path.util'
 import type { PerfilDoc, InstitucionDoc, DocumentoIdentidadDoc, AlertaRiesgo } from '../../common/interfaces/firestore-documents.interface'
 import { InstitucionAdminDto, UsuarioAdminDto } from './dto/respuestas-admin.dto'
+import { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto'
 
 /** Documento de reseña Firestore (campos usados en admin). */
 interface ResenaFirestore {
@@ -541,6 +542,69 @@ export class AdminService {
     if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
     await doc.ref.update({ rol: rolNormalizado })
     return { rol: rolNormalizado }
+  }
+
+  /**
+   * Actualización parcial de los datos básicos de un usuario (nombre,
+   * apellido/nombreCompleto y email) desde el panel de administración.
+   *
+   * - Si el correo cambia, verifica que no pertenezca a otra cuenta (409).
+   * - Si el usuario existe en Firebase Auth, sincroniza el correo nuevo.
+   */
+  async updateUser(id: string, dto: ActualizarUsuarioDto): Promise<UsuarioAdminDto> {
+    const doc = await this.col(COLECCIONES.perfiles).doc(id).get()
+    if (!doc.exists) throw new NotFoundException('Usuario no encontrado')
+    const perfil = doc.data()!
+
+    const carga: Record<string, unknown> = {}
+
+    const nombreCompleto = dto.nombreCompleto
+      ?? ((dto.nombre !== undefined || dto.apellido !== undefined)
+        ? [dto.nombre, dto.apellido].filter((parte): parte is string => Boolean(parte)).join(' ').trim()
+        : undefined)
+    if (nombreCompleto) carga.nombreCompleto = nombreCompleto
+
+    if (dto.email !== undefined && dto.email !== null) {
+      const emailNuevo = dto.email.trim()
+      const emailActual = (perfil.email ?? '').trim()
+      if (emailNuevo.toLowerCase() !== emailActual.toLowerCase()) {
+        const duplicado = await this.col(COLECCIONES.perfiles)
+          .where('email', '==', emailNuevo).limit(1).get()
+        if (!duplicado.empty && duplicado.docs[0].id !== id) {
+          throw new ConflictException('El correo electrónico ya está en uso por otra cuenta')
+        }
+      }
+      carga.email = emailNuevo
+    }
+
+    if (Object.keys(carga).length === 0) return this.mapearUsuario(id, perfil)
+
+    await doc.ref.update(carga)
+
+    if (typeof carga.email === 'string') {
+      try {
+        const authSdk = this.auth ?? getAuth()
+        await authSdk.updateUser(id, { email: carga.email })
+      } catch (err: unknown) {
+        this.logger.warn(`No se pudo sincronizar email en Firebase Auth para ${id}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+
+    return this.mapearUsuario(id, { ...perfil, ...carga })
+  }
+
+  /** Mapea un documento de perfil al DTO de respuesta del panel admin. */
+  private mapearUsuario(id: string, data: DocumentData): UsuarioAdminDto {
+    return {
+      id,
+      email: data.email,
+      nombreCompleto: data.nombreCompleto,
+      rol: data.rol,
+      ciudad: data.ciudad ?? null,
+      activo: data.activo,
+      verificado: data.verificado,
+      fechaCreacion: data.fechaCreacion,
+    }
   }
 
   async deleteUser(id: string, adminId: string) {

@@ -174,6 +174,41 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ## 👤 Usuarios
 
+### GET `/usuarios/buscar`
+**Descripción:** Buscar usuarios para iniciar una conversación (modal "Nuevo mensaje"). Coincidencia parcial sobre nombre, email, ciudad o profesión, insensible a mayúsculas y acentos. Excluye la cuenta propia.  
+**Autenticación:** Bearer Token requerido
+
+**Query Params:**
+| Param | Tipo | Descripción |
+|-------|------|-------------|
+| `q` | string | Texto a buscar (parcial). Opcional: sin `q` retorna todos los usuarios activos |
+| `pagina` | number | Página (default 1) |
+| `limite` | number | Elementos por página (default 20, máx 100) |
+
+**Response (200):**
+```json
+{
+  "datos": [
+    {
+      "id": "uid-abc123",
+      "nombreCompleto": "María García",
+      "urlAvatar": "https://.../avatar.jpg",
+      "rol": "pcd",
+      "ciudad": "Mérida",
+      "profesion": "Terapeuta"
+    }
+  ],
+  "total": 1,
+  "pagina": 1,
+  "limite": 20,
+  "totalPaginas": 1
+}
+```
+
+> Nota: `email` participa en el matching pero no se devuelve en la respuesta (evita enumeración de correos).
+
+---
+
 ### GET `/usuarios/perfil`
 **Descripción:** Obtener perfil completo del usuario  
 **Autenticación:** Bearer Token requerido
@@ -210,6 +245,25 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
   "avatarUrl": "https://storage.googleapis.com/..."
 }
 ```
+
+---
+
+### PUT `/usuarios/:id`
+**Descripción:** Editar datos básicos de cualquier usuario (alias administrativo; usa `nombreCompleto` o `nombre` + `apellido` y `email`)  
+**Autenticación:** Bearer Token requerido (rol: admin)
+
+**Request Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez García",
+  "email": "juan@correo.mx"
+}
+```
+
+**Respuestas:**
+- `200`: Usuario actualizado
+- `404`: Usuario no encontrado
+- `409`: El correo ya está en uso por otra cuenta
 
 ---
 
@@ -868,6 +922,29 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ---
 
+### DELETE `/mensajes/conversaciones/:userId`
+**Descripción:** Borrar una conversación (borrado lógico). La conversación se oculta SOLO para el usuario autenticado; el socio conserva su historial. Los mensajes recibidos sin leer se marcan como leídos (el badge queda limpio). Si llega un mensaje nuevo posterior al borrado, la conversación vuelve a aparecer en la lista.  
+**Autenticación:** Bearer Token requerido
+
+**Path Params:**
+| Param | Descripción |
+|-------|-------------|
+| `userId` | ID del socio de la conversación a borrar |
+
+**Response (200):**
+```json
+{
+  "ocultado": true,
+  "socioId": "usr-abc123"
+}
+```
+
+**Errores:**
+- `403` — No puedes borrar tu propia conversación
+- `404` — Conversación no encontrada (no hay mensajes entre ambos; protección IDOR)
+
+---
+
 ## ⭐ Favoritos
 
 ### GET `/favoritos`
@@ -1036,6 +1113,26 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 - `limite` (number): Resultados por página
 - `rol` (string): Filtrar por rol
 - `buscar` (string): Búsqueda por nombre/email
+
+---
+
+### PATCH `/administracion/usuarios/:id`
+**Descripción:** Editar datos básicos de un usuario (modal "Editar usuario"). Acepta actualización parcial de `nombreCompleto` (o `nombre` + `apellido`) y `email`. Alias: `PUT /administracion/usuarios/:id`  
+**Autenticación:** Bearer Token requerido (rol: admin)
+
+**Request Body:**
+```json
+{
+  "nombreCompleto": "Juan Pérez García",
+  "email": "juan@correo.mx"
+}
+```
+
+**Respuestas:**
+- `200`: Usuario actualizado
+- `400`: Correo malformado
+- `404`: Usuario no encontrado
+- `409`: El correo ya está en uso por otra cuenta
 
 ---
 

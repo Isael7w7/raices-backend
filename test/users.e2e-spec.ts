@@ -39,6 +39,28 @@ describe('Usuarios y vínculo tutor-PCD (E2E)', () => {
     })
   })
 
+  describe('PUT /api/usuarios/perfil (edición propia)', () => {
+    it('200: sigue editando el propio perfil (no lo eclipsa PUT /:id)', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/perfil')
+        .send({ nombreCompleto: 'PCD Editada' })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(200)
+      expect((await leerDoc('perfiles', 'uid-pcd')).nombreCompleto).toBe('PCD Editada')
+    })
+
+    it('403: un usuario sin rol admin no puede usar PUT /api/usuarios/:id', async () => {
+      const res = await request(http)
+        .put('/api/usuarios/uid-otro-tutor')
+        .send({ nombreCompleto: 'Hackeado' })
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(403)
+      expect((await leerDoc('perfiles', 'uid-otro-tutor')).nombreCompleto).toBe('Otro')
+    })
+  })
+
   describe('POST /api/usuarios/vincular-pcd (solo tutor)', () => {
     it('401: sin token', async () => {
       const res = await request(http).post('/api/usuarios/vincular-pcd').send({ email: 'pcd@test.com' })
@@ -106,6 +128,54 @@ describe('Usuarios y vínculo tutor-PCD (E2E)', () => {
 
       const perfil = await leerDoc('perfiles', 'uid-pcd-vinculada')
       expect(perfil.tutorId).toBeNull()
+    })
+  })
+
+  describe('GET /api/usuarios/buscar (modal Nuevo mensaje)', () => {
+    it('401: sin token', async () => {
+      const res = await request(http).get('/api/usuarios/buscar?q=ana')
+      expect(res.status).toBe(401)
+    })
+
+    it('200: encuentra por nombre parcial sin distinguir mayúsculas ni acentos', async () => {
+      const res = await request(http)
+        .get('/api/usuarios/buscar?q=PCD%20LIB')
+        .set('Authorization', token('uid-tutor'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(1)
+      expect(res.body.datos[0].id).toBe('uid-pcd')
+      expect(res.body.datos[0].nombreCompleto).toBe('PCD Libre')
+    })
+
+    it('200: encuentra por email parcial pero no lo expone en la respuesta', async () => {
+      const res = await request(http)
+        .get('/api/usuarios/buscar?q=vinculada@')
+        .set('Authorization', token('uid-tutor'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(1)
+      expect(res.body.datos[0].id).toBe('uid-pcd-vinculada')
+      expect(res.body.datos[0].email).toBeUndefined()
+    })
+
+    it('200: excluye la propia cuenta', async () => {
+      const res = await request(http)
+        .get('/api/usuarios/buscar?q=tutor')
+        .set('Authorization', token('uid-tutor'))
+
+      expect(res.status).toBe(200)
+      const ids = (res.body.datos as any[]).map(u => u.id)
+      expect(ids).not.toContain('uid-tutor')
+    })
+
+    it('200: sin coincidencias retorna lista vacía', async () => {
+      const res = await request(http)
+        .get('/api/usuarios/buscar?q=zzz-no-existe')
+        .set('Authorization', token('uid-tutor'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toHaveLength(0)
     })
   })
 })

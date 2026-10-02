@@ -295,6 +295,35 @@ export class MisPersonaDto {
   fechaCreacion!: string | null
 }
 
+/**
+ * Resultado de búsqueda de usuarios para iniciar una conversación.
+ * No incluye email a propósito: evita que cualquier autenticado enumere correos.
+ */
+export class UsuarioBusquedaDto {
+  @ApiProperty({ example: 'uid-abc123' })
+  id!: string
+
+  @ApiProperty({ example: 'María García' })
+  nombreCompleto!: string
+
+  @ApiPropertyOptional({ example: 'https://storage.../avatar.jpg', nullable: true })
+  urlAvatar!: string | null
+
+  @ApiPropertyOptional({ example: 'pcd', nullable: true })
+  rol!: string | null
+
+  @ApiPropertyOptional({ example: 'Mérida', nullable: true })
+  ciudad!: string | null
+
+  @ApiPropertyOptional({ example: 'Terapeuta', nullable: true })
+  profesion!: string | null
+}
+
+export class PaginaUsuariosBusquedaDto extends RespuestaPaginadaDto<UsuarioBusquedaDto> {
+  @ApiProperty({ type: [UsuarioBusquedaDto], description: 'Usuarios que coinciden con la búsqueda' })
+  datos!: UsuarioBusquedaDto[]
+}
+
 export class PaginaMisPersonasDto extends RespuestaPaginadaDto<MisPersonaDto> {
   @ApiProperty({ type: [MisPersonaDto], description: 'Personas de la página' })
   datos!: MisPersonaDto[]

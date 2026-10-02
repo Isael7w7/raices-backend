@@ -397,6 +397,61 @@ describe('CommunityService', () => {
     })
   })
 
+  describe('getMembers', () => {
+    function perfilesMiembros() {
+      return [
+        { id: 'u1', data: () => ({ nombreCompleto: 'José Pérez', activo: true, bio: 'Ayudo a familias', ciudad: 'Mérida' }) },
+        { id: 'u2', data: () => ({ nombreCompleto: 'Ana López', activo: true, bio: 'Terapeuta', profesion: 'Terapeuta ocupacional' }) },
+        { id: 'u3', data: () => ({ nombreCompleto: 'Sin Bio', activo: true }) },
+      ]
+    }
+
+    function setup(perfiles: any[]) {
+      firestoreMock.collection.mockReturnValueOnce({
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ docs: perfiles }),
+      })
+    }
+
+    it('retorna solo perfiles activos con bio (testimonios)', async () => {
+      setup(perfilesMiembros())
+      const result = await service.getMembers(1, 20)
+      expect(result.total).toBe(2)
+      expect(result.datos.map(m => m.id).sort()).toEqual(['u1', 'u2'])
+    })
+
+    it('con buscar incluye también a usuarios sin bio', async () => {
+      setup(perfilesMiembros())
+      const result = await service.getMembers(1, 20, 'sin bio')
+      expect(result.total).toBe(1)
+      expect(result.datos[0].id).toBe('u3')
+    })
+
+    it('filtra por nombre de forma parcial e insensible a mayúsculas/acentos', async () => {
+      setup(perfilesMiembros())
+      const result = await service.getMembers(1, 20, 'JOSE')
+      expect(result.total).toBe(1)
+      expect(result.datos[0].id).toBe('u1')
+    })
+
+    it('filtra por ciudad y profesión', async () => {
+      setup(perfilesMiembros())
+      const porCiudad = await service.getMembers(1, 20, 'mérida')
+      expect(porCiudad.datos.map(m => m.id)).toEqual(['u1'])
+
+      setup(perfilesMiembros())
+      const porProfesion = await service.getMembers(1, 20, 'terapeuta')
+      expect(porProfesion.datos.map(m => m.id)).toEqual(['u2'])
+    })
+
+    it('con término sin coincidencias retorna lista vacía', async () => {
+      setup(perfilesMiembros())
+      const result = await service.getMembers(1, 20, 'zzz')
+      expect(result.total).toBe(0)
+      expect(result.datos).toHaveLength(0)
+    })
+  })
+
   describe('createForo', () => {
     it('should create a foro with preguntas detonantes', async () => {
       const perfilData = { institucionId: 'inst-1' }

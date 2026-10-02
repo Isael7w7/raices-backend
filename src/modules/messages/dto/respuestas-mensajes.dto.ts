@@ -18,12 +18,6 @@ export class ConversacionDto {
   @ApiProperty({ example: true, description: 'Alias semántico de `isDeleted`: `false` cuando el destinatario ya no está disponible.' }) destinatarioActivo!: boolean
 }
 
-export class EliminarConversacionDto {
-  @ApiProperty({ example: true }) exito!: boolean
-  @ApiProperty({ example: 'Conversación eliminada' }) mensaje!: string
-  @ApiProperty({ example: 42, description: 'Cantidad de mensajes ocultos para el usuario que solicitó la eliminación.' }) eliminados!: number
-}
-
 export class MensajeDto {
   @ApiProperty({ example: 'msg-uid' }) id!: string
   @ApiProperty({ example: 'remitente-uid' }) remitenteId!: string
@@ -32,4 +26,17 @@ export class MensajeDto {
   @ApiPropertyOptional({ example: 'https://storage.../media.jpg', nullable: true, description: 'URL del contenido multimedia adjunto, si lo hay' }) mediaUrl?: string | null
   @ApiProperty({ example: false }) leido!: boolean
   @ApiProperty({ example: '2026-08-06T00:00:00.000Z' }) fechaCreacion!: string
+}
+
+/**
+ * Respuesta del borrado lógico de una conversación: la conversación se
+ * oculta SOLO para el usuario que la borra (el socio conserva su historial).
+ * Si llega un mensaje nuevo posterior al borrado, la conversación reaparece.
+ */
+export class RespuestaOcultarConversacionDto {
+  @ApiProperty({ example: true, description: 'true si la conversación quedó oculta para el usuario actual' })
+  ocultado!: boolean
+
+  @ApiProperty({ example: 'user-uid', description: 'Socio de la conversación borrada' })
+  socioId!: string
 }

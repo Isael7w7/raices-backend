@@ -11,5 +11,6 @@ import { AuditModule } from '../../common/audit/audit.module'
   imports: [NotificationsModule, EmailModule, FirebaseAnalyticsModule, StorageModule, AuditModule],
   controllers: [AdminController],
   providers: [AdminService],
+  exports: [AdminService],
 })
 export class AdminModule {}

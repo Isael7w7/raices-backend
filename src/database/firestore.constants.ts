@@ -13,6 +13,9 @@ export const COLECCIONES = {
   grupos: 'grupos',
   miembrosGrupo: 'miembrosGrupo',
   mensajesDirectos: 'mensajesDirectos',
+  // Borrado lógico de conversaciones: un doc por (usuario, socio) que oculta
+  // la conversación solo para ese usuario sin borrar los mensajes.
+  conversacionesOcultas: 'conversacionesOcultas',
   mensajesContacto: 'mensajesContacto',
   notificaciones: 'notificaciones',
   postulaciones: 'postulaciones',
