@@ -19,6 +19,29 @@ interface MensajeDirectoDoc {
 export class MessagesService {
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
+  /**
+   * Un socio es "usuario fantasma" si su perfil no existe, si fue eliminado
+   * explícitamente o si su cuenta fue desactivada. El historial de la
+   * conversación se conserva: solo se marca para que el cliente muestre
+   * "Usuario Eliminado" y bloquee el envío (que responde 403).
+   */
+  private esUsuarioEliminado(perfil: Record<string, unknown> | undefined): boolean {
+    if (!perfil) return true
+    if (perfil.eliminado === true) return true
+    return perfil.activo !== true
+  }
+
+  /**
+   * No se expone PII (nombre, avatar, correo) de cuentas dadas de baja: se
+   * devuelve un socio anonimizado que el cliente puede seguir mostrando.
+   */
+  private socioSeguro(socioId: string, perfil: Record<string, unknown> | undefined): Record<string, unknown> {
+    if (this.esUsuarioEliminado(perfil)) {
+      return { id: socioId, nombreCompleto: 'Usuario Eliminado', urlAvatar: null }
+    }
+    return { id: socioId, ...perfil }
+  }
+
   async getConversations(usuarioId: string) {
     const [enviadosSnap, recibidosSnap] = await Promise.all([
       this.db.collection(COLECCIONES.mensajesDirectos).where('remitenteId', '==', usuarioId).get(),
@@ -60,12 +83,21 @@ export class MessagesService {
       snap.docs.forEach(d => perfiles.set(d.id, d.data()))
     }
 
-    return sociosIds.map(sid => ({
-      socio: perfiles.get(sid) ?? { id: sid },
-      ultimoMensaje: socios.get(sid)?.contenido ?? '',
-      ultimoEn: socios.get(sid)?.fechaCreacion,
-      noLeidos: mensajes.filter(m => m.remitenteId === sid && m.destinatarioId === usuarioId && !m.leido).length,
-    })).sort((a, b) => new Date(b.ultimoEn ?? 0).getTime() - new Date(a.ultimoEn ?? 0).getTime())
+    return sociosIds.map(sid => {
+      const perfil = perfiles.get(sid)
+      // "Usuario fantasma": el historial se conserva y se devuelve, pero se marca
+      // para que el cliente muestre "Usuario Eliminado" y bloquee el envío
+      // (el POST /enviar/:userId devuelve 403 para esa cuenta).
+      const isDeleted = this.esUsuarioEliminado(perfil)
+      return {
+        socio: this.socioSeguro(sid, perfil),
+        ultimoMensaje: socios.get(sid)?.contenido ?? '',
+        ultimoEn: socios.get(sid)?.fechaCreacion ?? null,
+        noLeidos: mensajes.filter(m => m.remitenteId === sid && m.destinatarioId === usuarioId && !m.leido).length,
+        isDeleted,
+        destinatarioActivo: !isDeleted,
+      }
+    }).sort((a, b) => new Date(b.ultimoEn ?? 0).getTime() - new Date(a.ultimoEn ?? 0).getTime())
   }
 
   async getMessages(usuarioId: string, socioId: string) {
@@ -109,7 +141,9 @@ export class MessagesService {
     const media = normalizarMediaUrl(mediaUrl)
     verificarMultimediaPermitida(user, media)
     const destinatario = await this.db.collection(COLECCIONES.perfiles).doc(destinatarioId).get()
-    if (!destinatario.exists || !destinatario.data()?.activo) throw new ForbiddenException('Usuario destinatario no existe')
+    if (this.esUsuarioEliminado(destinatario.exists ? (destinatario.data() as Record<string, unknown>) : undefined)) {
+      throw new ForbiddenException('Usuario destinatario no existe')
+    }
 
     const ref = this.db.collection(COLECCIONES.mensajesDirectos).doc()
     const msg = {

@@ -1,5 +1,5 @@
 import { crearAppE2E } from './helpers/app.e2e'
-import { limpiarDb, sembrarPerfil, token } from './helpers/fixtures'
+import { limpiarDb, sembrarPerfil, sembrarMensaje, leerDoc, dbE2E, token } from './helpers/fixtures'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 
@@ -115,6 +115,50 @@ describe('Mensajes (E2E) — IDOR Protection', () => {
       expect(res.status).toBe(200)
       expect(Array.isArray(res.body)).toBe(true)
       expect(res.body).toHaveLength(0)
+    })
+
+    it('200: isDeleted false para un socio con cuenta activa', async () => {
+      await sembrarMensaje({ id: 'm-a1', remitenteId: 'uid-alice', destinatarioId: 'uid-bob', contenido: 'Hola', leido: true, fechaCreacion: '2026-01-01' })
+
+      const res = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-alice'))
+
+      expect(res.status).toBe(200)
+      expect(res.body[0].isDeleted).toBe(false)
+      expect(res.body[0].destinatarioActivo).toBe(true)
+    })
+
+    it('200: isDeleted true y sin PII cuando el socio es un usuario fantasma', async () => {
+      // Bob fue eliminado por completo: el mensaje sigue existiendo, el perfil no.
+      await dbE2E().collection('perfiles').doc('uid-bob').delete()
+      await sembrarMensaje({ id: 'm-a2', remitenteId: 'uid-alice', destinatarioId: 'uid-bob', contenido: 'Hola', leido: true, fechaCreacion: '2026-01-01' })
+
+      const res = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-alice'))
+
+      expect(res.status).toBe(200)
+      expect(res.body).toHaveLength(1)
+      expect(res.body[0].isDeleted).toBe(true)
+      expect(res.body[0].destinatarioActivo).toBe(false)
+      // El historial NO se borra: se conserva y se muestra.
+      expect(res.body[0].ultimoMensaje).toBe('Hola')
+      // Pero no se filtra el nombre real de la cuenta dada de baja.
+      expect(res.body[0].socio.nombreCompleto).toBe('Usuario Eliminado')
+      expect(res.body[0].socio.email).toBeUndefined()
+    })
+
+    it('200: isDeleted true cuando la cuenta del socio está desactivada (soft delete)', async () => {
+      await sembrarPerfil({ id: 'uid-bob', email: 'bob@test.com', rol: 'pcd', activo: false, eliminado: true, nombreCompleto: 'Bob' })
+      await sembrarMensaje({ id: 'm-a3', remitenteId: 'uid-alice', destinatarioId: 'uid-bob', contenido: 'Hola', leido: true, fechaCreacion: '2026-01-01' })
+
+      const res = await request(http)
+        .get('/api/mensajes/conversaciones')
+        .set('Authorization', token('uid-alice'))
+
+      expect(res.body[0].isDeleted).toBe(true)
+      expect(res.body[0].socio.nombreCompleto).toBe('Usuario Eliminado')
     })
   })
 

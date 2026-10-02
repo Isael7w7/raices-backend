@@ -20,7 +20,7 @@ export class MessagesController {
 
   @Get('conversaciones')
   @UseETag()
-  @ApiOperation({ summary: 'Lista de conversaciones' })
+  @ApiOperation({ summary: 'Lista de conversaciones', description: 'Devuelve el historial agrupado por socio, con el mensaje más reciente. Si el socio es un usuario eliminado (perfil inexistente, `eliminado: true` o cuenta desactivada), el historial se conserva y la conversación llega marcada con `isDeleted: true` para que el cliente la muestre como "Usuario Eliminado" y bloquee el envío.' })
   @ApiOkResponse({ type: [ConversacionDto], description: 'Lista de conversaciones con socio, último mensaje y conteo de no leídos' })
   conversations(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.getConversations(user.id)

@@ -30,6 +30,7 @@ jest.mock('jsqr', () => ({ __esModule: true, default: jest.fn() }))
 const mockFieldValue = {
   increment: (n: number) => ({ __op: 'increment', n }),
   serverTimestamp: () => ({ __op: 'serverTimestamp' }),
+  arrayUnion: (...elements: any[]) => ({ __op: 'arrayUnion', elements }),
 }
 const mockDocIdField = '__docId__'
 
@@ -51,6 +52,10 @@ function aplicarEscritura(existente: any, nuevos: any, esMerge: boolean): any {
       base[k] = actual + v.n
     } else if (v && typeof v === 'object' && v.__op === 'serverTimestamp') {
       base[k] = new Date().toISOString()
+    } else if (v && typeof v === 'object' && v.__op === 'arrayUnion') {
+      // Borrado lógico por usuario: agrega sin duplicar (arrayUnion de Firestore).
+      const actual = Array.isArray(base[k]) ? base[k] : []
+      base[k] = Array.from(new Set([...actual, ...v.elements]))
     } else {
       base[k] = v === undefined ? null : JSON.parse(JSON.stringify(v))
     }
@@ -284,6 +289,7 @@ jest.mock('firebase-admin/firestore', () => ({
   DocumentData: class DocumentData {},
   Query: class Query {},
   QuerySnapshot: class QuerySnapshot {},
+  QueryDocumentSnapshot: class QueryDocumentSnapshot {},
   DocumentReference: class DocumentReference {},
   FieldPath: { documentId: jest.fn(() => mockDocIdField) },
 }))

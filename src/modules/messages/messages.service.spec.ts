@@ -35,7 +35,7 @@ describe('MessagesService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: receivedMsgs.map(m => ({ id: m.id, data: () => m })) }) })
         // conversacionesOcultas: ninguna conversación oculta
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[] }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u2', data: () => ({ nombreCompleto: 'Pedro' }) }] }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u2', data: () => ({ nombreCompleto: 'Pedro', activo: true }) }] }) })
 
       const result = await service.getConversations('u1')
       expect(result).toHaveLength(1)
@@ -65,8 +65,8 @@ describe('MessagesService', () => {
           where: jest.fn().mockReturnThis(),
           get: jest.fn().mockResolvedValue({
             docs: [
-              { id: 'u2', data: () => ({ nombreCompleto: 'Pedro' }) },
-              { id: 'u3', data: () => ({ nombreCompleto: 'Ana' }) },
+              { id: 'u2', data: () => ({ nombreCompleto: 'Pedro', activo: true }) },
+              { id: 'u3', data: () => ({ nombreCompleto: 'Ana', activo: true }) },
             ],
           }),
         })
@@ -85,11 +85,74 @@ describe('MessagesService', () => {
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: sentMsgs.map(m => ({ id: m.id, data: () => m })) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: receivedMsgs.map(m => ({ id: m.id, data: () => m })) }) })
         .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: ocultas }) })
-        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u2', data: () => ({ nombreCompleto: 'Pedro' }) }] }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u2', data: () => ({ nombreCompleto: 'Pedro', activo: true }) }] }) })
 
       const result = await service.getConversations('u1')
       expect(result).toHaveLength(1)
       expect(result[0].socio.nombreCompleto).toBe('Pedro')
+    })
+
+    // ═════════════════════════════════════════════════════════════════
+    // Usuario fantasma (perfil inexistente / eliminado / desactivado)
+    // ═════════════════════════════════════════════════════════════════
+
+    /** Monta el mock de collection() para una conversación con un solo mensaje. */
+    function mockUnaConversacion(perfilDoc: { id: string; data: () => Record<string, unknown> } | null) {
+      const sentMsgs = [{ id: 'm1', remitenteId: 'u1', destinatarioId: 'u2', contenido: 'Hola', fechaCreacion: '2024-01-01', leido: true }]
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: sentMsgs.map(m => ({ id: m.id, data: () => m })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[] }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[] }) })
+        .mockReturnValueOnce({
+          where: jest.fn().mockReturnThis(),
+          get: jest.fn().mockResolvedValue({ docs: perfilDoc ? [perfilDoc] : [] }),
+        })
+    }
+
+    it('marca isDeleted y conserva el historial cuando el perfil ya no existe', async () => {
+      mockUnaConversacion(null)
+
+      const result = await service.getConversations('u1')
+
+      expect(result).toHaveLength(1)
+      expect(result[0].isDeleted).toBe(true)
+      expect(result[0].destinatarioActivo).toBe(false)
+      expect(result[0].socio.nombreCompleto).toBe('Usuario Eliminado')
+      // El historial NO se borra: sigue devolviéndose para poder mostrarlo.
+      expect(result[0].ultimoMensaje).toBe('Hola')
+    })
+
+    it('marca isDeleted por el flag eliminado aunque la cuenta siga activa', async () => {
+      mockUnaConversacion({ id: 'u2', data: () => ({ nombreCompleto: 'Pedro', activo: true, eliminado: true }) })
+
+      const [conv] = await service.getConversations('u1')
+
+      expect(conv.isDeleted).toBe(true)
+      expect(conv.destinatarioActivo).toBe(false)
+      expect(conv.socio.nombreCompleto).toBe('Usuario Eliminado')
+    })
+
+    it('no expone PII del socio eliminado (nombre, avatar y correo)', async () => {
+      mockUnaConversacion({
+        id: 'u2',
+        data: () => ({ nombreCompleto: 'Pedro', email: 'pedro@test.com', urlAvatar: 'https://x/a.png', activo: false }),
+      })
+
+      const [conv] = await service.getConversations('u1')
+
+      expect(conv.socio.nombreCompleto).toBe('Usuario Eliminado')
+      expect((conv.socio as Record<string, unknown>).email).toBeUndefined()
+      expect(conv.socio.urlAvatar).toBeNull()
+    })
+
+    it('marca isDeleted false para un socio activo', async () => {
+      mockUnaConversacion({ id: 'u2', data: () => ({ nombreCompleto: 'Pedro', activo: true }) })
+
+      const [conv] = await service.getConversations('u1')
+
+      expect(conv.isDeleted).toBe(false)
+      expect(conv.destinatarioActivo).toBe(true)
+      expect(conv.socio.nombreCompleto).toBe('Pedro')
     })
   })
 
@@ -169,6 +232,20 @@ describe('MessagesService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(null, false)) }) })
 
       await expect(service.sendMessage(usuario('u1'), 'nonexistent', 'Hola')).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should throw ForbiddenException when destinatario está desactivado', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'u2', activo: false }, true, 'u2')) }) })
+
+      await expect(service.sendMessage(usuario('u1'), 'u2', 'Hola')).rejects.toThrow(ForbiddenException)
+    })
+
+    it('should throw ForbiddenException when destinatario tiene eliminado: true aunque siga activo', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'u2', activo: true, eliminado: true }, true, 'u2')) }) })
+
+      await expect(service.sendMessage(usuario('u1'), 'u2', 'Hola')).rejects.toThrow(ForbiddenException)
     })
 
     it('should persist mediaUrl when multimedia is enabled', async () => {
