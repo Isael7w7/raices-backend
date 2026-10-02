@@ -269,6 +269,29 @@ export class RespuestaPermisosDependienteDto {
     description: 'Permisos activos del dependiente (chat, postulaciones, comunidad, reseñas, descubrimiento, favoritos, multimedia)',
   })
   features!: Record<string, boolean>
+
+  @ApiProperty({
+    example: { instituciones: true, empleo: true, comunidad: true, puedeComentar: false, puedeInteractuar: true, accesoMultimedia: true, accesoChat: true },
+    description: 'Módulos y acciones de los modales de tutor (Configurar opciones / Permisos de acceso)',
+  })
+  permisos!: Record<string, boolean>
+}
+
+export class RespuestaPermisosActualizadosDto {
+  @ApiProperty({ example: 'dep-uid' })
+  dependienteId!: string
+
+  @ApiProperty({
+    example: { chat: true, postulaciones: true, comunidad: true, resenas: true, descubrimiento: true, favoritos: true, multimedia: true },
+    description: 'Features funcionales resultantes (ya aplicadas en Firestore)',
+  })
+  features!: Record<string, boolean>
+
+  @ApiProperty({
+    example: { instituciones: true, empleo: false, comunidad: true, puedeComentar: false, puedeInteractuar: true, accesoMultimedia: true, accesoChat: true },
+    description: 'Permisos de los modales de tutor persistidos',
+  })
+  permisos!: Record<string, boolean>
 }
 
 /**

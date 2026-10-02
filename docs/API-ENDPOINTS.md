@@ -364,8 +364,61 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 ---
 
 ### GET `/usuarios/dependientes/:id/permisos`
-**Descripción:** Obtener permisos de un dependiente  
+**Descripción:** Obtener permisos de un dependiente (features funcionales + permisos de los modales de tutor). Solo el tutor dueño o un administrador.  
 **Autenticación:** Bearer Token requerido
+
+**Response (200):**
+```json
+{
+  "dependienteId": "dep-uid",
+  "nombre": "María García",
+  "esCuentaVinculada": false,
+  "pcdUserId": null,
+  "features": { "chat": true, "postulaciones": true, "comunidad": true, "resenas": true, "descubrimiento": true, "favoritos": true, "multimedia": true },
+  "permisos": { "instituciones": true, "empleo": true, "comunidad": true, "puedeComentar": false, "puedeInteractuar": true, "accesoMultimedia": true, "accesoChat": true }
+}
+```
+
+---
+
+### PUT `/usuarios/dependientes/:id/permisos`
+**Descripción:** Guardar los permisos enviados por el modal de tutor (módulos + acciones). Solo se modifican los campos enviados; se persisten en `permisos` y se reflejan en `features`.  
+**Autenticación:** Bearer Token requerido (rol tutor)
+
+**Request Body (todos opcionales, booleanos):**
+```json
+{
+  "instituciones": true,
+  "empleo": true,
+  "comunidad": true,
+  "puedeComentar": false,
+  "puedeInteractuar": true,
+  "accesoMultimedia": true,
+  "accesoChat": true
+}
+```
+También acepta los nombres clásicos: `chat`, `postulaciones`, `resenas`, `descubrimiento`, `favoritos`, `multimedia`.
+
+**Response (200):**
+```json
+{
+  "dependienteId": "dep-uid",
+  "features": { "chat": true, "postulaciones": true, "comunidad": true, "resenas": true, "descubrimiento": true, "favoritos": true, "multimedia": true },
+  "permisos": { "instituciones": true, "empleo": true, "comunidad": true, "puedeComentar": false, "puedeInteractuar": true, "accesoMultimedia": true, "accesoChat": true }
+}
+```
+- `400` - El body no trae permisos
+- `404` - Dependiente no encontrado (o pertenece a otro tutor)
+
+---
+
+### PATCH `/usuarios/dependientes/:id/permisos`
+**Descripción:** Alias del PUT anterior (mismo DTO, servicio y respuesta).
+
+---
+
+### Rutas de tutor `/tutores/dependientes/:id/permisos`
+**Descripción:** `GET` / `PUT` / `PATCH` con el mismo comportamiento que los endpoints anteriores bajo el prefijo `/api/tutores`.
 
 ---
 

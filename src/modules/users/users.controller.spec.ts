@@ -16,6 +16,7 @@ describe('UsersController', () => {
     getProfile: jest.fn(),
     getDependentPermissions: jest.fn(),
     updateDependentFeatures: jest.fn(),
+    actualizarPermisosDependiente: jest.fn(),
     deleteAccount: jest.fn(),
     linkPcdToTutor: jest.fn(),
     actualizarPreferenciasNecesidades: jest.fn(),
@@ -78,6 +79,23 @@ describe('UsersController', () => {
     expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor'])
   })
 
+  it('registra PUT dependientes/:dependienteId/permisos con roles tutor', () => {
+    const handler = (UsersController.prototype as any).saveDependentPermissionsPut
+
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe('dependientes/:dependienteId/permisos')
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.PUT)
+
+    const guards = Reflect.getMetadata('__guards__', handler) ?? []
+    expect(guards).toContain(RolesGuard)
+
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['padre_tutor', 'tutor'])
+
+    // La ruta estática de permisos debe declararse después de getDependentPermissions
+    // y sin chocar con @Put('dependientes/:id') (3 segmentos vs 2)
+    const metodos = Object.getOwnPropertyNames(UsersController.prototype)
+    expect(metodos.indexOf('saveDependentPermissionsPut')).toBeGreaterThan(-1)
+  })
+
   it('delega en el servicio al consultar permisos de un dependiente', async () => {
     mockSvc.getDependentPermissions.mockResolvedValue({
       dependienteId: 'dep1', nombre: 'María', esCuentaVinculada: false, pcdUserId: null, features: {},
@@ -91,16 +109,20 @@ describe('UsersController', () => {
     expect(result.dependienteId).toBe('dep1')
   })
 
-  it('delega en el servicio al guardar permisos de un dependiente', async () => {
-    mockSvc.updateDependentFeatures.mockResolvedValue({ id: 'dep1', features: { chat: false } })
+  it('delega en el servicio al guardar permisos de un dependiente (PUT y PATCH)', async () => {
+    mockSvc.actualizarPermisosDependiente.mockResolvedValue({ dependienteId: 'dep1', features: { chat: false }, permisos: { accesoChat: false } })
 
     const user = { id: 'tutor-1', email: 't@test.com', rol: 'padre_tutor', nombreCompleto: 'T', verificado: false, tutorId: null as string | null, features: {} }
-    const dto = { chat: false }
+    const dto = { accesoChat: false, puedeComentar: false }
 
-    const result = await controller.saveDependentPermissions(user as any, 'dep1', dto as any)
+    const result = await controller.saveDependentPermissionsPut(user as any, 'dep1', dto as any)
 
-    expect(mockSvc.updateDependentFeatures).toHaveBeenCalledWith('tutor-1', 'dep1', dto)
+    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenCalledWith('tutor-1', 'dep1', dto)
     expect(result.features.chat).toBe(false)
+    expect(result.permisos.accesoChat).toBe(false)
+
+    await controller.saveDependentPermissions(user as any, 'dep1', dto as any)
+    expect(mockSvc.actualizarPermisosDependiente).toHaveBeenLastCalledWith('tutor-1', 'dep1', dto)
   })
 
   it('rechaza POST vincular-pcd sin email con 400 (sin llamar al servicio)', async () => {

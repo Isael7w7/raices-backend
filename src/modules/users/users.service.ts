@@ -4,7 +4,7 @@ import { FIRESTORE, FIREBASE_AUTH } from '../../database/firebase.provider'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 import { getAuth } from 'firebase-admin/auth'
 import { COLECCIONES, getMaxDependientesPorTutor } from '../../database/firestore.constants'
-import { FEATURES_POR_DEFECTO, FeatureFlags } from '../../common/interfaces/feature-flags.interface'
+import { FEATURES_POR_DEFECTO, FeatureFlags, PERMISOS_DEFECTO, PermisosDependiente } from '../../common/interfaces/feature-flags.interface'
 import { DependienteDoc, DependienteFormateado, PerfilDoc, PerfilExtendidoDoc } from '../../common/interfaces/firestore-documents.interface'
 import { StorageService } from '../storage/storage.service'
 import { ValidationService } from '../ai/validation.service'
@@ -15,6 +15,7 @@ import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { GuardarPerfilNecesidadesDto } from './dto/guardar-perfil-necesidades.dto'
 import { ActualizarPerfilNecesidadesDto } from './dto/actualizar-perfil-necesidades.dto'
+import { ActualizarPermisosDependienteDto } from './dto/actualizar-permisos-dependiente.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ETagInterceptor } from '../../common/interceptors/etag.interceptor'
 
@@ -907,11 +908,15 @@ export class UsersService {
     }
 
     let features: FeatureFlags = data.features ?? { ...FEATURES_POR_DEFECTO }
+    let permisosGuardados: Partial<PermisosDependiente> | null = data.permisos ?? null
     if (data.esCuentaVinculada || data.pcdUserId) {
       const pcdId = data.pcdUserId ?? dependienteId
       const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdId).get()
-      if (pcdDoc.exists && pcdDoc.data()?.features) {
-        features = { ...FEATURES_POR_DEFECTO, ...pcdDoc.data()!.features }
+      if (pcdDoc.exists) {
+        if (pcdDoc.data()?.features) {
+          features = { ...FEATURES_POR_DEFECTO, ...pcdDoc.data()!.features }
+        }
+        permisosGuardados = pcdDoc.data()?.permisos ?? permisosGuardados
       }
     }
 
@@ -921,7 +926,98 @@ export class UsersService {
       esCuentaVinculada: data.esCuentaVinculada === true || !!data.pcdUserId,
       pcdUserId: data.pcdUserId ?? null,
       features,
+      permisos: this.calcularPermisos(features, null, permisosGuardados),
     }
+  }
+
+  /**
+   * Combina los permisos guardados con los defaults y refleja las features
+   * funcionales en los módulos/acciones equivalentes, para que el modal de
+   * tutor muestre exactamente el estado que se está aplicando.
+   */
+  private calcularPermisos(
+    features: FeatureFlags,
+    entrada?: Partial<PermisosDependiente> | null,
+    guardados?: Partial<PermisosDependiente> | null,
+  ): PermisosDependiente {
+    const permisos: PermisosDependiente = { ...PERMISOS_DEFECTO }
+
+    for (const origen of [guardados, entrada]) {
+      if (!origen) continue
+      for (const clave of Object.keys(origen) as (keyof PermisosDependiente)[]) {
+        const valor = origen[clave]
+        if (valor !== undefined) permisos[clave] = valor
+      }
+    }
+
+    // Espejo de las features finales (módulos/acciones con equivalente funcional)
+    permisos.instituciones = features.descubrimiento
+    permisos.empleo = features.postulaciones
+    permisos.comunidad = features.comunidad
+    permisos.accesoChat = features.chat
+    permisos.accesoMultimedia = features.multimedia
+
+    return permisos
+  }
+
+  /**
+   * Guarda los permisos de los modales de tutor ("Configurar opciones" y
+   * "Permisos de acceso") sobre un dependiente plano o la cuenta PCD
+   * vinculada. Verifica que el usuario autenticado sea el tutor dueño y
+   * persiste tanto `permisos` (estado de los controles) como `features`
+   * (aplicación real de los módulos/acciones).
+   */
+  async actualizarPermisosDependiente(usuarioId: string, dependienteId: string, dto: ActualizarPermisosDependienteDto) {
+    const doc = await this.col(COLECCIONES.dependientes).doc(dependienteId).get()
+    if (!doc.exists || doc.data()?.tutorId !== usuarioId) {
+      throw new NotFoundException('Dependiente no encontrado')
+    }
+    const data = doc.data()!
+
+    // Nombres clásicos de features enviados por clientes anteriores
+    const legacy: Partial<FeatureFlags> = {}
+    for (const clave of ['chat', 'postulaciones', 'resenas', 'descubrimiento', 'favoritos', 'multimedia'] as const) {
+      if (dto[clave] !== undefined) legacy[clave] = dto[clave]!
+    }
+
+    // Módulos (casillas) y acciones (interruptores) enviados
+    const entrada: Partial<PermisosDependiente> = {}
+    for (const clave of ['instituciones', 'empleo', 'comunidad', 'puedeComentar', 'puedeInteractuar', 'accesoMultimedia', 'accesoChat'] as const) {
+      if (dto[clave] !== undefined) entrada[clave] = dto[clave]!
+    }
+
+    if (Object.keys(legacy).length === 0 && Object.keys(entrada).length === 0) {
+      throw new BadRequestException('No se recibieron permisos para actualizar')
+    }
+
+    // Módulos/acciones → features funcionales (lo que realmente aplican los guards)
+    const mapeadas: Partial<FeatureFlags> = { ...legacy }
+    if (dto.instituciones !== undefined) mapeadas.descubrimiento = dto.instituciones
+    if (dto.empleo !== undefined) mapeadas.postulaciones = dto.empleo
+    if (dto.comunidad !== undefined) mapeadas.comunidad = dto.comunidad
+    if (dto.accesoChat !== undefined) mapeadas.chat = dto.accesoChat
+    if (dto.accesoMultimedia !== undefined) mapeadas.multimedia = dto.accesoMultimedia
+
+    // Cuenta PCD vinculada: la fuente de verdad es su perfil real
+    if (data.esCuentaVinculada || data.pcdUserId) {
+      const pcdId = data.pcdUserId ?? dependienteId
+      const pcdDoc = await this.col(COLECCIONES.perfiles).doc(pcdId).get()
+      if (!pcdDoc.exists) throw new NotFoundException('Usuario PCD no encontrado')
+      const pcd = pcdDoc.data()!
+      if (pcd.tutorId !== usuarioId) {
+        throw new ForbiddenException('Esta PCD no está vinculada a tu cuenta como tutor')
+      }
+
+      const features: FeatureFlags = { ...FEATURES_POR_DEFECTO, ...(pcd.features ?? {}), ...mapeadas }
+      const permisos = this.calcularPermisos(features, entrada, pcd.permisos ?? null)
+      await this.col(COLECCIONES.perfiles).doc(pcdId).update({ features, permisos })
+      return { dependienteId, features, permisos }
+    }
+
+    const features: FeatureFlags = { ...FEATURES_POR_DEFECTO, ...(data.features ?? {}), ...mapeadas }
+    const permisos = this.calcularPermisos(features, entrada, data.permisos ?? null)
+    await this.col(COLECCIONES.dependientes).doc(dependienteId).update({ features, permisos })
+    return { dependienteId, features, permisos }
   }
 
   /**

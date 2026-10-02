@@ -23,3 +23,33 @@ export const FEATURES_POR_DEFECTO: FeatureFlags = {
   favoritos: true,
   multimedia: true,
 }
+
+/**
+ * Permisos del modal "Permisos de acceso" / "Configurar opciones" del tutor:
+ * módulos (casillas) y acciones (interruptores) del dependiente.
+ *
+ * Los módulos/acciones con equivalente funcional se reflejan en `features`
+ * (`instituciones`→`descubrimiento`, `empleo`→`postulaciones`,
+ * `comunidad`→`comunidad`, `accesoChat`→`chat`, `accesoMultimedia`→`multimedia`);
+ * `puedeComentar` y `puedeInteractuar` se guardan solo en este objeto.
+ */
+export interface PermisosDependiente {
+  instituciones: boolean
+  empleo: boolean
+  comunidad: boolean
+  puedeComentar: boolean
+  puedeInteractuar: boolean
+  accesoMultimedia: boolean
+  accesoChat: boolean
+}
+
+/** Valores por defecto: todo habilitado (igual que FEATURES_POR_DEFECTO). */
+export const PERMISOS_DEFECTO: PermisosDependiente = {
+  instituciones: true,
+  empleo: true,
+  comunidad: true,
+  puedeComentar: true,
+  puedeInteractuar: true,
+  accesoMultimedia: true,
+  accesoChat: true,
+}

@@ -16,9 +16,10 @@ import { EscalasVidaGuardadasDto } from './dto/respuestas-escalas.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ActualizarPerfilDto } from './dto/actualizar-perfil.dto'
 import { ActualizarPerfilNecesidadesDto } from './dto/actualizar-perfil-necesidades.dto'
+import { ActualizarPermisosDependienteDto } from './dto/actualizar-permisos-dependiente.dto'
 import { UpdateFeaturesDto } from './dto/update-features.dto'
 import { DocumentoIdentidadSubidoDto, EstadoValidacionIdentidadDto } from './dto/documento-identidad.dto'
-import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, PaginaMisPersonasDto, PaginaUsuariosBusquedaDto } from './dto/respuestas-usuario.dto'
+import { PerfilUsuarioDto, PerfilNecesidadesDto, RespuestaAvatarDto, DependienteDto, ConteoDependientesDto, RespuestaVinculacionDto, RespuestaDesvinculacionDto, RespuestaFeaturesDto, RespuestaPermisosDependienteDto, RespuestaPermisosActualizadosDto, PaginaMisPersonasDto, PaginaUsuariosBusquedaDto } from './dto/respuestas-usuario.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
@@ -392,17 +393,32 @@ export class UsersController {
     return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
   }
 
+  @Put('dependientes/:dependienteId/permisos')
+  @UseGuards(RolesGuard)
+  @Roles('padre_tutor', 'tutor')
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Guardar permisos de dependiente (PUT)', description: 'Persiste los módulos (Configurar opciones) y acciones (Permisos de acceso) enviados por el modal de tutor. Solo se modifican los campos enviados. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
+  @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
+  @ApiBody({ type: ActualizarPermisosDependienteDto })
+  @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
+  @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
+  @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
+  saveDependentPermissionsPut(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, dto)
+  }
+
   @Patch('dependientes/:dependienteId/permisos')
   @UseGuards(RolesGuard)
   @Roles('padre_tutor', 'tutor')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Guardar permisos de dependiente', description: 'Alias de PATCH /dependientes/:dependienteId/features: actualiza los switches de permisos (chat, postulaciones, comunidad, reseñas, etc.) de un dependiente plano. Para cuentas PCD vinculadas actualiza el perfil real de la PCD.' })
+  @ApiOperation({ summary: 'Guardar permisos de dependiente (PATCH)', description: 'Mismo comportamiento que PUT /dependientes/:dependienteId/permisos: persiste los módulos y acciones del modal de tutor junto con las features funcionales que aplican los guards.' })
   @ApiParam({ name: 'dependienteId', description: 'ID del dependiente' })
-  @ApiBody({ type: UpdateFeaturesDto })
-  @ApiOkResponse({ type: RespuestaFeaturesDto, description: 'Permisos actualizados' })
+  @ApiBody({ type: ActualizarPermisosDependienteDto })
+  @ApiOkResponse({ type: RespuestaPermisosActualizadosDto, description: 'Permisos actualizados' })
+  @ApiResponse({ status: 400, description: 'No se recibieron permisos para actualizar' })
   @ApiResponse({ status: 404, description: 'Dependiente no encontrado' })
-  saveDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: UpdateFeaturesDto) {
-    return this.svc.updateDependentFeatures(user.id, dependienteId, dto)
+  saveDependentPermissions(@CurrentUser() user: CurrentUserPayload, @Param('dependienteId') dependienteId: string, @Body() dto: ActualizarPermisosDependienteDto) {
+    return this.svc.actualizarPermisosDependiente(user.id, dependienteId, dto)
   }
 
   @Patch('vincular-pcd/:pcdId/features')

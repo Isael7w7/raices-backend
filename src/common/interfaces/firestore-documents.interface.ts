@@ -1,4 +1,4 @@
-import { FeatureFlags, FEATURES_POR_DEFECTO } from './feature-flags.interface'
+import { FeatureFlags, FEATURES_POR_DEFECTO, PermisosDependiente } from './feature-flags.interface'
 
 /**
  * Documento canónico de la colección `dependientes`.
@@ -12,6 +12,8 @@ export interface DependienteDoc {
   rol?: string
   datosPerfil?: string // JSON string con tiposDiscapacidad, rangoEdad, etapaVida, notas
   features?: FeatureFlags
+  /** Permisos del tutor (modal "Permisos de acceso"): módulos y acciones */
+  permisos?: Partial<PermisosDependiente>
   esCuentaVinculada?: boolean
   pcdUserId?: string | null
   fechaCreacion?: string
@@ -51,6 +53,8 @@ export interface PerfilDoc {
   institucionId?: string
   tutorId?: string | null
   features?: FeatureFlags
+  /** Permisos del tutor (modal "Permisos de acceso") para cuentas PCD vinculadas */
+  permisos?: Partial<PermisosDependiente>
   ciudad?: string
   estado?: string
   profesion?: string
