@@ -128,12 +128,19 @@ sequenceDiagram
 |-----------|-----------|
 | La institución **no existe** | `404 Not Found` → *"Institución no encontrada"* |
 | `activa !== true` | `403 Forbidden` → *"La institución se encuentra inactiva"* |
-| `verificada !== true` | `403 Forbidden` → *"La institución debe estar aprobada por un administrador para publicar vacantes"* |
+| Sin CSF **y** sin aprobación de administrador | `403 Forbidden` → *"Tu cuenta requiere cargar la Constancia de Situación Fiscal (CSF) para publicar vacantes."* |
 | Todo correcto | Crea la vacante y devuelve el detalle |
 
-**Roles permitidos para crear vacantes** (`@Roles('institucion', 'admin')`):
+**Validación de persona moral** (`src/common/utils/verificacion-persona-moral.ts`): una
+persona moral (institución o empresa) puede publicar vacantes si tiene **CSF cargada**
+(`instituciones.documentoCsf`) **o** si fue **aprobada por un administrador**
+(`instituciones.verificada`). La CURP **no aplica** a personas morales y nunca se exige en
+este flujo. Es la misma regla que aplica `InstitucionVerificadaGuard`, para que el mensaje y
+el criterio de bloqueo nunca se desincronicen.
+
+**Roles permitidos para crear vacantes** (`@Roles('institucion', 'empresa', 'admin')`):
 - Usuario con rol `institucion`: se resuelve su institución por `creadoPor`.
-- Usuario con rol `empresa`: el guard lo normaliza a `institucion` (subtipo), pasa el `RolesGuard` y resuelve su entidad por `creadoPor` igual que una institución.
+- Usuario con rol `empresa`: además de estar listado explícitamente, el guard lo normaliza a `institucion` (subtipo), así que pasa el `RolesGuard` y resuelve su entidad por `creadoPor` igual que una institución.
 - Admin: debe enviar `institucionId` explícito.
 - Cualquier otro rol → `403` del `RolesGuard`.
 
@@ -217,7 +224,8 @@ sequenceDiagram
 | Crear vacante sin institución registrada | `404` | `No tienes una institución registrada. Crea una institución primero.` |
 | Institución inexistente | `404` | `Institución no encontrada` |
 | Institución inactiva | `403` | `La institución se encuentra inactiva` |
-| Institución no aprobada | `403` | `La institución debe estar aprobada por un administrador para publicar vacantes` |
+| Institución/empresa sin CSF ni aprobación | `403` | `Tu cuenta requiere cargar la Constancia de Situación Fiscal (CSF) para publicar vacantes.` |
+| Verificación no disponible (Firestore caído) | `503` | `No se pudo verificar el estado de tu cuenta en este momento. Intenta de nuevo en unos segundos.` |
 | Rol distinto a institución/admin | `403` | `Rol insuficiente` |
 | Admin sin `institucionId` | `400` | `Como administrador, debes proporcionar el ID de la institución (institucionId).` |
 | Actualizar institución eliminada/inactiva (`:id`) | `404` | `Institución no encontrada` |

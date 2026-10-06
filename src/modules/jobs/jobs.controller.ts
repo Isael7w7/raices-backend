@@ -60,26 +60,34 @@ export class JobsController {
   @Post()
   @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 vacantes por minuto
   @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @HttpCode(201)
-  @ApiOperation({ summary: 'Crear vacante', description: 'Crea una nueva vacante. El usuario debe tener rol de institución o administrador. Para instituciones, se vincula automáticamente a su institución. Para admins, se requiere institucionId.' })
+  @ApiOperation({
+    summary: 'Crear vacante',
+    description:
+      'Crea una nueva vacante. Requiere rol de persona moral (institución o empresa) o administrador. ' +
+      'Para instituciones y empresas se vincula automáticamente a su entidad. Para admins, se requiere institucionId. ' +
+      'La validación de entidad moral exige Constancia de Situación Fiscal (CSF) cargada o aprobación de un ' +
+      'administrador; la CURP no aplica a personas morales y nunca se solicita en este flujo.',
+  })
   @ApiCreatedResponse({ type: VacanteDto, description: 'Vacante creada exitosamente' })
   @ApiResponse({ status: 400, description: 'Datos inválidos' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere institución o admin)' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente, o la entidad no tiene CSF cargada ni aprobación de administrador' })
+  @ApiResponse({ status: 503, description: 'No se pudo verificar el estado de verificación de la cuenta (reintentar)' })
   create(@Body() dto: CreateJobDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.createForUser(user, dto)
   }
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Editar vacante', description: 'Actualiza campos de una vacante. Debe pertenecer a la institución del usuario.' })
+  @ApiOperation({ summary: 'Editar vacante', description: 'Actualiza campos de una vacante. Debe pertenecer a la entidad del usuario (institución o empresa).' })
   @ApiParam({ name: 'id', description: 'ID de la vacante' })
   @ApiOkResponse({ type: VacanteDto, description: 'Vacante actualizada' })
-  @ApiResponse({ status: 403, description: 'No pertenece a tu institución' })
+  @ApiResponse({ status: 403, description: 'No pertenece a tu entidad, o la entidad no tiene CSF cargada ni aprobación de administrador' })
   @ApiResponse({ status: 404, description: 'Vacante no encontrada' })
   update(@Param('id') id: string, @Body() dto: ActualizarVacanteDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.update(id, user, dto)
@@ -87,13 +95,13 @@ export class JobsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @HttpCode(204)
   @ApiOperation({ summary: 'Eliminar vacante', description: 'Desactiva una vacante. Retorna 204 No Content.' })
   @ApiParam({ name: 'id', description: 'ID de la vacante' })
   @ApiNoContentResponse({ description: 'Vacante desactivada' })
-  @ApiResponse({ status: 403, description: 'No pertenece a tu institución' })
+  @ApiResponse({ status: 403, description: 'No pertenece a tu entidad, o la entidad no tiene CSF cargada ni aprobación de administrador' })
   @ApiResponse({ status: 404, description: 'Vacante no encontrada' })
   remove(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.remove(id, user)
@@ -102,7 +110,7 @@ export class JobsController {
   @Get('postulantes-institucion')
   @UseETag()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Postulantes de mi institución', description: 'Retorna los postulantes de todas las vacantes de la institución del usuario (rol institución) o de la institución indicada (rol admin, vía institucionId).' })
   @ApiQuery({ name: 'institucionId', required: false, description: 'Obligatorio para admins: ID de la institución a consultar' })
@@ -134,7 +142,7 @@ export class JobsController {
   @Get('postulantes-vacante')
   @UseETag()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Postulantes de una vacante específica', description: 'Retorna los postulantes de una vacante específica. Solo la institución dueña de la vacante o un administrador pueden consultarla.' })
   @ApiQuery({ name: 'vacanteId', required: true, description: 'ID de la vacante a consultar' })
@@ -168,7 +176,7 @@ export class JobsController {
   @Get('mis-vacantes')
   @UseETag()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Mis vacantes', description: 'Retorna TODAS las vacantes de la institución del usuario (incluye pausadas/inactivas para poder reactivarlas). Para admins se requiere institucionId.' })
   @ApiQuery({ name: 'institucionId', required: false, description: 'Obligatorio para admins: ID de la institución' })
@@ -184,7 +192,7 @@ export class JobsController {
   @Get('postulaciones')
   @UseETag()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
   @ApiOperation({ summary: 'Postulaciones por vacante (alias)', description: 'Alias de postulantes-vacante para compatibilidad con el frontend existente. Retorna los postulantes de una vacante específica.' })
   @ApiQuery({ name: 'vacanteId', required: true, description: 'ID de la vacante a consultar' })
@@ -243,13 +251,13 @@ export class JobsController {
   @Patch('postulaciones/:id/estado')
   @Throttle({ default: { limit: 20, ttl: 60000 } }) // 20 cambios de estado por minuto
   @UseGuards(JwtAuthGuard, RolesGuard, InstitucionVerificadaGuard)
-  @Roles('institucion', 'admin')
+  @Roles('institucion', 'empresa', 'admin')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Cambiar estado de postulación', description: 'Permite a la institución dueña de la vacante (o admin) aceptar o rechazar una postulación. Notifica al postulante.' })
+  @ApiOperation({ summary: 'Cambiar estado de postulación', description: 'Permite a la entidad dueña de la vacante (o admin) aceptar o rechazar una postulación. Notifica al postulante.' })
   @ApiParam({ name: 'id', description: 'ID de la postulación' })
   @ApiOkResponse({ type: PostulacionEstadoActualizadoDto, description: 'Estado actualizado correctamente' })
   @ApiResponse({ status: 400, description: 'Estado inválido (debe ser pendiente, aceptada o rechazada)' })
-  @ApiResponse({ status: 403, description: 'No pertenece a tu institución' })
+  @ApiResponse({ status: 403, description: 'No pertenece a tu entidad, o la entidad no tiene CSF cargada ni aprobación de administrador' })
   @ApiResponse({ status: 404, description: 'Postulación o vacante no encontrada' })
   cambiarEstadoPostulacion(@Param('id') id: string, @Body() dto: ActualizarEstadoPostulacionDto, @CurrentUser() user: CurrentUserPayload) {
     return this.svc.actualizarEstadoPostulacion(id, user, dto)

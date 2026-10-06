@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { parsearTiposDiscapacidad, obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
+import { MENSAJE_CSF_REQUERIDO, puedeOperarComoPersonaMoral } from '../../common/utils/verificacion-persona-moral'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { VacanteDoc, InstitucionDoc, PerfilDoc, PostulacionDoc } from '../../common/interfaces/firestore-documents.interface'
 
@@ -438,16 +439,18 @@ export class JobsService {
   }
 
   async createJob(institucionId: string, dto: CreateJobDto) {
-    // La institución debe existir, estar activa y haber sido aprobada por un
-    // administrador (verificada) antes de publicar vacantes en el directorio.
+    // La entidad moral debe existir y estar activa. Para publicar vacantes se
+    // requiere CSF cargada O aprobación de un administrador: la CURP no aplica
+    // a personas morales. Ver `verificacion-persona-moral.ts` (misma regla que
+    // aplica InstitucionVerificadaGuard).
     const instDoc = await this.db.collection(COLECCIONES.instituciones).doc(institucionId).get()
     if (!instDoc.exists) throw new NotFoundException('Institución no encontrada')
     const inst = instDoc.data()!
     if (inst.activa !== true) {
       throw new ForbiddenException('La institución se encuentra inactiva')
     }
-    if (inst.verificada !== true) {
-      throw new ForbiddenException('La institución debe estar aprobada por un administrador para publicar vacantes')
+    if (!puedeOperarComoPersonaMoral(inst)) {
+      throw new ForbiddenException(MENSAJE_CSF_REQUERIDO)
     }
 
     const ref = this.db.collection(COLECCIONES.vacantes).doc()
