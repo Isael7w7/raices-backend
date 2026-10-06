@@ -4,6 +4,7 @@ import { JobsService } from './jobs.service'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { FeatureGuard } from '../../common/guards/feature.guard'
+import { InstitucionVerificadaGuard } from '../../common/guards/institucion-verificada.guard'
 import { RequestMethod } from '@nestjs/common'
 import { PATH_METADATA, METHOD_METADATA } from '@nestjs/common/constants'
 
@@ -33,6 +34,10 @@ describe('JobsController', () => {
       .overrideGuard(JwtAuthGuard).useValue({ canActivate: () => true })
       .overrideGuard(RolesGuard).useValue({ canActivate: () => true })
       .overrideGuard(FeatureGuard).useValue({ canActivate: () => true })
+      // La verificación de persona moral se prueba en su propio spec
+      // (institucion-verificada.guard.spec.ts); aquí solo se comprueba el
+      // cableado del controlador.
+      .overrideGuard(InstitucionVerificadaGuard).useValue({ canActivate: () => true })
       .compile()
 
     controller = module.get<JobsController>(JobsController)
@@ -82,8 +87,8 @@ describe('JobsController', () => {
     expect(guards).toContain(JwtAuthGuard)
     expect(guards).toContain(RolesGuard)
 
-    // Roles exigidos
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'admin'])
+    // Roles exigidos: persona moral (institución o empresa) o admin
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'empresa', 'admin'])
 
     // Orden de declaración: ruta estática antes de @Get(':id')
     const metodos = Object.getOwnPropertyNames(JobsController.prototype)
@@ -114,7 +119,7 @@ describe('JobsController', () => {
     expect(guards).toContain(RolesGuard)
 
     // Roles exigidos (SetMetadata('roles', ...) del decorador Roles)
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'admin'])
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'empresa', 'admin'])
 
     // Orden de declaración: la ruta estática debe declararse antes de @Get(':id')
     const metodos = Object.getOwnPropertyNames(JobsController.prototype)
@@ -149,7 +154,7 @@ describe('JobsController', () => {
     expect(guards).toContain(JwtAuthGuard)
     expect(guards).toContain(RolesGuard)
 
-    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'admin'])
+    expect(Reflect.getMetadata('roles', handler)).toEqual(['institucion', 'empresa', 'admin'])
   })
 
   it('delega en el servicio al cambiar el estado de una postulación', async () => {

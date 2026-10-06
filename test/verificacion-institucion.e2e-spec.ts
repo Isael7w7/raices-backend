@@ -198,7 +198,11 @@ describe('Verificación de Instituciones (E2E)', () => {
         })
 
       expect(res.status).toBe(403)
-      expect(res.body.message).toContain('no verificada')
+      // El rechazo de una persona moral habla de CSF, nunca de CURP.
+      expect(res.body.message).toBe(
+        'Tu cuenta requiere cargar la Constancia de Situación Fiscal (CSF) para publicar vacantes.',
+      )
+      expect(res.body.message).not.toMatch(/CURP/i)
     })
 
     it('403: editar vacante sin estar verificada', async () => {

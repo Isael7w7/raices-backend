@@ -476,7 +476,7 @@ describe('JobsService', () => {
       await expect(service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any)).rejects.toThrow(NotFoundException)
     })
 
-    it('should throw ForbiddenException when the institution is not approved (verificada false)', async () => {
+    it('should throw ForbiddenException con el mensaje de CSF cuando no hay CSF ni aprobación', async () => {
       const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
 
       firestoreMock.collection
@@ -484,7 +484,28 @@ describe('JobsService', () => {
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ activa: true, verificada: false }, true, 'inst1')) }) })
 
       await expect(service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any))
-        .rejects.toThrow('La institución debe estar aprobada por un administrador para publicar vacantes')
+        .rejects.toThrow('Tu cuenta requiere cargar la Constancia de Situación Fiscal (CSF) para publicar vacantes')
+    })
+
+    it('should allow publishing with a CSF uploaded even without admin approval', async () => {
+      const instSnap = { empty: false, docs: [{ id: 'inst1', data: () => ({}) }] }
+      const vacanteSet = jest.fn().mockResolvedValue(undefined)
+      const vacanteGet = jest.fn().mockResolvedValue(mockDoc({ titulo: 'Test', institucionId: 'inst1' }, true, 'new-id'))
+      const instGet = jest.fn().mockResolvedValue(
+        mockDoc({ nombre: 'Empresa SA', activa: true, verificada: false, documentoCsf: 'https://storage/csf.pdf' }, true, 'inst1'),
+      )
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue(instSnap) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: instGet }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: vacanteSet, get: vacanteGet }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: vacanteGet }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: instGet }) })
+
+      const resultado = await service.createForUser(mockUser({ id: 'user1', rol: 'institucion' }), { titulo: 'Test' } as any)
+
+      expect(resultado.titulo).toBe('Test')
+      expect(vacanteSet).toHaveBeenCalledTimes(1)
     })
 
     it('should throw ForbiddenException when the institution is inactive', async () => {

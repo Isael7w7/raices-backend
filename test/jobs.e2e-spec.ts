@@ -213,11 +213,37 @@ describe('Empleo (E2E)', () => {
         .set('Authorization', token('uid-emp-sinverif'))
 
       expect(res.status).toBe(403)
-      // Si el rol NO se normalizara a 'institucion', el mensaje sería 'Rol insuficiente'
-      expect(res.body.message).toContain('Institución no verificada')
+      // Si el rol NO se normalizara a 'institucion', el mensaje sería 'Rol insuficiente'.
+      // Con la persona moral sin CSF el bloqueo lo da la verificación, no el rol.
+      expect(res.body.message).toBe(
+        'Tu cuenta requiere cargar la Constancia de Situación Fiscal (CSF) para publicar vacantes.',
+      )
     })
 
-    it('403: empresa verificada pero con entidad sin aprobar por el admin', async () => {
+    it('201: empresa con CSF cargada publica SIN necesidad de CURP ni aprobación del admin', async () => {
+      await sembrarPerfil({ id: 'uid-emp-csf', email: 'emp-csf@test.com', rol: 'empresa', activo: true, verificado: false })
+      await sembrarInstitucion({
+        id: 'uid-emp-csf',
+        nombre: 'Empresa Con CSF',
+        tipo: 'empresa',
+        activa: true,
+        verificada: false,
+        documentoCsf: 'https://storage.googleapis.com/raices-bucket/instituciones/csf.pdf',
+        usuarioId: 'uid-emp-csf',
+        creadoPor: 'uid-emp-csf',
+      })
+
+      const res = await request(http)
+        .post('/api/empleo')
+        .send({ titulo: 'Puesto Vacante', descripcion: 'Desc' })
+        .set('Authorization', token('uid-emp-csf'))
+
+      expect(res.status).toBe(201)
+      expect(res.body.titulo).toBe('Puesto Vacante')
+      expect(res.body.institucionId).toBe('uid-emp-csf')
+    })
+
+    it('403: entidad sin CSF ni aprobación (aunque el perfil diga verificado=true)', async () => {
       await sembrarPerfil({ id: 'uid-emp-pendiente', email: 'emp-pendiente@test.com', rol: 'empresa', activo: true, verificado: true })
       await sembrarInstitucion({
         id: 'uid-emp-pendiente',
@@ -235,7 +261,11 @@ describe('Empleo (E2E)', () => {
         .set('Authorization', token('uid-emp-pendiente'))
 
       expect(res.status).toBe(403)
-      expect(res.body.message).toContain('aprobada por un administrador')
+      // La fuente de verdad es `instituciones.verificada` (la que escribe el
+      // admin al aprobar), no `perfiles.verificado`.
+      expect(res.body.message).toBe(
+        'Tu cuenta requiere cargar la Constancia de Situación Fiscal (CSF) para publicar vacantes.',
+      )
     })
   })
 

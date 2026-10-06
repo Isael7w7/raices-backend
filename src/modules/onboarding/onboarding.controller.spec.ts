@@ -11,6 +11,7 @@ describe('OnboardingController', () => {
   const mockSvc = {
     obtenerEstado: jest.fn(),
     saveDraft: jest.fn(),
+    completar: jest.fn(),
     etapaCompletada: jest.fn(),
   }
 
@@ -55,14 +56,26 @@ describe('OnboardingController', () => {
     expect(resultado.porcentajeProgreso).toBe(20)
   })
 
-  it('registra GET estado y POST borrador con los decoradores correctos', () => {
+  it('delega POST /onboarding/completar en completar con el id del usuario', async () => {
+    mockSvc.completar.mockResolvedValue({ onboardingCompleto: true, completado: true, porcentajeProgreso: 100 })
+
+    const resultado = await controller.completar(user as any)
+
+    expect(mockSvc.completar).toHaveBeenCalledWith('u1')
+    expect(resultado.porcentajeProgreso).toBe(100)
+  })
+
+  it('registra GET estado, POST borrador y POST completar con los decoradores correctos', () => {
     const estado = (OnboardingController.prototype as any).estado
     const borrador = (OnboardingController.prototype as any).guardarBorrador
+    const completar = (OnboardingController.prototype as any).completar
 
     expect(Reflect.getMetadata(PATH_METADATA, estado)).toBe('estado')
     expect(Reflect.getMetadata(METHOD_METADATA, estado)).toBe(RequestMethod.GET)
     expect(Reflect.getMetadata(PATH_METADATA, borrador)).toBe('borrador')
     expect(Reflect.getMetadata(METHOD_METADATA, borrador)).toBe(RequestMethod.POST)
+    expect(Reflect.getMetadata(PATH_METADATA, completar)).toBe('completar')
+    expect(Reflect.getMetadata(METHOD_METADATA, completar)).toBe(RequestMethod.POST)
 
     // Ambos protegidos por JwtAuthGuard a nivel de clase
     const guards = Reflect.getMetadata('__guards__', OnboardingController) ?? []

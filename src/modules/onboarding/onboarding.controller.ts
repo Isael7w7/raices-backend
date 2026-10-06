@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiBody, ApiOkResponse, ApiRespon
 import { Throttle } from '@nestjs/throttler'
 import { OnboardingService } from './onboarding.service'
 import { SaveDraftOnboardingDto } from './dto/save-draft-onboarding.dto'
-import { EstadoOnboardingDto, BorradorOnboardingDto } from './dto/respuestas-onboarding.dto'
+import { EstadoOnboardingDto, BorradorOnboardingDto, OnboardingCompletadoDto } from './dto/respuestas-onboarding.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
@@ -24,7 +24,8 @@ export class OnboardingController {
     description:
       'Retorna porcentaje de progreso, último paso completado, secciones pendientes y las variables de contexto ' +
       '(destinatarioPerfil: PARA_MI | PARA_MI_HIJO y nombrePcd) que el Frontend usa para personalizar las preguntas. ' +
-      'Los contextos se derivan de datos ya existentes (destinatarioRegistro, perfil o dependiente del tutor).',
+      'Los contextos se derivan de datos ya existentes (destinatarioRegistro, perfil o dependiente del tutor). ' +
+      'Usar `seccionesFaltantes` (con `etiqueta` amigable) para mostrar lo que falta en la UI, no las claves técnicas de `pasosPendientes`.',
   })
   @ApiOkResponse({ type: EstadoOnboardingDto, description: 'Estado del onboarding' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
@@ -49,5 +50,24 @@ export class OnboardingController {
   @ApiResponse({ status: 401, description: 'No autenticado' })
   guardarBorrador(@CurrentUser() user: CurrentUserPayload, @Body() dto: SaveDraftOnboardingDto) {
     return this.svc.saveDraft(user.id, dto)
+  }
+
+  // ─── POST /onboarding/completar · consolidación ───────────────────
+
+  @Post('completar')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // cierres de formulario (frecuentes pero acotados)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Consolidar y cerrar el onboarding',
+    description:
+      'Cierre explícito del formulario (confirmación del último paso). Promueve las respuestas de borradoresOnboarding ' +
+      'a perfilesExtendidos y marca el perfil con onboardingCompleto=true y porcentajeProgreso=100, cerrando el bucle ' +
+      'del modal "Completa tu perfil". Para roles Tutor/Padre se registra la acreditación sin exigir documentos ' +
+      '(nunca es bloqueante). Es idempotente y devuelve el estado final ya calculado.',
+  })
+  @ApiOkResponse({ type: OnboardingCompletadoDto, description: 'Onboarding consolidado al 100% (200 OK)' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  completar(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.completar(user.id)
   }
 }

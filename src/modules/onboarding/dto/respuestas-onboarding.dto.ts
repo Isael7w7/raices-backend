@@ -35,6 +35,29 @@ export class EtapasNavegacionDto {
 // ─── Diapositiva 1 · Estado del Onboarding ──────────────────────────
 
 /**
+ * Sección pendiente con etiqueta amigable.
+ * `etiqueta` es el texto que la UI debe mostrar; `clave` solo sirve para
+ * navegar al paso correspondiente (no es texto de interfaz).
+ */
+export class SeccionFaltanteDto {
+  @ApiProperty({ description: 'Clave técnica de la sección (solo navegación interna)', example: 'datosGenerales' })
+  clave!: string
+
+  @ApiProperty({
+    description: 'Etiqueta en lenguaje natural para mostrar al usuario',
+    example: 'Datos generales',
+  })
+  etiqueta!: string
+
+  @ApiProperty({
+    description: 'Campos concretos que faltan dentro de la sección',
+    example: ['curp', 'ciudad'],
+    type: [String],
+  })
+  camposFaltantes!: string[]
+}
+
+/**
  * Contrato del endpoint GET /api/onboarding/estado.
  * Expone el progreso del formulario y las variables de contexto que el
  * Frontend necesita para personalizar las preguntas en todo momento.
@@ -45,6 +68,19 @@ export class EstadoOnboardingDto {
     example: false,
   })
   onboardingCompleto!: boolean
+
+  @ApiProperty({
+    description: 'Alias booleano de onboardingCompleto, para que la UI no dependa del nombre técnico',
+    example: false,
+  })
+  completado!: boolean
+
+  @ApiProperty({
+    description: 'Secciones pendientes CON etiqueta amigable (array vacío al completar el onboarding)',
+    example: [{ clave: 'datosGenerales', etiqueta: 'Datos generales', camposFaltantes: ['curp'] }],
+    type: [SeccionFaltanteDto],
+  })
+  seccionesFaltantes!: SeccionFaltanteDto[]
 
   @ApiProperty({ description: 'Porcentaje de completitud del onboarding (0-100)', example: 45 })
   porcentajeProgreso!: number
@@ -70,7 +106,7 @@ export class EstadoOnboardingDto {
   nombrePcd!: string | null
 
   @ApiProperty({
-    description: 'Secciones obligatorias que faltan por responder',
+    description: 'Secciones obligatorias que faltan por responder (claves técnicas; usar seccionesFaltantes para mostrar texto al usuario)',
     example: ['historialEducativo', 'terapias'],
     type: [String],
   })
@@ -114,9 +150,33 @@ export class BorradorOnboardingDto {
   ultimoPasoCompletado!: number
 
   @ApiProperty({
-    description: 'Secciones obligatorias que faltan por responder',
+    description: 'Secciones obligatorias que faltan por responder (claves técnicas; usar seccionesFaltantes para mostrar texto al usuario)',
     example: ['historialEducativo', 'terapias'],
     type: [String],
   })
   pasosPendientes!: string[]
+
+  @ApiProperty({
+    description: 'Secciones pendientes CON etiqueta amigable',
+    example: [{ clave: 'terapias', etiqueta: 'Terapias y diagnóstico', camposFaltantes: ['tieneDiagnostico'] }],
+    type: [SeccionFaltanteDto],
+  })
+  seccionesFaltantes!: SeccionFaltanteDto[]
+}
+
+// ─── Cierre del onboarding (POST /api/onboarding/completar) ──────────
+
+/**
+ * Respuesta de la consolidación: el borrador se promovió a
+ * `perfilesExtendidos` y el perfil quedó marcado al 100%.
+ */
+export class OnboardingCompletadoDto extends BorradorOnboardingDto {
+  @ApiProperty({ description: 'Alias booleano de onboardingCompleto', example: true })
+  completado!: boolean
+
+  @ApiProperty({ description: 'Si las respuestas ya fueron promovidas a perfilesExtendidos', example: true })
+  consolidado!: boolean
+
+  @ApiProperty({ description: 'ISO 8601 del cierre', example: '2026-10-05T12:00:00.000Z' })
+  fechaCompletado!: string
 }

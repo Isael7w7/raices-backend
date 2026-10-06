@@ -115,6 +115,14 @@ export class ActualizarPerfilDto {
   @IsIn(['explorar_solo', 'recomendaciones_paso', 'apoyo_necesite'])
   preferenciasAcompanamiento?: string
 
+  @ApiPropertyOptional({
+    description: 'Tono contextual con el que quiere recibir la información (se guarda en el perfil y alimenta el onboarding)',
+    enum: ['formal', 'cercano', 'empatico', 'directo', 'infantil'],
+  })
+  @IsOptional()
+  @IsIn(['formal', 'cercano', 'empatico', 'directo', 'infantil'])
+  tonoContextual?: string
+
   // ═════════════════════════════════════════════════════════════════
   // Campos corporativos (rol empresa / persona moral)
   // ═════════════════════════════════════════════════════════════════
