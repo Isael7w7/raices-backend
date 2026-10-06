@@ -57,6 +57,21 @@ export class CommunityController {
     return this.svc.getPosts(grupoId, user.id, paginacion.pagina, paginacion.limite, paginacion.ordenarPor, paginacion.direccion, paginacion.buscar)
   }
 
+  @Get('feed-mixto')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Feed mixto: comunidad + recomendaciones de ruta',
+    description: 'Muro mixto: 50% publicaciones de la comunidad (más recientes) y 50% contenido inyectado desde la ruta activa del usuario (instituciones cercanas y vacantes relevantes al paso actual).',
+  })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 12 })
+  @ApiOkResponse({ description: 'Feed mixto' })
+  feedMixto(@CurrentUser() user: CurrentUserPayload, @Query() paginacion: PaginacionDto) {
+    return this.svc.getMixtoFeed(user.id, paginacion.pagina, paginacion.limite)
+  }
+
   @Get('publicaciones/:id/comentarios')
   @UseETag()
   @ApiOperation({ summary: 'Comentarios de una publicación', description: 'Retorna comentarios con paginación' })

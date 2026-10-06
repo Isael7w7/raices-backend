@@ -6,6 +6,8 @@ import { RoutesAnalyticsService } from './routes-analytics.service'
 import { Throttle } from '@nestjs/throttler'
 import { throttlePorEntorno } from '../../common/utils/throttle'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { RolesGuard } from '../../common/guards/roles.guard'
+import { Roles } from '../../common/decorators/roles.decorator'
 import { CurrentUser } from '../../common/decorators/current-user.decorator'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { UseETag } from '../../common/decorators/use-etag.decorator'
@@ -62,7 +64,9 @@ export class RoutesController {
   // orden; si ':id' va primero, captura '/analytics' y responde 404.
   @Get('analytics')
   @UseETag()
-  @ApiOperation({ summary: 'Analytics de rutas', description: 'Resumen de métricas: tasas de completado por discapacidad, pasos más completados, tiempo promedio.' })
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({ summary: 'Analytics de rutas (solo admin)', description: 'Resumen de métricas: tasas de completado por discapacidad, pasos más completados, tiempo promedio.' })
   @ApiOkResponse({ description: 'Resumen de analytics' })
   async obtenerAnalytics() {
     return this.analytics.obtenerResumen()

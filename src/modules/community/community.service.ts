@@ -682,4 +682,227 @@ export class CommunityService {
     const inicio = (pagina - 1) * limite
     return paginar(enriquecidas.slice(inicio, inicio + limite), total, pagina, limite)
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Feed Mixto (Comunidad + Recomendaciones de Ruta)
+  // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Devuelve un feed mixto: 50% publicaciones de la comunidad (más recientes)
+   * y 50% entidades inyectadas desde la ruta activa del usuario (instituciones
+   * cercanas y vacantes relevantes al paso actual).
+   *
+   * Las entidades de ruta se enriquecen como items tipo "recomendación" con
+   * metadatos que permiten distinguirlas visualmente en el frontend.
+   */
+  async getMixtoFeed(usuarioId: string, pagina = 1, limite = 12): Promise<{
+    items: Array<Record<string, unknown>>
+    pagina: number
+    limite: number
+    total: number
+    totalPublicaciones: number
+    totalEntidades: number
+  }> {
+    try {
+      // 1. Obtener publicaciones recientes de la comunidad (50%)
+      const publicacionesResult = await this.getPosts(undefined, usuarioId, 1, limite * 2, 'fechaCreacion', 'desc')
+      const publicaciones = publicacionesResult.datos.slice(0, Math.ceil(limite / 2))
+
+      // 2. Obtener la ruta activa del usuario para extraer entidades recomendadas
+      const rutasSnap = await this.db.collection(COLECCIONES.rutasDesarrollo)
+        .where('usuarioId', '==', usuarioId)
+        .where('estado', '==', 'activa')
+        .get()
+
+      let pasoActualTitulo: string | undefined
+      const entidades: Array<Record<string, unknown>> = []
+      const vacantes: Array<Record<string, unknown>> = []
+
+      if (!rutasSnap.empty) {
+        // Tomar la ruta más reciente
+        const rutaDocs = rutasSnap.docs.map(d => ({
+          id: d.id,
+          datos: d.data() as Record<string, unknown>,
+        }))
+        rutaDocs.sort((a, b) => String(b.datos.fechaCreacion ?? '').localeCompare(String(a.datos.fechaCreacion ?? '')))
+        const rutaDoc = rutaDocs[0]
+
+        // Obtener pasos y encontrar el paso actual
+        const pasosSnap = await this.db.collection(COLECCIONES.pasosRuta)
+          .where('rutaId', '==', rutaDoc.id)
+          .get()
+        const pasos = pasosSnap.docs
+          .map(d => ({ id: d.id, ...d.data() } as Record<string, unknown>))
+          .sort((a, b) => Number(a.orden ?? 0) - Number(b.orden ?? 0))
+        const pasoActual = pasos.find(p => !p.completado)
+        pasoActualTitulo = pasoActual?.titulo as string | undefined
+
+        // Cargar perfil para ciudad
+        const registroDoc = await this.db.collection(COLECCIONES.perfiles).doc(usuarioId).get()
+        const registro = registroDoc.data() as Record<string, unknown> | undefined
+        const ciudad = registro?.ciudad as string ?? ''
+
+        // Obtener entidades locales (reutilizando lógica de RoutesService vía KnowledgeBase)
+        // Nota: CommunityService no tiene acceso directo a KnowledgeBase, así que
+        // replicamos la consulta básica de instituciones y vacantes.
+        try {
+          const instSnap = await this.db.collection(COLECCIONES.instituciones)
+            .where('activa', '==', true)
+            .where('ciudad', '==', ciudad)
+            .get()
+
+          const institucionesFiltradas = instSnap.docs.map(d => d.data() ?? {})
+            .filter((inst: Record<string, unknown>) => inst.tipo !== 'empresa')
+            .slice(0, 4)
+          entidades.push(...institucionesFiltradas)
+        } catch (err) {
+          this.logger.warn(`getMixtoFeed: error obteniendo instituciones: ${err instanceof Error ? err.message : String(err)}`)
+        }
+
+        try {
+          const vacSnap = await this.db.collection(COLECCIONES.vacantes)
+            .where('activa', '==', true)
+            .get()
+
+          const vacantesFiltradas = vacSnap.docs.map(d => d.data() ?? {})
+            .filter((v: Record<string, unknown>) => {
+              const vCiudad = (v.ciudad as string) ?? ''
+              return vCiudad && vCiudad.toLowerCase().includes(ciudad.toLowerCase())
+            })
+            .slice(0, 4)
+          vacantes.push(...vacantesFiltradas)
+        } catch (err) {
+          this.logger.warn(`getMixtoFeed: error obteniendo vacantes: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
+
+      // 3. Transformar publicaciones a items del feed
+      const itemsPublicaciones: Array<Record<string, unknown>> = publicaciones.map((p: typeof publicaciones[number]) => ({
+        tipo: 'publicacion',
+        id: p.id,
+        titulo: p.contenido ?? '',
+        contenido: p.contenido,
+        autor: p.nombreCompleto,
+        autorId: p.autorId,
+        rol: p.rol ?? null,
+        etiquetaRol: p.etiquetaRol ?? null,
+        urlAvatar: p.urlAvatar ?? null,
+        mediaUrl: p.mediaUrl ?? null,
+        categoria: p.categoriaCreativa ?? undefined,
+        categoriaLabel: p.categoriaCreativa ?? undefined,
+        fechaCreacion: p.fechaCreacion ?? undefined,
+        usuarioMeGusta: p.usuarioMeGusta ?? false,
+        cantidadMeGustas: p.cantidadMeGustas ?? 0,
+        fuenteRuta: false,
+      }))
+
+      // 4. Transformar instituciones a items del feed
+      const itemsInstituciones: Array<Record<string, unknown>> = entidades.map(inst => ({
+        tipo: 'institucion',
+        id: String(inst.id),
+        titulo: (inst.nombre as string) ?? 'Sin nombre',
+        categoria: (inst.categoria as string) ?? 'general',
+        categoriaLabel: inst.categoria ? this.etiquetaCategoria(String(inst.categoria)) : undefined,
+        distancia: 'en tu ciudad',
+        fuenteRuta: true,
+        pasoActualTitulo,
+      }))
+
+      // 5. Transformar vacantes a items del feed
+      const itemsVacantes: Array<Record<string, unknown>> = vacantes.map(vac => ({
+        tipo: 'vacante',
+        id: String(vac.id),
+        titulo: (vac.titulo as string) ?? 'Sin título',
+        modalidad: (vac.modalidad as string) ?? 'no especificada',
+        ciudad: (vac.ciudad as string) ?? 'no especificada',
+        fuenteRuta: true,
+        pasoActualTitulo,
+      }))
+
+      // 6. Mezclar: 50% publicaciones + 50% entidades (instituciones + vacantes)
+      const entidadesTotales = itemsInstituciones.length + itemsVacantes.length
+      const itemsEntidades: Array<Record<string, unknown>> = [...itemsInstituciones, ...itemsVacantes]
+
+      // Si no hay entidades, mostrar solo publicaciones con flag
+      const items: Array<Record<string, unknown>> = entidadesTotales > 0
+        ? this.mezclarItems(itemsPublicaciones, itemsEntidades, limite)
+        : itemsPublicaciones
+
+      const totalPublicaciones = publicacionesResult.total
+      const totalEntidades = entidadesTotales
+
+      const total = items.length
+      const inicio = (pagina - 1) * limite
+
+      return {
+        items: items.slice(inicio, inicio + limite),
+        pagina,
+        limite,
+        total,
+        totalPublicaciones,
+        totalEntidades,
+      }
+    } catch (error) {
+      this.logger.error(`Error al obtener feed mixto: ${(error as Error).message}`, (error as Error).stack)
+      return {
+        items: [],
+        pagina,
+        limite,
+        total: 0,
+        totalPublicaciones: 0,
+        totalEntidades: 0,
+      }
+    }
+  }
+
+  /**
+   * Etiqueta amigable para categorías de instituciones.
+   */
+  private etiquetaCategoria(cat: string): string {
+    const etiquetas: Record<string, string> = {
+      terapia: 'Terapia',
+      educacion: 'Educación',
+      funcional: 'Funcional',
+      laboral: 'Laboral',
+      social: 'Social',
+      salud: 'Salud',
+      general: 'General',
+    }
+    return etiquetas[cat.toLowerCase()] ?? cat.charAt(0).toUpperCase() + cat.slice(1)
+  }
+
+  /**
+   * Mezcla publicaciones con entidades de ruta manteniendo la proporción ~50/50.
+   * Intercala items para que el feed no se sienta segmentado.
+   */
+  private mezclarItems(
+    publicaciones: Array<Record<string, unknown>>,
+    entidades: Array<Record<string, unknown>>,
+    limite: number,
+  ): Array<Record<string, unknown>> {
+    const resultado: Array<Record<string, unknown>> = []
+    const maxPublicaciones = Math.ceil(limite / 2)
+    const maxEntidades = limite - maxPublicaciones
+
+    const pubs = publicaciones.slice(0, maxPublicaciones)
+    const ents = entidades.slice(0, maxEntidades)
+
+    // Intercalar: empezar con publicación si hay más publicaciones, sino con entidad
+    let i = 0, j = 0, k = 0
+    while (i < pubs.length || j < ents.length) {
+      if (k % 2 === 0 && i < pubs.length) {
+        resultado.push(pubs[i] as unknown as typeof resultado[number])
+        i++
+      } else if (j < ents.length) {
+        resultado.push(ents[j] as unknown as typeof resultado[number])
+        j++
+      } else if (i < pubs.length) {
+        resultado.push(pubs[i] as unknown as typeof resultado[number])
+        i++
+      }
+      k++
+    }
+
+    return resultado
+  }
 }
