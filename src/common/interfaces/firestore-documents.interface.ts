@@ -70,6 +70,13 @@ export interface PerfilDoc {
   fechaNacimiento?: string
   domicilio?: string
   tonoContextual?: string
+  // ── Cierre del onboarding (consolidación) ──
+  /** `true` cuando el usuario confirmó el cierre del formulario. */
+  onboardingCompleto?: boolean
+  /** Avance consolidado: 100 al cerrar el formulario. */
+  porcentajeProgreso?: number
+  /** ISO 8601 del cierre confirmado del onboarding. */
+  fechaOnboardingCompletado?: string
 }
 
 /**
@@ -177,6 +184,11 @@ export interface PerfilExtendidoDoc {
   historialInstituciones?: string
   tonoContextual?: string
   condiciones?: string
+  /** Observaciones libres del formulario de onboarding (campo opcional). */
+  observacionesGenerales?: string
+  // ── Cierre del onboarding (consolidación) ──
+  onboardingCompleto?: boolean
+  porcentajeProgreso?: number
 }
 
 /**
@@ -208,6 +220,11 @@ export interface BorradorOnboardingDoc {
   ultimoPasoCompletado?: number
   onboardingCompleto?: boolean
   pasosPendientes?: string[]
+  /** Secciones pendientes con etiqueta amigable (contrato de la UI). */
+  seccionesFaltantes?: { clave: string; etiqueta: string; camposFaltantes: string[] }[]
+  /** `true` cuando el borrador ya fue promovido a `perfilesExtendidos`. */
+  consolidado?: boolean
+  fechaConsolidacion?: string
   fechaCreacion?: string
   fechaActualizacion?: string
 }

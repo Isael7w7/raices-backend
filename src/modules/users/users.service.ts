@@ -18,6 +18,7 @@ import { ActualizarPerfilNecesidadesDto } from './dto/actualizar-perfil-necesida
 import { ActualizarPermisosDependienteDto } from './dto/actualizar-permisos-dependiente.dto'
 import { CrearDependienteDto } from './dto/crear-dependiente.dto'
 import { ETagInterceptor } from '../../common/interceptors/etag.interceptor'
+import { OnboardingService } from '../onboarding/onboarding.service'
 
 @Injectable()
 export class UsersService {
@@ -29,6 +30,8 @@ export class UsersService {
     // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
     @Optional() private readonly validation?: ValidationService,
     @Optional() @Inject(FIREBASE_AUTH) private readonly auth?: FirebaseAuth,
+    // Consolidación del onboarding (Optional: los specs unitarios la construyen sin OnboardingModule)
+    @Optional() private readonly onboarding?: OnboardingService,
   ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
@@ -131,7 +134,7 @@ export class UsersService {
 
   async updateProfile(usuarioId: string, datos: ActualizarPerfilDto) {
     const datosSeguros = datos ?? ({} as ActualizarPerfilDto)
-    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio', 'curp', 'telefonoContacto', 'destinatarioRegistro', 'preferenciasAcompanamiento', 'fechaNacimiento', 'domicilio', 'sector', 'sitioWeb', 'emailContacto', 'accesibilidadInfraestructura'] as const
+    const camposActualizables = ['nombreCompleto', 'ciudad', 'estado', 'urlAvatar', 'profesion', 'bio', 'curp', 'telefonoContacto', 'destinatarioRegistro', 'preferenciasAcompanamiento', 'tonoContextual', 'fechaNacimiento', 'domicilio', 'sector', 'sitioWeb', 'emailContacto', 'accesibilidadInfraestructura'] as const
     const carga: Record<string, unknown> = {}
     for (const campo of camposActualizables) {
       const valor = datosSeguros[campo]
@@ -207,6 +210,18 @@ export class UsersService {
       const ref = this.col(COLECCIONES.perfilesExtendidos).doc()
       await ref.set({ id: ref.id, usuarioId, ...carga })
     }
+
+    // Cierre del onboarding: este endpoint es uno de los puntos de confirmación
+    // del formulario. La consolidación promueve el borrador a
+    // `perfilesExtendidos` y marca el perfil al 100% SOLO si las secciones
+    // obligatorias están realmente cubiertas (si falta algo, conserva el
+    // avance real). Nunca throws: un fallo de consolidación no debe invalidar
+    // el perfil de necesidades ya guardado.
+    await this.onboarding?.consolidar(usuarioId).catch((err: unknown) => {
+      this.logger.warn(
+        `consolidación de onboarding falló para ${usuarioId}: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    })
 
     const perfilGuardado = {
       tiposDiscapacidad: this.parsearCampoJson(carga.tiposDiscapacidad),
@@ -344,6 +359,10 @@ export class UsersService {
       const ref = this.col(COLECCIONES.perfilesExtendidos).doc()
       await ref.set({ id: ref.id, usuarioId, ...carga })
     }
+
+    // Las escalas son una sección del onboarding: sin invalidar la caché,
+    // GET /usuarios/perfil y GET /onboarding/estado servirían el avance viejo.
+    ETagInterceptor.clearUsuarioCache(usuarioId)
 
     return {
       escalasVida: carga.escalasVida,

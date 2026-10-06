@@ -16,10 +16,11 @@ import { FavoritesModule } from '../../src/modules/favorites/favorites.module'
 import { NotificationsModule } from '../../src/modules/notifications/notifications.module'
 import { ReviewsModule } from '../../src/modules/reviews/reviews.module'
 import { RoutesModule } from '../../src/modules/routes/routes.module'
+import { OnboardingModule } from '../../src/modules/onboarding/onboarding.module'
 
 /**
  * Módulo raíz de pruebas E2E: monta solo los módulos de negocio bajo prueba
- * (autenticación, usuarios/tutor-PCD, instituciones, administración y salud)
+ * (autenticación, usuarios/tutor-PCD, onboarding, instituciones, administración y salud)
  * sobre el DatabaseModule real (cuyos providers FIRESTORE/FIREBASE_AUTH
  * quedan servidos por los mocks de test/setup-e2e.ts).
  *
@@ -33,6 +34,7 @@ import { RoutesModule } from '../../src/modules/routes/routes.module'
     DatabaseModule,
     AuthModule,
     UsersModule,
+    OnboardingModule,
     InstitutionsModule,
     RecommendationsModule,
     DiscoveryModule,
