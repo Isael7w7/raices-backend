@@ -88,6 +88,36 @@ export const SECCIONES_ONBOARDING: SeccionOnboardingConfig[] = [
 /** Secciones con campos obligatorios: las que realmente gobiernan el progreso. */
 export const SECCIONES_BLOQUEANTES = SECCIONES_ONBOARDING.filter(s => s.campos.length > 0)
 
+/**
+ * Lista de campos OBLIGATORIOS del rol Tutor: únicamente los que el wizard
+ * del Tutor (`TutorProfileWizard`) recopila y que este servicio persiste.
+ * Los campos `historialEducacion`, `tieneDiagnostico`, `tiposDiscapacidad`,
+ * `tonoContextual` y `areasInteres` pertenecen al formulario PCD: exigírselos
+ * al Tutor hacía matemáticamente imposible el 100% y el modal "Completa tu
+ * perfil" reaparecía en bucle (13% / 70%).
+ *
+ * La regla del rol PCD sigue usando `SECCIONES_ONBOARDING`, intacta.
+ */
+export const SECCIONES_ONBOARDING_TUTOR: SeccionOnboardingConfig[] = [
+  { clave: 'datosGenerales', etiqueta: 'Datos generales', campos: ['fechaNacimiento', 'curp', 'ciudad'] },
+  {
+    clave: 'historialEducativo',
+    etiqueta: 'Historial educativo y etapa de vida',
+    campos: ['etapaVida'],
+  },
+  {
+    clave: 'preferencias',
+    etiqueta: 'Preferencias de acompañamiento',
+    campos: ['preferenciasAcompanamiento'],
+  },
+  {
+    clave: 'observacionesGenerales',
+    etiqueta: 'Observaciones generales (opcional)',
+    campos: [],
+    camposOpcionales: ['observacionesGenerales'],
+  },
+]
+
 /** Todos los campos del formulario (obligatorios + opcionales), sin duplicados. */
 export const CAMPOS_ONBOARDING = [
   ...new Set(SECCIONES_ONBOARDING.flatMap(s => [...s.campos, ...(s.camposOpcionales ?? [])])),
@@ -178,14 +208,18 @@ export class OnboardingService {
    * Nunca valida campos faltantes: un payload parcial nunca produce 400.
    */
   async saveDraft(usuarioId: string, dto: SaveDraftOnboardingDto) {
-    const [previo, base] = await Promise.all([
+    const [previo, base, perfil] = await Promise.all([
       this.leerBorrador(usuarioId),
       this.baseDesdePerfil(usuarioId),
+      this.leerPerfil(usuarioId),
     ])
 
     const borrador = this.fusionar(previo, dto)
     const vista = { ...base, ...borrador }
-    const progreso = this.calcularProgreso(vista)
+    const progreso = this.calcularProgreso(vista, {
+      rol: perfil?.rol,
+      cierreExplicito: this.cierreConfirmado(previo, perfil),
+    })
 
     const ahora = new Date().toISOString()
     const documento: BorradorOnboardingDoc = {
@@ -249,7 +283,10 @@ export class OnboardingService {
     ])
 
     const respuestas = { ...base, ...this.fusionar(previo, {}) }
-    const progresoReal = this.calcularProgreso(respuestas)
+    const progresoReal = this.calcularProgreso(respuestas, {
+      rol: perfil?.rol,
+      cierreExplicito: this.cierreConfirmado(previo, perfil),
+    })
     const ahora = new Date().toISOString()
 
     const progreso: ProgresoOnboarding = opciones.forzar
@@ -396,7 +433,10 @@ export class OnboardingService {
       ])
 
       const vista = { ...base, ...this.fusionar(previo, {}) }
-      const progreso = this.calcularProgreso(vista)
+      const progreso = this.calcularProgreso(vista, {
+        rol: perfil?.rol,
+        cierreExplicito: this.cierreConfirmado(previo, perfil),
+      })
       const destinatarioPerfil = this.destinatarioPerfil(perfil)
       const nombrePcd = await this.nombrePcd(usuarioId, perfil, destinatarioPerfil)
 
@@ -526,7 +566,54 @@ export class OnboardingService {
    *   campos concretos que faltan, para que la UI no muestre claves técnicas.
    * - onboardingCompleto: true solo cuando no queda nada pendiente.
    */
-  private calcularProgreso(vista: Record<string, unknown>): ProgresoOnboarding {
+  private calcularProgreso(
+    vista: Record<string, unknown>,
+    opciones: { rol?: string; cierreExplicito?: boolean } = {},
+  ): ProgresoOnboarding {
+    // ── ROL TUTOR: bifurcación temprana con sus propios requiredFields ──
+    if (this.esTutor(opciones.rol)) {
+      // El backend ya confirmó el cierre (flag `onboardingCompleto`): 100%.
+      if (opciones.cierreExplicito) return this.progresoCompleto()
+      return this.progresoPorSecciones(vista, SECCIONES_ONBOARDING_TUTOR)
+    }
+
+    // ── ROL PCD / resto: misma regla de siempre, sin cambios ──────────
+    return this.progresoPorSecciones(vista, SECCIONES_ONBOARDING)
+  }
+
+  /** Regla por rol: solo `tutor` / `padre_tutor` usan la lista reducida. */
+  private esTutor(rol?: string): boolean {
+    return rol === 'tutor' || rol === 'padre_tutor'
+  }
+
+  /** Progreso definitivo cuando el cierre ya fue confirmado por el backend. */
+  private progresoCompleto(): ProgresoOnboarding {
+    return {
+      onboardingCompleto: true,
+      porcentajeProgreso: 100,
+      ultimoPasoCompletado: SECCIONES_BLOQUEANTES.length,
+      pasosPendientes: [],
+      seccionesFaltantes: [],
+    }
+  }
+
+  /** true si el borrador/perfil ya traen el cierre confirmado del onboarding. */
+  private cierreConfirmado(previo: BorradorOnboardingDoc, perfil: PerfilDoc | null): boolean {
+    return (
+      (previo.consolidado === true && previo.onboardingCompleto === true) ||
+      perfil?.onboardingCompleto === true
+    )
+  }
+
+  /**
+   * Núcleo de cálculo compartido por ambos roles: recorre la lista de
+   * secciones que reciba (PCD: `SECCIONES_ONBOARDING`; Tutor:
+   * `SECCIONES_ONBOARDING_TUTOR`). La semántica no cambia para PCD.
+   */
+  private progresoPorSecciones(
+    vista: Record<string, unknown>,
+    secciones: SeccionOnboardingConfig[],
+  ): ProgresoOnboarding {
     let camposRespondidos = 0
     let camposTotales = 0
     let ultimoPasoCompletado = 0
@@ -534,7 +621,7 @@ export class OnboardingService {
     const pasosPendientes: SeccionOnboarding[] = []
     const seccionesFaltantes: SeccionFaltante[] = []
 
-    for (const seccion of SECCIONES_ONBOARDING) {
+    for (const seccion of secciones) {
       // Sección solo-opcional: se guarda si viene, pero nunca bloquea.
       if (seccion.campos.length === 0) continue
 

@@ -342,7 +342,7 @@ describe('OnboardingService', () => {
         ultimoPasoCompletado: 1,
         destinatarioPerfil: 'PARA_MI_HIJO',
         nombrePcd: 'Diego',
-        pasosPendientes: expect.arrayContaining(['historialEducativo', 'terapias']),
+        pasosPendientes: expect.arrayContaining(['historialEducativo', 'preferencias']),
         seccionesFaltantes: expect.any(Array),
         etapas: {
           etapa1: { nombre: 'Conocer quién eres', completada: false, desbloqueada: true, porcentaje: expect.any(Number) },
@@ -352,6 +352,10 @@ describe('OnboardingService', () => {
         modulosPermitidos: ['inicio', 'perfil_pcd'],
       })
       expect(estado.pasosPendientes).not.toContain('datosGenerales')
+      // Regla por rol: al Tutor NO se le exigen las secciones del formulario PCD
+      expect(estado.pasosPendientes).not.toContain('terapias')
+      expect(estado.pasosPendientes).not.toContain('escalasVida')
+      expect(estado.pasosPendientes).not.toContain('perfilNecesidades')
     })
 
     it('seccionesFaltantes devuelve etiquetas amigables, no claves técnicas', async () => {
@@ -424,6 +428,67 @@ describe('OnboardingService', () => {
       expect(estado.etapas.etapa1.desbloqueada).toBe(true)
       expect(estado.etapas.etapa1.completada).toBe(false)
       expect(estado.modulosPermitidos).toEqual(['inicio', 'perfil_pcd'])
+    })
+
+    it('ROL TUTOR: exige solo los campos que el formulario del Tutor recopila y alcanza 100%', async () => {
+      // Datos que el flujo del Tutor SÍ escribe: registro (fechaNacimiento,
+      // curp, ciudad, preferencias) + etapaVida del dependiente. Faltan
+      // campos exclusivos del formulario PCD (historialEducacion,
+      // tieneDiagnostico, tiposDiscapacidad, tonoContextual, areasInteres).
+      mockearFuentes({
+        perfil: {
+          rol: 'padre_tutor',
+          fechaNacimiento: '1990-05-05',
+          curp: 'GAPL800101MCYRL093',
+          ciudad: 'Mérida',
+          preferenciasAcompanamiento: 'recomendaciones_paso',
+        },
+        borrador: { etapaVida: 'infancia' },
+      })
+
+      const estado = await service.obtenerEstado('u1')
+
+      expect(estado.onboardingCompleto).toBe(true)
+      expect(estado.completado).toBe(true)
+      expect(estado.porcentajeProgreso).toBe(100)
+      expect(estado.pasosPendientes).toEqual([])
+      expect(estado.seccionesFaltantes).toEqual([])
+      expect(estado.etapas.etapa1.completada).toBe(true)
+    })
+
+    it('ROL PCD: con los MISMOS datos la regla original sigue exigiendo todas las secciones', async () => {
+      mockearFuentes({
+        perfil: {
+          rol: 'pcd',
+          fechaNacimiento: '1990-05-05',
+          curp: 'GAPL800101MCYRL093',
+          ciudad: 'Mérida',
+          preferenciasAcompanamiento: 'recomendaciones_paso',
+        },
+        borrador: { etapaVida: 'infancia' },
+      })
+
+      const estado = await service.obtenerEstado('u1')
+
+      expect(estado.onboardingCompleto).toBe(false)
+      expect(estado.porcentajeProgreso).toBeLessThan(100)
+      expect(estado.pasosPendientes).toEqual(
+        expect.arrayContaining(['historialEducativo', 'terapias', 'escalasVida', 'perfilNecesidades']),
+      )
+    })
+
+    it('ROL TUTOR: si el backend ya confirmó el cierre (flag), responde 100% aunque falte todo', async () => {
+      mockearFuentes({
+        perfil: { rol: 'padre_tutor', onboardingCompleto: true, porcentajeProgreso: 100 },
+        borrador: {},
+      })
+
+      const estado = await service.obtenerEstado('u1')
+
+      expect(estado.onboardingCompleto).toBe(true)
+      expect(estado.porcentajeProgreso).toBe(100)
+      expect(estado.pasosPendientes).toEqual([])
+      expect(estado.seccionesFaltantes).toEqual([])
     })
 
     it('prefiere la cuenta PCD vinculada para nombrePcd sobre un dependiente plano', async () => {
