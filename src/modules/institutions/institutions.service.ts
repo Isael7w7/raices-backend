@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, Logger } from '@nestjs/common'
+import { Injectable, Inject, NotFoundException, ForbiddenException, BadRequestException, ConflictException, Logger } from '@nestjs/common'
 import { Firestore } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -467,11 +467,14 @@ export class InstitutionsService {
     const snap = await ref.get()
     const ahora = new Date().toISOString()
 
+    // Verificar si ya existe una inscripción (duplicados)
     if (snap.exists) {
       const doc = snap.data() as InscripcionServicioDoc
+      // Si ya tiene estado pendiente o activa, lanzar error ConflictException
       if (doc.estado === 'pendiente' || doc.estado === 'activa') {
-        return { id: ref.id, ...doc }
+        throw new ConflictException('El usuario ya tiene una inscripción pendiente o activa para este servicio')
       }
+      // Si fue rechazada o cancelada, reactivar como pendiente
       const actualizado: InscripcionServicioDoc = {
         ...doc,
         estado: 'pendiente',

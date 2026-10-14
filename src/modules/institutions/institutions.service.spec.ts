@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
+import { NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { InstitutionsService } from './institutions.service'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
@@ -1001,18 +1001,14 @@ describe('InstitutionsService', () => {
       }))
     })
 
-    it('es idempotente si ya hay una solicitud pendiente o inscripción activa', async () => {
+    it('lanza ConflictException si ya existe una inscripción pendiente o activa para el mismo servicio', async () => {
       for (const estado of ['pendiente', 'activa']) {
         const { sets, updates } = montarDb({
           institucion,
           inscripciones: [{ id: 's-1__user-1', data: { id: 's-1__user-1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'user-1', estado } }],
         })
 
-        const res: any = await service.inscribirAServicio('inst-1', 's-1', 'user-1')
-
-        expect(res.estado).toBe(estado)
-        expect(sets).toHaveLength(0)
-        expect(updates).toHaveLength(0)
+        await expect(service.inscribirAServicio('inst-1', 's-1', 'user-1')).rejects.toThrow(ConflictException)
       }
     })
 
