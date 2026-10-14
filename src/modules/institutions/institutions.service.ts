@@ -470,9 +470,9 @@ export class InstitutionsService {
     // Verificar si ya existe una inscripción (duplicados)
     if (snap.exists) {
       const doc = snap.data() as InscripcionServicioDoc
-      // Si ya tiene estado pendiente o activa, lanzar error ConflictException
+      // Si ya tiene estado pendiente o activa, devolver el registro existente (idempotente)
       if (doc.estado === 'pendiente' || doc.estado === 'activa') {
-        throw new ConflictException('El usuario ya tiene una inscripción pendiente o activa para este servicio')
+        return { id: ref.id, ...doc }
       }
       // Si fue rechazada o cancelada, reactivar como pendiente
       const actualizado: InscripcionServicioDoc = {
