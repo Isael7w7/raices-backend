@@ -167,6 +167,37 @@ export class RutaDesarrolloDto {
 }
 
 /**
+ * Recurso real de la base de datos (institución, servicio o vacante) inyectado
+ * en un paso de la ruta para volverla accionable (Fase 2).
+ */
+export class RecursoLocalDto {
+  @ApiProperty({ example: 'inst-uid' })
+  id!: string
+
+  @ApiProperty({
+    description: 'Tipo de recurso real',
+    enum: ['institucion', 'servicio', 'vacante'],
+    example: 'institucion',
+  })
+  tipo!: 'institucion' | 'servicio' | 'vacante'
+
+  @ApiProperty({ example: 'Centro de Terapia del Habla' })
+  nombre!: string
+
+  @ApiPropertyOptional({ description: 'Categoría o modalidad del recurso', example: 'funcional' })
+  categoria?: string
+
+  @ApiPropertyOptional({ description: 'Detalle corto: costo (servicio), modalidad o descripción (vacante)', example: 'Gratuito' })
+  detalle?: string
+
+  @ApiPropertyOptional({ description: 'Ciudad del recurso', example: 'Mérida' })
+  ciudad?: string
+
+  @ApiPropertyOptional({ description: 'Solo cuando tipo=servicio: institución a la que pertenece', example: 'inst-uid' })
+  institucionId?: string
+}
+
+/**
  * DTO de respuesta para un paso de ruta.
  */
 export class PasoRutaDto {
@@ -193,6 +224,15 @@ export class PasoRutaDto {
 
   @ApiProperty({ example: '2026-08-13T00:00:00.000Z' })
   fechaCreacion!: string
+
+  @ApiPropertyOptional({
+    type: [RecursoLocalDto],
+    description:
+      'Recursos reales de la ciudad del usuario (instituciones, servicios o vacantes activos) ' +
+      'inyectados al generar la ruta; máximo 5 por paso (Fase 2)',
+    example: [],
+  })
+  recursosLocales?: RecursoLocalDto[]
 }
 
 /**
