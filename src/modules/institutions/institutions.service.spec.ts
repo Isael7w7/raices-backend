@@ -209,6 +209,75 @@ describe('InstitutionsService', () => {
 
       await expect(service.findOne('test-id')).rejects.toThrow(NotFoundException)
     })
+
+    it('should populate servicios with only the active ones, parsed as objects', async () => {
+      const activo = JSON.stringify({
+        id: 's-1', nombre: 'Terapia ABA', categoria: 'Salud y Terapia',
+        descripcion: 'Sesiones individuales', costo: 'Gratuito',
+        horario: 'Lun-Vie 9:00-14:00', accesibilidad: ['Rampa de acceso'], activo: true,
+      })
+      const inactivo = JSON.stringify({ id: 's-2', nombre: 'Taller de arte', activo: false })
+      const porEstado = JSON.stringify({ id: 's-3', nombre: 'Clases de natación', estado: 'Inactivo' })
+      const etiquetaLegada = 'Fisioterapia'
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({
+          docData: { nombre: 'Centro Test', activa: true, verificada: true, servicios: [activo, inactivo, porEstado, etiquetaLegada] },
+          docId: 'test-id',
+        })
+      )
+
+      const result: any = await service.findOne('test-id')
+
+      // Solo los activos: el inactivo por flag y el inactivo por estado quedan fuera
+      expect(result.servicios.map((s: any) => s.nombre)).toEqual(['Terapia ABA', 'Fisioterapia'])
+      expect(result.servicios[0]).toEqual(expect.objectContaining({
+        id: 's-1',
+        nombre: 'Terapia ABA',
+        categoria: 'Salud y Terapia',
+        descripcion: 'Sesiones individuales',
+        costo: 'Gratuito',
+        horario: 'Lun-Vie 9:00-14:00',
+        accesibilidad: ['Rampa de acceso'],
+        estado: 'Activo',
+      }))
+      // La etiqueta legada se trata como servicio publicado
+      expect(result.servicios[1]).toEqual(expect.objectContaining({ nombre: 'Fisioterapia', estado: 'Activo' }))
+    })
+
+    it('should keep a service whose estado is Activo even if it carries no activo flag', async () => {
+      const porEstado = JSON.stringify({ nombre: 'Taller de lectoescritura', estado: 'Activo', precio: 120, horarios: ['Mar 10:00', 'Jue 10:00'] })
+
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({
+          docData: { nombre: 'Centro Test', activa: true, verificada: true, servicios: [porEstado] },
+          docId: 'test-id',
+        })
+      )
+
+      const result: any = await service.findOne('test-id')
+
+      expect(result.servicios).toHaveLength(1)
+      expect(result.servicios[0]).toEqual(expect.objectContaining({
+        nombre: 'Taller de lectoescritura',
+        costo: '120',
+        horario: 'Mar 10:00, Jue 10:00',
+        estado: 'Activo',
+      }))
+    })
+
+    it('should return an empty servicios array when the institution has none', async () => {
+      firestoreMock.collection.mockReturnValue(
+        mockCollection({
+          docData: { nombre: 'Centro Sin Servicios', activa: true, verificada: true },
+          docId: 'test-id',
+        })
+      )
+
+      const result: any = await service.findOne('test-id')
+
+      expect(result.servicios).toEqual([])
+    })
   })
 
   // ── findOneProtegido ───────────────────────────────────────────────
@@ -853,6 +922,278 @@ describe('InstitutionsService', () => {
       mockInstitucion(null)
 
       await expect(service.subirDocumentoVerificacion('ghost', 'csf', archivo)).rejects.toThrow(NotFoundException)
+    })
+  })
+
+  // ── Inscripciones a servicios (flujo con aprobación) ──────────────
+
+  describe('inscripciones a servicios', () => {
+    const SERVICIO_ACTIVO = JSON.stringify({ id: 's-1', nombre: 'Terapia ABA', costo: 'Gratuito', activo: true })
+    const SERVICIO_OCULTO = JSON.stringify({ id: 's-2', nombre: 'Taller oculto', activo: false })
+
+    /** Monta instituciones + inscripcionesServicio + perfiles en el mock. */
+    function montarDb(opciones: {
+      institucion?: Record<string, any> | null
+      inscripciones?: Array<{ id: string; data: Record<string, any> }>
+      perfiles?: Record<string, Record<string, any>>
+    } = {}) {
+      const sets: Array<{ id: string; doc: any }> = []
+      const updates: Array<{ id: string; doc: any }> = []
+      const inscripciones = opciones.inscripciones ?? []
+
+      firestoreMock.collection.mockImplementation((nombre: string) => {
+        if (nombre === 'instituciones') {
+          const inst = opciones.institucion ?? null
+          return {
+            doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(inst, inst !== null)) }),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+          }
+        }
+        if (nombre === 'inscripcionesServicio') {
+          return {
+            doc: jest.fn((id?: string) => ({
+              id,
+              get: jest.fn().mockResolvedValue(
+                mockDoc(inscripciones.find(i => i.id === id)?.data ?? null, inscripciones.some(i => i.id === id), id),
+              ),
+              set: jest.fn().mockImplementation((doc: any) => { sets.push({ id: id!, doc }); return Promise.resolve() }),
+              update: jest.fn().mockImplementation((doc: any) => { updates.push({ id: id!, doc }); return Promise.resolve() }),
+            })),
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: inscripciones.length === 0,
+              docs: inscripciones.map(i => ({ id: i.id, data: () => i.data })),
+            }),
+          }
+        }
+        // perfiles (enriquecimiento)
+        return {
+          doc: jest.fn((id?: string) => ({
+            get: jest.fn().mockResolvedValue(mockDoc(opciones.perfiles?.[id!] ?? null, Boolean(opciones.perfiles?.[id!]), id)),
+          })),
+        }
+      })
+
+      return { sets, updates }
+    }
+
+    const institucion = {
+      nombre: 'Centro Demo', activa: true, verificada: true, creadoPor: 'owner-1',
+      servicios: [SERVICIO_ACTIVO, SERVICIO_OCULTO],
+    }
+
+    // ── inscribirAServicio ──
+
+    it('crea la solicitud en estado pendiente con id determinista', async () => {
+      const { sets } = montarDb({ institucion })
+
+      const res: any = await service.inscribirAServicio('inst-1', 's-1', 'user-1')
+
+      expect(res.estado).toBe('pendiente')
+      expect(res.servicioNombre).toBe('Terapia ABA')
+      expect(sets).toHaveLength(1)
+      expect(sets[0].id).toBe('s-1__user-1')
+      expect(sets[0].doc).toEqual(expect.objectContaining({
+        id: 's-1__user-1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'user-1', estado: 'pendiente',
+      }))
+    })
+
+    it('es idempotente si ya hay una solicitud pendiente o inscripción activa', async () => {
+      for (const estado of ['pendiente', 'activa']) {
+        const { sets, updates } = montarDb({
+          institucion,
+          inscripciones: [{ id: 's-1__user-1', data: { id: 's-1__user-1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'user-1', estado } }],
+        })
+
+        const res: any = await service.inscribirAServicio('inst-1', 's-1', 'user-1')
+
+        expect(res.estado).toBe(estado)
+        expect(sets).toHaveLength(0)
+        expect(updates).toHaveLength(0)
+      }
+    })
+
+    it('vuelve a dejarla pendiente cuando la anterior fue rechazada o cancelada', async () => {
+      for (const estado of ['rechazada', 'cancelada']) {
+        const { updates } = montarDb({
+          institucion,
+          inscripciones: [{ id: 's-1__user-1', data: { id: 's-1__user-1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'user-1', estado, fechaResolucion: '2026-01-01' } }],
+        })
+
+        const res: any = await service.inscribirAServicio('inst-1', 's-1', 'user-1')
+
+        expect(res.estado).toBe('pendiente')
+        expect(updates).toHaveLength(1)
+        expect(updates[0].doc.estado).toBe('pendiente')
+      }
+    })
+
+    it('lanza 404 si el servicio no existe o no está activo', async () => {
+      montarDb({ institucion })
+
+      await expect(service.inscribirAServicio('inst-1', 's-2', 'user-1')).rejects.toThrow(NotFoundException)
+      await expect(service.inscribirAServicio('inst-1', 's-999', 'user-1')).rejects.toThrow(NotFoundException)
+    })
+
+    // ── miInscripcionServicio ──
+
+    it('reporta inscrito/solicitado según el estado propio', async () => {
+      montarDb({
+        institucion,
+        inscripciones: [{ id: 's-1__user-1', data: { id: 's-1__user-1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'user-1', estado: 'activa' } }],
+      })
+
+      const res: any = await service.miInscripcionServicio('inst-1', 's-1', 'user-1')
+      expect(res).toEqual(expect.objectContaining({ estado: 'activa', inscrito: true, solicitado: false }))
+
+      const otro: any = await service.miInscripcionServicio('inst-1', 's-1', 'user-2')
+      expect(otro).toEqual(expect.objectContaining({ estado: null, inscrito: false, solicitado: false }))
+    })
+
+    // ── cancelarInscripcionServicio ──
+
+    it('cancela la inscripción propia sin borrar el registro', async () => {
+      const { updates } = montarDb({
+        institucion,
+        inscripciones: [{ id: 's-1__user-1', data: { id: 's-1__user-1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'user-1', estado: 'activa' } }],
+      })
+
+      const res: any = await service.cancelarInscripcionServicio('inst-1', 's-1', 'user-1')
+
+      expect(res.estado).toBe('cancelada')
+      expect(updates[0].doc).toEqual(expect.objectContaining({ estado: 'cancelada', fechaResolucion: expect.any(String) }))
+    })
+
+    it('lanza 404 al cancelar una inscripción inexistente', async () => {
+      montarDb({ institucion })
+
+      await expect(service.cancelarInscripcionServicio('inst-1', 's-1', 'user-1')).rejects.toThrow(NotFoundException)
+    })
+
+    // ── listarInscripcionesServicio ──
+
+    it('lista inscritos enriquecidos, cuenta estados y oculta canceladas por defecto', async () => {
+      montarDb({
+        institucion,
+        inscripciones: [
+          { id: 's-1__u1', data: { id: 's-1__u1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u1', estado: 'pendiente', fechaCreacion: '2026-01-01' } },
+          { id: 's-1__u2', data: { id: 's-1__u2', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u2', estado: 'activa', fechaCreacion: '2026-01-02' } },
+          { id: 's-1__u3', data: { id: 's-1__u3', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u3', estado: 'cancelada', fechaCreacion: '2026-01-03' } },
+        ],
+        perfiles: {
+          u1: { nombreCompleto: 'María López', email: 'maria@correo.mx' },
+          u2: { nombreCompleto: 'Juan Pérez', email: 'juan@correo.mx' },
+        },
+      })
+
+      const res: any = await service.listarInscripcionesServicio('inst-1', 's-1', { id: 'owner-1', rol: 'institucion' })
+
+      expect(res.datos.map((d: any) => d.usuario.nombre)).toEqual(['María López', 'Juan Pérez'])
+      expect(res.datos[0].usuario.email).toBe('maria@correo.mx')
+      expect(res.total).toBe(2)
+      expect(res.pendientes).toBe(1)
+      expect(res.activas).toBe(1)
+    })
+
+    it('permite filtrar por estado', async () => {
+      montarDb({
+        institucion,
+        inscripciones: [
+          { id: 's-1__u1', data: { id: 's-1__u1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u1', estado: 'pendiente' } },
+          { id: 's-1__u2', data: { id: 's-1__u2', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u2', estado: 'activa' } },
+        ],
+        perfiles: { u1: { nombreCompleto: 'María' }, u2: { nombreCompleto: 'Juan' } },
+      })
+
+      const res: any = await service.listarInscripcionesServicio('inst-1', 's-1', { id: 'owner-1', rol: 'institucion' }, 'pendiente')
+
+      expect(res.datos).toHaveLength(1)
+      expect(res.datos[0].usuarioId).toBe('u1')
+    })
+
+    it('prohíbe a usuarios ajenos y permite a administradores', async () => {
+      montarDb({ institucion })
+
+      await expect(service.listarInscripcionesServicio('inst-1', 's-1', { id: 'intruso', rol: 'pcd' }))
+        .rejects.toThrow(ForbiddenException)
+      await expect(service.listarInscripcionesServicio('inst-1', 's-1', { id: 'admin-1', rol: 'admin' }))
+        .resolves.toBeDefined()
+    })
+
+    // ── resolverInscripcionServicio ──
+
+    it('aprueba una solicitud pendiente → activa', async () => {
+      const { updates } = montarDb({
+        institucion,
+        inscripciones: [{ id: 's-1__u1', data: { id: 's-1__u1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u1', estado: 'pendiente' } }],
+      })
+
+      const res: any = await service.resolverInscripcionServicio('inst-1', 's-1__u1', 'activa', { id: 'owner-1', rol: 'institucion' })
+
+      expect(res.estado).toBe('activa')
+      expect(updates[0].doc.fechaResolucion).toEqual(expect.any(String))
+    })
+
+    it('rechaza una solicitud pendiente → rechazada', async () => {
+      const { updates } = montarDb({
+        institucion,
+        inscripciones: [{ id: 's-1__u1', data: { id: 's-1__u1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u1', estado: 'pendiente' } }],
+      })
+
+      const res: any = await service.resolverInscripcionServicio('inst-1', 's-1__u1', 'rechazada', { id: 'owner-1', rol: 'institucion' })
+
+      expect(res.estado).toBe('rechazada')
+      expect(updates[0].doc.estado).toBe('rechazada')
+    })
+
+    it('lanza 400 si la solicitud ya fue resuelta', async () => {
+      montarDb({
+        institucion,
+        inscripciones: [{ id: 's-1__u1', data: { id: 's-1__u1', institucionId: 'inst-1', servicioId: 's-1', usuarioId: 'u1', estado: 'activa' } }],
+      })
+
+      await expect(service.resolverInscripcionServicio('inst-1', 's-1__u1', 'activa', { id: 'owner-1', rol: 'institucion' }))
+        .rejects.toThrow(BadRequestException)
+    })
+
+    it('lanza 404 si la inscripción pertenece a otra institución', async () => {
+      montarDb({
+        institucion,
+        inscripciones: [{ id: 's-1__u1', data: { id: 's-1__u1', institucionId: 'otra-inst', servicioId: 's-1', usuarioId: 'u1', estado: 'pendiente' } }],
+      })
+
+      await expect(service.resolverInscripcionServicio('inst-1', 's-1__u1', 'activa', { id: 'owner-1', rol: 'institucion' }))
+        .rejects.toThrow(NotFoundException)
+    })
+
+    // ── resumenInscripcionesServicio ──
+
+    it('resume pendientes y activas por servicio para el panel', async () => {
+      montarDb({
+        institucion,
+        inscripciones: [
+          { id: 'a', data: { institucionId: 'inst-1', servicioId: 's-1', servicioNombre: 'Terapia ABA', usuarioId: 'u1', estado: 'pendiente' } },
+          { id: 'b', data: { institucionId: 'inst-1', servicioId: 's-1', servicioNombre: 'Terapia ABA', usuarioId: 'u2', estado: 'activa' } },
+          { id: 'c', data: { institucionId: 'inst-1', servicioId: 's-1', servicioNombre: 'Terapia ABA', usuarioId: 'u3', estado: 'cancelada' } },
+        ],
+      })
+
+      const res: any = await service.resumenInscripcionesServicio('owner-1')
+
+      // resolverInstitucion resuelve el doc canónico cuyo id = UID del usuario
+      expect(res.institucionId).toBe('owner-1')
+      expect(res.datos).toEqual([
+        expect.objectContaining({ servicioId: 's-1', servicioNombre: 'Terapia ABA', pendientes: 1, activas: 1, total: 2 }),
+      ])
+    })
+
+    it('lanza 404 cuando el usuario no tiene institución', async () => {
+      montarDb({ institucion: null })
+
+      await expect(service.resumenInscripcionesServicio('ghost')).rejects.toThrow(NotFoundException)
     })
   })
 })

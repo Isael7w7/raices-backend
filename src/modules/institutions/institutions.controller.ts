@@ -13,7 +13,7 @@ import { CsfQrService } from './csf-qr.service'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { SubirDocumentoVerificacionDto } from './dto/subir-documento-verificacion.dto'
-import { InstitucionDto, PaginaInstitucionesDto, DocumentoVerificacionSubidoDto, EstadoVerificacionInstitucionDto } from './dto/respuestas-institucion.dto'
+import { InstitucionDto, InstitucionPublicaDto, PaginaInstitucionesDto, DocumentoVerificacionSubidoDto, EstadoVerificacionInstitucionDto, InscripcionServicioDto, EstadoInscripcionServicioDto, ListadoInscripcionesServicioDto, ResumenInscripcionesServicioDto } from './dto/respuestas-institucion.dto'
 import { Throttle } from '@nestjs/throttler'
 import { csfDocumentFileFilter } from '../../common/utils/image-filter'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
@@ -263,13 +263,178 @@ export class InstitutionsController {
   @UseETag()
   @ApiOperation({
     summary: 'Detalle de institución',
-    description: 'Obtiene los detalles de una institución pública por su ID. Solo se exponen instituciones activas y verificadas.',
+    description:
+      'Obtiene los detalles de una institución pública por su ID. Solo se exponen instituciones activas y verificadas. '
+      + 'El catálogo `servicios` viene poblado y contiene únicamente los servicios en estado Activo.',
   })
   @ApiParam({ name: 'id', description: 'ID de la institución (UID de Firestore)' })
-  @ApiOkResponse({ type: InstitucionDto, description: 'Detalle completo de la institución' })
+  @ApiOkResponse({ type: InstitucionPublicaDto, description: 'Detalle completo de la institución (con servicios activos)' })
   @ApiResponse({ status: 404, description: 'Institución no encontrada (o aún no aprobada)' })
   findOne(@Param('id') id: string) {
     return this.svc.findOne(id)
+  }
+
+  // ─── Inscripciones a servicios (flujo con aprobación) ─────────────
+
+  // ─── GET /instituciones/mi-institucion/servicios/inscripciones/resumen ──
+  @Get('mi-institucion/servicios/inscripciones/resumen')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Resumen de inscripciones por servicio (panel de la institución)',
+    description: 'Cuenta pendientes, activas y rechazadas por servicio de la institución del usuario autenticado.',
+  })
+  @ApiOkResponse({ type: ResumenInscripcionesServicioDto, description: 'Conteo por servicio' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'El usuario no tiene institución registrada' })
+  resumenInscripciones(@CurrentUser() user: CurrentUserPayload) {
+    return this.svc.resumenInscripcionesServicio(user.id)
+  }
+
+  // ─── GET /instituciones/:id/mis-inscripciones ────────────────────
+  @Get(':id/mis-inscripciones')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Mis inscripciones en los servicios de una institución',
+    description: 'Estado de las inscripciones del usuario autenticado en cada servicio de la institución (alimenta el botón Inscribirme/Inscrito).',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la institución (UID de Firestore)' })
+  @ApiOkResponse({ description: '{ institucionId, datos: [{ institucionId, servicioId, estado }] }' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  misInscripciones(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.misInscripcionesServicio(id, user.id)
+  }
+
+  // ─── POST /instituciones/:id/servicios/:servicioId/inscripcion ───
+  @Post(':id/servicios/:servicioId/inscripcion')
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 solicitudes por minuto
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Solicitar inscripción a un servicio',
+    description: 'Registra la solicitud de la persona autenticada en un servicio ACTIVO. La inscripción queda `pendiente` hasta que la institución la apruebe. Es idempotente.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiParam({ name: 'servicioId', description: 'ID del servicio dentro del catálogo' })
+  @ApiCreatedResponse({ type: InscripcionServicioDto, description: 'Solicitud registrada (estado pendiente)' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'Institución o servicio no encontrado (o servicio inactivo)' })
+  inscribirAServicio(
+    @Param('id') id: string,
+    @Param('servicioId') servicioId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.svc.inscribirAServicio(id, servicioId, user.id)
+  }
+
+  // ─── GET /instituciones/:id/servicios/:servicioId/inscripcion ────
+  @Get(':id/servicios/:servicioId/inscripcion')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Mi estado de inscripción en un servicio', description: 'Indica si el usuario está inscrito, con solicitud pendiente o sin inscripción.' })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiParam({ name: 'servicioId', description: 'ID del servicio' })
+  @ApiOkResponse({ type: EstadoInscripcionServicioDto, description: 'Estado de la inscripción del usuario' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  miInscripcion(
+    @Param('id') id: string,
+    @Param('servicioId') servicioId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.svc.miInscripcionServicio(id, servicioId, user.id)
+  }
+
+  // ─── DELETE /instituciones/:id/servicios/:servicioId/inscripcion ─
+  @Delete(':id/servicios/:servicioId/inscripcion')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 10 cancelaciones por minuto
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Cancelar mi inscripción a un servicio', description: 'La inscripción pasa a estado `cancelada` (no se elimina el historial).' })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiParam({ name: 'servicioId', description: 'ID del servicio' })
+  @ApiOkResponse({ type: InscripcionServicioDto, description: 'Inscripción cancelada' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'No existe la inscripción del usuario en ese servicio' })
+  cancelarInscripcion(
+    @Param('id') id: string,
+    @Param('servicioId') servicioId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.svc.cancelarInscripcionServicio(id, servicioId, user.id)
+  }
+
+  // ─── GET /instituciones/:id/servicios/:servicioId/inscripciones ──
+  @Get(':id/servicios/:servicioId/inscripciones')
+  @UseETag()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({
+    summary: 'Inscripciones de un servicio (institución dueña o admin)',
+    description: 'Lista de personas inscritas con nombre, correo y avatar para que la institución las ubique (foros, publicaciones, mensajes). Solo la institución dueña o un administrador.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiParam({ name: 'servicioId', description: 'ID del servicio' })
+  @ApiQuery({ name: 'estado', required: false, description: 'Filtrar por estado: pendiente, activa, rechazada, cancelada o todas (default: todas menos cancelada)' })
+  @ApiOkResponse({ type: ListadoInscripcionesServicioDto, description: 'Inscripciones con datos de contacto' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'No eres la institución dueña ni un administrador' })
+  @ApiResponse({ status: 404, description: 'Institución no encontrada' })
+  listarInscripciones(
+    @Param('id') id: string,
+    @Param('servicioId') servicioId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('estado') estado?: string,
+  ) {
+    return this.svc.listarInscripcionesServicio(id, servicioId, { id: user.id, rol: user.rol }, estado)
+  }
+
+  // ─── POST /instituciones/:id/servicios/:servicioId/inscripciones/:inscripcionId/aprobar ──
+  @Post(':id/servicios/:servicioId/inscripciones/:inscripcionId/aprobar')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Aprobar inscripción pendiente', description: 'La solicitud pasa a estado `activa`. Solo la institución dueña o un administrador.' })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiParam({ name: 'servicioId', description: 'ID del servicio' })
+  @ApiParam({ name: 'inscripcionId', description: 'ID de la inscripción' })
+  @ApiOkResponse({ type: InscripcionServicioDto, description: 'Inscripción aprobada' })
+  @ApiResponse({ status: 400, description: 'La solicitud ya fue resuelta' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'No eres la institución dueña ni un administrador' })
+  @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
+  aprobarInscripcion(
+    @Param('id') id: string,
+    @Param('inscripcionId') inscripcionId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.svc.resolverInscripcionServicio(id, inscripcionId, 'activa', { id: user.id, rol: user.rol })
+  }
+
+  // ─── POST /instituciones/:id/servicios/:servicioId/inscripciones/:inscripcionId/rechazar ──
+  @Post(':id/servicios/:servicioId/inscripciones/:inscripcionId/rechazar')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('jwt-auth')
+  @ApiOperation({ summary: 'Rechazar inscripción pendiente', description: 'La solicitud pasa a estado `rechazada`. Solo la institución dueña o un administrador.' })
+  @ApiParam({ name: 'id', description: 'ID de la institución' })
+  @ApiParam({ name: 'servicioId', description: 'ID del servicio' })
+  @ApiParam({ name: 'inscripcionId', description: 'ID de la inscripción' })
+  @ApiOkResponse({ type: InscripcionServicioDto, description: 'Inscripción rechazada' })
+  @ApiResponse({ status: 400, description: 'La solicitud ya fue resuelta' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'No eres la institución dueña ni un administrador' })
+  @ApiResponse({ status: 404, description: 'Inscripción no encontrada' })
+  rechazarInscripcion(
+    @Param('id') id: string,
+    @Param('inscripcionId') inscripcionId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.svc.resolverInscripcionServicio(id, inscripcionId, 'rechazada', { id: user.id, rol: user.rol })
   }
 
   // ─── POST /instituciones ──────────────────────────────────────────

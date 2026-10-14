@@ -23,6 +23,8 @@ export const COLECCIONES = {
   notificaciones: 'notificaciones',
   postulaciones: 'postulaciones',
   instituciones: 'instituciones',
+  // Inscripciones de usuarios a servicios/programas de una institución (con aprobación)
+  inscripcionesServicio: 'inscripcionesServicio',
   foros: 'foros',
   respuestasForo: 'respuestasForo',
   especialistas: 'especialistas',

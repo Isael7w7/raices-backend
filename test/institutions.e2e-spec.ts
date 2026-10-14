@@ -100,6 +100,35 @@ describe('Instituciones (E2E)', () => {
       expect(res.body.id).toBe('inst-visible')
     })
 
+    it('200: pobla `servicios` solo con los que están en estado Activo (parseados)', async () => {
+      await sembrarInstitucion({
+        ...instVisible,
+        id: 'inst-servicios',
+        servicios: [
+          JSON.stringify({ id: 's-1', nombre: 'Terapia ABA', costo: 'Gratuito', horario: 'Lun-Vie 9:00-14:00', accesibilidad: ['Rampa de acceso'], activo: true }),
+          JSON.stringify({ id: 's-2', nombre: 'Taller de arte', activo: false }),
+          JSON.stringify({ id: 's-3', nombre: 'Clases de natación', estado: 'Inactivo' }),
+          'Fisioterapia', // etiqueta legada sin JSON → servicio publicado
+        ],
+      })
+
+      const res = await request(http).get('/api/instituciones/inst-servicios')
+
+      expect(res.status).toBe(200)
+      expect(res.body.servicios.map((s: any) => s.nombre)).toEqual(['Terapia ABA', 'Fisioterapia'])
+      expect(res.body.servicios[0]).toEqual(expect.objectContaining({
+        id: 's-1',
+        costo: 'Gratuito',
+        horario: 'Lun-Vie 9:00-14:00',
+        accesibilidad: ['Rampa de acceso'],
+        estado: 'Activo',
+      }))
+      // El listado NO los filtra (solo el detalle público limita a activos)
+      const listado = await request(http).get('/api/instituciones')
+      const enListado = listado.body.datos.find((i: any) => i.id === 'inst-servicios')
+      expect(enListado.servicios).toHaveLength(4)
+    })
+
     it('404: institución pendiente (no revela su existencia)', async () => {
       const res = await request(http).get('/api/instituciones/inst-pendiente')
       expect(res.status).toBe(404)
@@ -113,6 +142,153 @@ describe('Instituciones (E2E)', () => {
     it('404: institución inexistente', async () => {
       const res = await request(http).get('/api/instituciones/inst-no-existe')
       expect(res.status).toBe(404)
+    })
+  })
+
+  describe('Inscripciones a servicios (flujo con aprobación)', () => {
+    const instServicios = {
+      ...instVisible,
+      id: 'inst-inscripciones',
+      creadoPor: 'uid-duenio-serv',
+      servicios: [
+        JSON.stringify({ id: 's-1', nombre: 'Terapia ABA', costo: 'Gratuito', activo: true }),
+        JSON.stringify({ id: 's-2', nombre: 'Taller suspendido', activo: false }),
+      ],
+    }
+
+    beforeEach(async () => {
+      // Dueño dedicado: una cuenta solo puede tener una institución, así el
+      // resumen por `mi-institucion` no se contamina con otros fixtures.
+      await sembrarPerfil({ id: 'uid-duenio-serv', email: 'duenio-serv@test.com', rol: 'institucion', activo: true, verificado: true })
+      await sembrarInstitucion(instServicios)
+    })
+
+    const base = '/api/instituciones/inst-inscripciones/servicios/s-1'
+
+    it('flujo completo: solicitar → listar → aprobar → inscrito → cancelar', async () => {
+      // 1) El usuario PCD solicita inscripción (queda pendiente)
+      const solicitar = await request(http).post(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      expect(solicitar.status).toBe(201)
+      expect(solicitar.body).toEqual(expect.objectContaining({
+        id: 's-1__uid-pcd', institucionId: 'inst-inscripciones', servicioId: 's-1',
+        usuarioId: 'uid-pcd', estado: 'pendiente', servicioNombre: 'Terapia ABA',
+      }))
+
+      // 2) El estado propio refleja la solicitud
+      const miEstado = await request(http).get(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      expect(miEstado.status).toBe(200)
+      expect(miEstado.body).toEqual(expect.objectContaining({ estado: 'pendiente', inscrito: false, solicitado: true }))
+
+      // 3) Repetir la solicitud es idempotente (sigue pendiente, no duplica)
+      const repetir = await request(http).post(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      expect(repetir.status).toBe(201)
+      expect(repetir.body.id).toBe('s-1__uid-pcd')
+
+      // 4) Una persona ajena no puede ver la lista de inscritos
+      const ajena = await request(http).get(`${base}/inscripciones`).set('Authorization', token('uid-pcd'))
+      expect(ajena.status).toBe(403)
+
+      // 5) La institución dueña ve la lista con datos de contacto
+      const listado = await request(http).get(`${base}/inscripciones`).set('Authorization', token('uid-duenio-serv'))
+      expect(listado.status).toBe(200)
+      expect(listado.body.total).toBe(1)
+      expect(listado.body.pendientes).toBe(1)
+      expect(listado.body.datos[0]).toEqual(expect.objectContaining({
+        id: 's-1__uid-pcd',
+        usuarioId: 'uid-pcd',
+        usuario: expect.objectContaining({ id: 'uid-pcd', email: 'pcd@test.com', nombre: expect.any(String) }),
+      }))
+
+      // 6) La institución aprueba la solicitud
+      const aprobar = await request(http)
+        .post(`${base}/inscripciones/s-1__uid-pcd/aprobar`)
+        .set('Authorization', token('uid-duenio-serv'))
+      expect(aprobar.status).toBe(200)
+      expect(aprobar.body.estado).toBe('activa')
+
+      // 7) Ahora la persona está inscrita
+      const estadoFinal = await request(http).get(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      expect(estadoFinal.body).toEqual(expect.objectContaining({ estado: 'activa', inscrito: true, solicitado: false }))
+
+      // 8) Resolver dos veces es un error
+      const reactivar = await request(http)
+        .post(`${base}/inscripciones/s-1__uid-pcd/aprobar`)
+        .set('Authorization', token('uid-duenio-serv'))
+      expect(reactivar.status).toBe(400)
+
+      // 9) La persona puede cancelar su inscripción
+      const cancelar = await request(http).delete(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      expect(cancelar.status).toBe(200)
+      expect(cancelar.body.estado).toBe('cancelada')
+
+      // 10) El resumen del panel ya no la cuenta como inscrita
+      const resumen = await request(http)
+        .get('/api/instituciones/mi-institucion/servicios/inscripciones/resumen')
+        .set('Authorization', token('uid-duenio-serv'))
+      expect(resumen.status).toBe(200)
+      expect(resumen.body.datos).toEqual([]) // canceladas fuera del resumen
+    })
+
+    it('200: el resumen por servicio refleja pendientes y activas', async () => {
+      await request(http).post(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      await request(http).post(`${base}/inscripcion`).set('Authorization', token('uid-tutor'))
+      await request(http)
+        .post(`${base}/inscripciones/s-1__uid-tutor/aprobar`)
+        .set('Authorization', token('uid-duenio-serv'))
+
+      const resumen = await request(http)
+        .get('/api/instituciones/mi-institucion/servicios/inscripciones/resumen')
+        .set('Authorization', token('uid-duenio-serv'))
+
+      expect(resumen.status).toBe(200)
+      expect(resumen.body.datos).toEqual([
+        expect.objectContaining({ servicioId: 's-1', servicioNombre: 'Terapia ABA', pendientes: 1, activas: 1, total: 2 }),
+      ])
+    })
+
+    it('200: rechazar una solicitud pendiente', async () => {
+      await request(http).post(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+
+      const rechazar = await request(http)
+        .post(`${base}/inscripciones/s-1__uid-pcd/rechazar`)
+        .set('Authorization', token('uid-duenio-serv'))
+      expect(rechazar.status).toBe(200)
+      expect(rechazar.body.estado).toBe('rechazada')
+
+      const miEstado = await request(http).get(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+      expect(miEstado.body).toEqual(expect.objectContaining({ estado: 'rechazada', inscrito: false, solicitado: false }))
+    })
+
+    it('404: no se puede inscribir a un servicio inactivo ni a uno inexistente', async () => {
+      const inactivo = await request(http)
+        .post('/api/instituciones/inst-inscripciones/servicios/s-2/inscripcion')
+        .set('Authorization', token('uid-pcd'))
+      expect(inactivo.status).toBe(404)
+
+      const inexistente = await request(http)
+        .post('/api/instituciones/inst-inscripciones/servicios/s-999/inscripcion')
+        .set('Authorization', token('uid-pcd'))
+      expect(inexistente.status).toBe(404)
+    })
+
+    it('401: los endpoints de inscripción exigen sesión', async () => {
+      expect((await request(http).post(`${base}/inscripcion`)).status).toBe(401)
+      expect((await request(http).get(`${base}/inscripcion`)).status).toBe(401)
+      expect((await request(http).get(`${base}/inscripciones`)).status).toBe(401)
+      expect((await request(http).delete(`${base}/inscripcion`)).status).toBe(401)
+    })
+
+    it('200: mis-inscripciones devuelve los estados por servicio', async () => {
+      await request(http).post(`${base}/inscripcion`).set('Authorization', token('uid-pcd'))
+
+      const res = await request(http)
+        .get('/api/instituciones/inst-inscripciones/mis-inscripciones')
+        .set('Authorization', token('uid-pcd'))
+
+      expect(res.status).toBe(200)
+      expect(res.body.datos).toEqual([
+        expect.objectContaining({ servicioId: 's-1', estado: 'pendiente' }),
+      ])
     })
   })
 

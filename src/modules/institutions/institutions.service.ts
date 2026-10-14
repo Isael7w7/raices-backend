@@ -6,7 +6,8 @@ import { parsearTiposDiscapacidad } from '../../common/utils/firestore-helpers'
 import { CreateInstitucionDto } from './dto/create-institucion.dto'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'
 import { TipoDocumentoVerificacion } from './dto/subir-documento-verificacion.dto'
-import { InstitucionDoc } from '../../common/interfaces/firestore-documents.interface'
+import { InstitucionDoc, InscripcionServicioDoc } from '../../common/interfaces/firestore-documents.interface'
+import { ServicioPublicoDto } from './dto/respuestas-institucion.dto'
 import { StorageService } from '../storage/storage.service'
 import { UsersService } from '../users/users.service'
 
@@ -106,7 +107,110 @@ export class InstitutionsService {
     if (fila.activa !== true || fila.verificada !== true) {
       throw new NotFoundException('Institución no encontrada')
     }
-    return fila
+
+    // "Populate" de la relación `servicios`: Firestore no hace joins, la
+    // relación vive dentro del documento de la institución. Aquí se parsea
+    // cada entrada y se devuelve únicamente lo que está en estado "Activo"
+    // (los servicios desactivados no son visibles para el público).
+    return { ...fila, servicios: this.serviciosActivosPublicos(fila.servicios) }
+  }
+
+  /**
+   * Normaliza `instituciones.servicios` para el detalle público.
+   *
+   * El panel privado guarda cada servicio serializado con `JSON.stringify`
+   * (ver `ServiciosTab` en el frontend) y los documentos legados traen
+   * etiquetas simples de texto. Devuelve solo los servicios "Activos",
+   * ya parseados como objetos con la forma pública del catálogo.
+   */
+  private serviciosActivosPublicos(raw: unknown): ServicioPublicoDto[] {
+    if (!Array.isArray(raw)) return []
+
+    const servicios: ServicioPublicoDto[] = []
+    raw.forEach((entrada, idx) => {
+      const servicio = this.parsearServicioPublico(entrada, idx)
+      if (servicio) servicios.push(servicio)
+    })
+    return servicios
+  }
+
+  /** Convierte una entrada del arreglo en un servicio público (o `null`). */
+  private parsearServicioPublico(entrada: unknown, idx: number): ServicioPublicoDto | null {
+    let fuente: Record<string, unknown> | null = null
+    let etiquetaLegado: string | null = null
+
+    if (typeof entrada === 'string') {
+      const texto = entrada.trim()
+      if (!texto) return null
+      try {
+        const parsed: unknown = JSON.parse(texto)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          fuente = parsed as Record<string, unknown>
+        } else {
+          etiquetaLegado = texto // JSON simple (p. ej. un número) → tratar como etiqueta
+        }
+      } catch {
+        etiquetaLegado = texto // texto plano de versiones anteriores
+      }
+    } else if (entrada && typeof entrada === 'object' && !Array.isArray(entrada)) {
+      fuente = entrada as Record<string, unknown>
+    }
+
+    // Documento legado: solo un texto plano, se asume publicado (Activo).
+    if (!fuente) {
+      return etiquetaLegado
+        ? {
+            id: `s-${idx}`,
+            nombre: etiquetaLegado,
+            categoria: null,
+            descripcion: null,
+            costo: 'Gratuito',
+            horario: null,
+            accesibilidad: [],
+            estado: 'Activo',
+          }
+        : null
+    }
+
+    const nombre = this.textoLibre(fuente.nombre)
+    if (!nombre) return null
+    if (!this.servicioEstaActivo(fuente)) return null
+
+    const id = fuente.id
+    return {
+      id: (typeof id === 'string' && id.trim()) || typeof id === 'number' ? String(id) : `s-${idx}`,
+      nombre,
+      categoria: this.textoLibre(fuente.categoria),
+      descripcion: this.textoLibre(fuente.descripcion),
+      // El panel usa `costo`; se acepta `precio` como alias.
+      costo: this.textoLibre(fuente.costo) ?? this.textoLibre(fuente.precio) ?? 'Gratuito',
+      horario: this.textoLibre(fuente.horario) ?? this.textoLibre(fuente.horarios),
+      accesibilidad: Array.isArray(fuente.accesibilidad)
+        ? fuente.accesibilidad.filter((a): a is string => typeof a === 'string')
+        : [],
+      estado: 'Activo',
+    }
+  }
+
+  /** `activo: false` o `estado` distinto de "Activo" → fuera del detalle público. */
+  private servicioEstaActivo(fuente: Record<string, unknown>): boolean {
+    const estado = this.textoLibre(fuente.estado)
+    if (estado && estado.toLowerCase() !== 'activo') return false
+    return fuente.activo !== false
+  }
+
+  /** Cadena no vacía (también acepta números), o `null` cuando no hay valor. */
+  private textoLibre(valor: unknown): string | null {
+    if (typeof valor === 'string') {
+      const texto = valor.trim()
+      return texto ? texto : null
+    }
+    if (typeof valor === 'number' && Number.isFinite(valor)) return String(valor)
+    if (Array.isArray(valor)) {
+      const items = valor.map(v => this.textoLibre(v)).filter((v): v is string => v !== null)
+      return items.length > 0 ? items.join(', ') : null
+    }
+    return null
   }
 
   // ─── Detalle de institución (sin filtro de visibilidad) ────────────
@@ -318,6 +422,243 @@ export class InstitutionsService {
     await this.col(COLECCIONES.instituciones).doc(id).update({
       activa: false,
       fechaEliminacion: new Date().toISOString(),
+    })
+  }
+
+  // ─── Inscripciones a servicios (flujo con aprobación) ─────────────
+
+  /** Inscripciones de un servicio: por defecto se ocultan las canceladas. */
+  private colInscripciones() { return this.col(COLECCIONES.inscripcionesServicio) }
+
+  private idInscripcion(servicioId: string, usuarioId: string) {
+    return `${servicioId}__${usuarioId}`
+  }
+
+  /** Valida que `usuarioId` sea admin o el dueño de la institución. */
+  private async validarDuenioInstitucion(institucionId: string, usuarioId: string, rol: string) {
+    if (rol === 'admin') return
+    const doc = await this.col(COLECCIONES.instituciones).doc(institucionId).get()
+    if (!doc.exists) throw new NotFoundException('Institución no encontrada')
+    if (doc.data()?.creadoPor !== usuarioId) {
+      throw new ForbiddenException('No tienes permisos para gestionar esta institución')
+    }
+  }
+
+  /** Resuelve un servicio ACTIVO del catálogo público de la institución. */
+  private async resolverServicioPublico(institucionId: string, servicioId: string) {
+    // findOne exige activa + verificada: no se puede inscribir gente a una
+    // institución que el público no ve.
+    const institucion = await this.findOne(institucionId)
+    const servicio = this.serviciosActivosPublicos(institucion.servicios)
+      .find(s => s.id === servicioId)
+    if (!servicio) throw new NotFoundException('Servicio no encontrado o ya no está activo')
+    return servicio
+  }
+
+  /**
+   * Solicita la inscripción de `usuarioId` a un servicio. Queda `pendiente`
+   * hasta que la institución la apruebe. Idempotente: si ya existe una
+   * inscripción pendiente o activa se devuelve tal cual; si fue rechazada o
+   * cancelada, vuelve a quedar `pendiente`.
+   */
+  async inscribirAServicio(institucionId: string, servicioId: string, usuarioId: string) {
+    const servicio = await this.resolverServicioPublico(institucionId, servicioId)
+    const ref = this.colInscripciones().doc(this.idInscripcion(servicioId, usuarioId))
+    const snap = await ref.get()
+    const ahora = new Date().toISOString()
+
+    if (snap.exists) {
+      const doc = snap.data() as InscripcionServicioDoc
+      if (doc.estado === 'pendiente' || doc.estado === 'activa') {
+        return { id: ref.id, ...doc }
+      }
+      const actualizado: InscripcionServicioDoc = {
+        ...doc,
+        estado: 'pendiente',
+        servicioNombre: servicio.nombre,
+        fechaActualizacion: ahora,
+        fechaResolucion: null,
+      }
+      await ref.update(actualizado)
+      return { id: ref.id, ...actualizado }
+    }
+
+    const documento: InscripcionServicioDoc = {
+      id: ref.id,
+      institucionId,
+      servicioId,
+      servicioNombre: servicio.nombre,
+      usuarioId,
+      estado: 'pendiente',
+      fechaCreacion: ahora,
+      fechaActualizacion: ahora,
+      fechaResolucion: null,
+    }
+    await ref.set(documento)
+    return { id: ref.id, ...documento }
+  }
+
+  /** Estado de la inscripción del usuario actual en un servicio (para el botón). */
+  async miInscripcionServicio(institucionId: string, servicioId: string, usuarioId: string) {
+    const snap = await this.colInscripciones().doc(this.idInscripcion(servicioId, usuarioId)).get()
+    const doc = snap.exists ? (snap.data() as InscripcionServicioDoc) : null
+    const coincide = doc !== null && doc.institucionId === institucionId && doc.usuarioId === usuarioId
+    const estado = coincide ? doc.estado : null
+    return {
+      institucionId,
+      servicioId,
+      estado,
+      inscrito: estado === 'activa',
+      solicitado: estado === 'pendiente',
+    }
+  }
+
+  /** Estados de las inscripciones del usuario en los servicios de una institución. */
+  async misInscripcionesServicio(institucionId: string, usuarioId: string) {
+    const snap = await this.colInscripciones()
+      .where('usuarioId', '==', usuarioId)
+      .where('institucionId', '==', institucionId)
+      .get()
+    return {
+      institucionId,
+      datos: snap.docs.map(d => {
+        const doc = d.data() as InscripcionServicioDoc
+        return { institucionId: doc.institucionId, servicioId: doc.servicioId, estado: doc.estado }
+      }),
+    }
+  }
+
+  /** Cancela la inscripción propia (pendiente o activa) sin borrar el registro. */
+  async cancelarInscripcionServicio(institucionId: string, servicioId: string, usuarioId: string) {
+    const ref = this.colInscripciones().doc(this.idInscripcion(servicioId, usuarioId))
+    const snap = await ref.get()
+    const doc = snap.exists ? (snap.data() as InscripcionServicioDoc) : null
+
+    if (!doc || doc.institucionId !== institucionId || doc.usuarioId !== usuarioId) {
+      throw new NotFoundException('No tienes una inscripción en este servicio')
+    }
+    if (doc.estado === 'cancelada') return { id: ref.id, ...doc }
+
+    const ahora = new Date().toISOString()
+    const actualizado: InscripcionServicioDoc = { ...doc, estado: 'cancelada', fechaActualizacion: ahora, fechaResolucion: ahora }
+    await ref.update(actualizado)
+    return { id: ref.id, ...actualizado }
+  }
+
+  /**
+   * Listado de inscripciones de un servicio (solo la institución dueña o un
+   * admin). Enriquecido con nombre, correo y avatar de cada persona para que
+   * la institución pueda contactarlos (foros, publicaciones, mensajes).
+   */
+  async listarInscripcionesServicio(
+    institucionId: string,
+    servicioId: string,
+    solicitante: { id: string; rol: string },
+    estado?: string,
+  ) {
+    await this.validarDuenioInstitucion(institucionId, solicitante.id, solicitante.rol)
+
+    const snap = await this.colInscripciones()
+      .where('institucionId', '==', institucionId)
+      .where('servicioId', '==', servicioId)
+      .get()
+
+    const todas = snap.docs.map(d => ({ id: d.id, ...d.data() } as InscripcionServicioDoc & { id: string }))
+    const filtro = (estado ?? '').trim().toLowerCase()
+    const filas = filtro && filtro !== 'todas'
+      ? todas.filter(f => f.estado === filtro)
+      : todas.filter(f => f.estado !== 'cancelada')
+
+    filas.sort((a, b) => (a.fechaCreacion ?? '').localeCompare(b.fechaCreacion ?? ''))
+    const datos = await this.enriquecerInscripciones(filas)
+
+    return {
+      institucionId,
+      servicioId,
+      datos,
+      total: filas.length,
+      pendientes: todas.filter(f => f.estado === 'pendiente').length,
+      activas: todas.filter(f => f.estado === 'activa').length,
+      rechazadas: todas.filter(f => f.estado === 'rechazada').length,
+    }
+  }
+
+  /** Aprueba (`activa`) o rechaza (`rechazada`) una inscripción pendiente. */
+  async resolverInscripcionServicio(
+    institucionId: string,
+    inscripcionId: string,
+    estado: 'activa' | 'rechazada',
+    solicitante: { id: string; rol: string },
+  ) {
+    await this.validarDuenioInstitucion(institucionId, solicitante.id, solicitante.rol)
+
+    const ref = this.colInscripciones().doc(inscripcionId)
+    const snap = await ref.get()
+    if (!snap.exists) throw new NotFoundException('Inscripción no encontrada')
+
+    const doc = snap.data() as InscripcionServicioDoc
+    if (doc.institucionId !== institucionId) {
+      throw new NotFoundException('Inscripción no encontrada')
+    }
+    if (doc.estado !== 'pendiente') {
+      throw new BadRequestException('La solicitud ya fue resuelta')
+    }
+
+    const ahora = new Date().toISOString()
+    const actualizado: InscripcionServicioDoc = {
+      ...doc,
+      estado,
+      fechaActualizacion: ahora,
+      fechaResolucion: ahora,
+    }
+    await ref.update(actualizado)
+    return { id: ref.id, ...actualizado }
+  }
+
+  /** Resumen de inscritos/pendientes por servicio de MI institución (panel). */
+  async resumenInscripcionesServicio(usuarioId: string) {
+    const institucion = await this.resolverInstitucion(usuarioId)
+    const snap = await this.colInscripciones().where('institucionId', '==', institucion.id).get()
+
+    const porServicio = new Map<string, { servicioId: string; servicioNombre: string | null; pendientes: number; activas: number; rechazadas: number; total: number }>()
+    for (const d of snap.docs) {
+      const doc = d.data() as InscripcionServicioDoc
+      if (doc.estado === 'cancelada') continue
+      const fila = porServicio.get(doc.servicioId) ?? {
+        servicioId: doc.servicioId,
+        servicioNombre: doc.servicioNombre ?? null,
+        pendientes: 0,
+        activas: 0,
+        rechazadas: 0,
+        total: 0,
+      }
+      if (doc.estado === 'pendiente') fila.pendientes++
+      else if (doc.estado === 'activa') fila.activas++
+      else if (doc.estado === 'rechazada') fila.rechazadas++
+      fila.total++
+      porServicio.set(doc.servicioId, fila)
+    }
+
+    return { institucionId: institucion.id, datos: [...porServicio.values()] }
+  }
+
+  /** Agrega nombre, correo y avatar del perfil a cada inscripción. */
+  private async enriquecerInscripciones(filas: Array<InscripcionServicioDoc & { id: string }>) {
+    const ids = [...new Set(filas.map(f => f.usuarioId).filter(Boolean))]
+    const snaps = await Promise.all(ids.map(id => this.col(COLECCIONES.perfiles).doc(id).get()))
+    const perfiles = new Map(snaps.filter(s => s.exists).map(s => [s.id, s.data()!]))
+
+    return filas.map(f => {
+      const perfil = perfiles.get(f.usuarioId) ?? {}
+      return {
+        ...f,
+        usuario: {
+          id: f.usuarioId,
+          nombre: (perfil.nombreCompleto as string) ?? 'Usuario de Raíces',
+          email: (perfil.email as string) ?? '',
+          urlAvatar: (perfil.urlAvatar as string) ?? null,
+        },
+      }
     })
   }
 

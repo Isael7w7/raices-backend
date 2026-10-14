@@ -474,7 +474,7 @@ También acepta los nombres clásicos: `chat`, `postulaciones`, `resenas`, `desc
 ---
 
 ### GET `/instituciones/:id`
-**Descripción:** Detalle de institución (público, solo verificadas)  
+**Descripción:** Detalle de institución (público, solo verificadas). El catálogo `servicios` viene poblado: cada entrada se parsea a objeto (`{ id, nombre, categoria, descripcion, costo, horario, accesibilidad, estado: 'Activo' }`) y **solo se devuelven los servicios en estado Activo**.  
 **Autenticación:** No requerida
 
 ---

@@ -119,6 +119,28 @@ export interface InstitucionDoc {
 }
 
 /**
+ * Inscripción de un usuario a un servicio/programa de una institución
+ * (colección `inscripcionesServicio`). Flujo con aprobación:
+ * `pendiente` → `activa` | `rechazada`, y `cancelada` cuando la persona
+ * retira su propia inscripción.
+ *
+ * ID determinista `${servicioId}__${usuarioId}` para que una persona solo
+ * tenga una inscripción por servicio (re-inscribir reactiva el documento).
+ */
+export interface InscripcionServicioDoc {
+  id?: string
+  institucionId: string
+  servicioId: string
+  /** Nombre del servicio al momento de la solicitud (snapshot). */
+  servicioNombre?: string
+  usuarioId: string
+  estado: 'pendiente' | 'activa' | 'rechazada' | 'cancelada'
+  fechaCreacion?: string
+  fechaActualizacion?: string
+  fechaResolucion?: string | null
+}
+
+/**
  * Documento de la colección `vacantes`.
  */
 export interface VacanteDoc {
