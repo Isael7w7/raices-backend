@@ -271,8 +271,13 @@ deploy_to_cloud_run() {
     env_vars+=",FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-${PROJECT_ID}}"
     env_vars+=",COOKIE_SAMESITE=${COOKIE_SAMESITE:-none}"
     env_vars+=",COOKIE_SECURE=${COOKIE_SECURE:-true}"
+    # CORS_ORIGINS: prioriza la variable exportada en el shell; si no existe,
+    # se toma del archivo .env en el loop de abajo (si no, el frontend queda
+    # bloqueado por CORS en producción).
+    local cors_from_shell=0
     if [ -n "${CORS_ORIGINS:-}" ]; then
         env_vars+=",CORS_ORIGINS=${CORS_ORIGINS}"
+        cors_from_shell=1
     fi
 
     # Agregar variables no sensibles adicionales desde el archivo .env si existe
@@ -283,8 +288,9 @@ deploy_to_cloud_run() {
                 # Skip PORT (reservado por Cloud Run), NODE_ENV (ya fijada por la línea base),
                 # GOOGLE_APPLICATION_CREDENTIALS (ruta local inexistente en Cloud Run),
                 # cookies de sesión (ya fijadas a none/true para cross-site),
-                # secretos y vars ya base
-                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^NODE_ENV= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || [[ "$line" =~ ^CORS_ORIGINS= ]] || [[ "$line" =~ ^COOKIE_SAMESITE= ]] || [[ "$line" =~ ^COOKIE_SECURE= ]] || [[ "$line" =~ ^GOOGLE_APPLICATION_CREDENTIALS= ]]; then
+                # secretos y vars ya base. CORS_ORIGINS solo se omite si ya vino
+                # exportada del shell (para no duplicar el flag).
+                if [[ "$line" =~ ^PORT= ]] || [[ "$line" =~ ^NODE_ENV= ]] || [[ "$line" =~ ^FIREBASE_PROJECT_ID= ]] || { [ "${cors_from_shell}" -eq 1 ] && [[ "$line" =~ ^CORS_ORIGINS= ]]; } || [[ "$line" =~ ^COOKIE_SAMESITE= ]] || [[ "$line" =~ ^COOKIE_SECURE= ]] || [[ "$line" =~ ^GOOGLE_APPLICATION_CREDENTIALS= ]]; then
                     skip=1
                 fi
                 for name in "${SENSITIVE_ENV_NAMES[@]}"; do
@@ -333,7 +339,8 @@ deploy_to_cloud_run() {
 }
 
 get_service_url() {
-    log_info "Fetching service URL..."
+    # stderr para que el log no contamine la URL capturada con $(...)
+    log_info "Fetching service URL..." >&2
     gcloud run services describe "${SERVICE_NAME}" \
         --region="${REGION}" \
         --format="value(status.url)"
