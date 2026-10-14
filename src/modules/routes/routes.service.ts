@@ -688,6 +688,7 @@ export class RoutesService {
       '',
       'Genera entre 5 y 7 pasos siguiendo estrictamente las guías CENETEC/OMS,',
       'con evaluación médica inicial antes de cualquier intervención terapéutica.',
+      ]
 
 
     const result = await this.ai.models.generateContent({
