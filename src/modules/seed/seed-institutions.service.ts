@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
-import { COLECCIONES } from '../../../database/firestore.constants';
+import { COLECCIONES } from '../../database/firestore.constants';
 
 @Injectable()
 export class SeedInstitutionsService {
@@ -36,8 +36,7 @@ export class SeedInstitutionsService {
     this.db = getFirestore();
   }
 
-  /**
-   * Lee un archivo CSV local y masivamente inserta instituciones y sus servicios en Firestore.
+  /** Lee un archivo CSV local y masivamente inserta instituciones y sus servicios en Firestore.
    * El CSV debe tener columnas: nombre,latitud,longitud,categoria_servicio,ciudad
    */
   async seedFromCsv(csvPath?: string): Promise<{ institucionesInsertadas: number; serviciosInsertados: number }> {
@@ -149,8 +148,8 @@ export class SeedInstitutionsService {
     };
   }
 
-  private obtenerServiciosPorCategoria(categoria: string): { tipo: string; nombre: string; categoria?: string; costo?: string; horario?: string }[] {
-    const mapa: Record<string, { tipo: string; nombre: string; categoria?: string; costo?: string; horario?: string }> = {
+  private obtenerServiciosPorCategoria(categoria: string): ServicioExterno[] {
+    const mapa: Record<string, ServicioExterno[]> = {
       funcional: [
         { tipo: 'terapia', nombre: 'Fisioterapia', categoria: 'funcional', costo: 'Consultar', horario: 'Lun-Vie 8:00-16:00' },
         { tipo: 'terapia', nombre: 'Terapia Ocupacional', categoria: 'funcional', costo: 'Consultar', horario: 'Lun-Vie 8:00-16:00' },
@@ -198,4 +197,12 @@ export class SeedInstitutionsService {
       await lote.commit();
     }
   }
+}
+
+interface ServicioExterno {
+  tipo: string;
+  nombre: string;
+  categoria?: string;
+  costo?: string;
+  horario?: string;
 }

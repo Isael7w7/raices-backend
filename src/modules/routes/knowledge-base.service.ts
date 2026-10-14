@@ -21,6 +21,7 @@ export interface RutaExperta {
   descripcion: string
   areaInteres: string
   pasos: PasoExperto[]
+  tea?: unknown
 }
 
 /** Resultado de la búsqueda de perfil similar. */
@@ -126,17 +127,6 @@ const RUTA_TEAC_I: RutaExperta = {
     { titulo: 'Terapia Ocupacional e Integración Sensorial', descripcion: 'Sesiones de terapia ocupacional enfocadas en integración sensorial, regulación emocional y habilidades de vida diaria.', categoria: 'tea', orden: 2 },
     { titulo: 'Terapia de Lenguaje y Comunicación Alternativa', descripcion: 'Sesiones de terapia del lenguaje y comunicación alternativa (PECS, signos, recursos AAC) para desarrollar comunicación funcional.', categoria: 'tea', orden: 3 },
   ],
-  tea: {
-    nombre: 'Desarrollo Social y Habilidades de Vida - TEA Infantil',
-    descripcion: 'Ruta estructurada para fortalecer interacción social, comunicación y autonomía en la primera infancia del TEA.',
-    areaInteres: 'funcional',
-    pasos: [
-      { titulo: 'Evaluación Neurológica y Diagnóstico Clínico', descripcion: 'Evaluación integral con neurólogo para identificar fortalezas y áreas de apoyo del TEA en la primera infancia.', categoria: 'tea', orden: 1 },
-      { titulo: 'Terapia Ocupacional e Integración Sensorial', descripcion: 'Sesiones de terapia ocupacional enfocadas en integración sensorial, regulación emocional y habilidades de vida diaria.', categoria: 'tea', orden: 2 },
-      { titulo: 'Terapia de Lenguaje y Comunicación Alternativa', descripcion: 'Sesiones de terapia del lenguaje y comunicación alternativa (PECS, signos, recursos AAC) para desarrollar comunicación funcional.', categoria: 'tea', orden: 3 },
-      { titulo: 'Inserción Social y Familiar', descripcion: 'Guía para la integración social familiar y escolar del niño con TEA.', categoria: 'social', orden: 4 },
-    ],
-  },
 }
 const RUTA_GENERICA: RutaExperta = {
   nombre: 'Desarrollo Integral y Vida Independiente',
