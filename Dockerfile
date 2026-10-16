@@ -6,10 +6,12 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Copy dependency files first (better caching)
-COPY package.json pnpm-lock.yaml ./
+# pnpm-workspace.yaml es obligatorio: contiene overrides/allowBuilds que el
+# lockfile valida (sin él: ERR_PNPM_LOCKFILE_CONFIG_MISMATCH).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Install pnpm and dependencies
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# pnpm >= 10: versiones anteriores no leen overrides desde pnpm-workspace.yaml
+RUN npm install -g pnpm@12
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy source code
@@ -43,11 +45,13 @@ RUN addgroup -g 1001 -S appgroup && \
 WORKDIR /app
 
 # Copy dependency files
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Install pnpm and production dependencies
-# Pin pnpm v9 to avoid ERR_PNPM_IGNORED_BUILDS (v11 requires interactive approval for build scripts)
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# pnpm >= 10 (mismo motivo que el builder: overrides en pnpm-workspace.yaml).
+# pnpm 10+ no ejecuta scripts de dependencias salvo las aprobadas en
+# allowBuilds (pnpm-workspace.yaml), por lo que no bloquea de forma interactiva.
+RUN npm install -g pnpm@12
 RUN pnpm install --prod --frozen-lockfile
 
 # Copy built files from builder stage

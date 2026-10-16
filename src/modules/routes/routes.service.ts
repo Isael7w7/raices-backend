@@ -7,6 +7,7 @@ import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto } from './dto/ruta-desarrollo.dto'
 import { KnowledgeBaseService } from './knowledge-base.service'
+import { KnowledgeVectorService } from './knowledge-vector.service'
 import { RoutesAnalyticsService } from './routes-analytics.service'
 import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
 import type { PerfilExtendidoDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
@@ -46,6 +47,7 @@ export class RoutesService {
     private readonly knowledgeBase: KnowledgeBaseService,
     private readonly config: ConfigService,
     private readonly analytics: RoutesAnalyticsService,
+    private readonly knowledgeVector: KnowledgeVectorService,
   ) {
     this.initializeAi()
   }
@@ -285,6 +287,7 @@ export class RoutesService {
       rutaId,
       titulo: dto.titulo,
       descripcion: dto.descripcion ?? '',
+      categoria: dto.categoria ?? 'general',
       orden,
       completado: false,
       fechaCompletado: null,
@@ -520,6 +523,7 @@ export class RoutesService {
         rutaId: refRuta.id,
         titulo: paso.titulo,
         descripcion: paso.descripcion,
+        categoria: paso.categoria ?? 'general',
         orden: paso.orden,
         completado: false,
         fechaCompletado: null,
@@ -635,8 +639,28 @@ export class RoutesService {
     const metas = this.listarValoresJson(perfil.metasActuales).join(', ') || 'no especificadas'
     const areas = this.listarValoresJson(perfil.areasInteres).join(', ') || 'no especificadas'
 
+    // RAG: recupera la evidencia oficial (CENETEC/SEP/OMS) más relevante para
+    // el perfil del usuario. Best-effort: si falla, el prompt continúa sin ella.
+    const contextoRecuperado = await this.knowledgeVector.buscarContextoRelevante({
+      discapacidad: discapacidades,
+      etapaVida: perfil.etapaVida ?? 'no especificada',
+      metas,
+    })
+
+    const seccionEvidencia = contextoRecuperado.length > 0
+      ? [
+          '--- EVIDENCIA OBLIGATORIA DE CONTEXTO ---',
+          'Debes basar los pasos estrictamente en las siguientes guías oficiales. Aplica las advertencias de seguridad al pie de la letra:',
+          contextoRecuperado
+            .map(c => `FUENTE: ${c.title}\nCONTENIDO: ${c.content}\nGUÍA: ${c.practical_guidance}\nADVERTENCIAS: ${c.limitations_and_warnings}`)
+            .join('\n\n'),
+          '--- FIN DE EVIDENCIA ---',
+          '',
+        ]
+      : []
+
     const prompt = [
-      'Eres un Comité Médico y Pedagógico Experto en rutas de desarrollo para personas con discapacidad en México.',
+      'Eres el motor de inteligencia clínica y pedagógica de "Raíces". Tu razonamiento interno es el de un Comité Médico y Pedagógico Experto en México, pero tu forma de comunicarte con el usuario debe ser empática, cálida y utilizar estrictamente "Lectura Fácil".',
       '',
       'INSTRUCCIONES ESTRICTAS PARA LA GENERACIÓN DE RUTAS:',
       '',
@@ -654,41 +678,46 @@ export class RoutesService {
       '   - Invertir el orden lógico de la atención médica (intervención antes de evaluación).',
       '',
       '4. ORDEN MÉDICO OBLIGATORIO. Los pasos deben seguir la secuencia clínica correcta:',
-      '   - PRIMERA FASE: Evaluación médica inicial y diagnóstico clínico',
-      '   - SEGUNDA FASE: Intervenciones terapéuticas basadas en evidencia',
+      '   - PRIMERA FASE: Evaluación médica o legal inicial y diagnóstico clínico',
+      '   - SEGUNDA FASE: Intervenciones terapéuticas y sistemas de apoyo basados en evidencia',
       '   - TERCERA FASE: Integración social, educativa o laboral',
       '',
-      '5. MÍNIMO 5 PASOS, MÁXIMO 7 PASOS. Generar entre 5 y 7 pasos concretos y accionables.',
+      '5. REGLAS DE ACCESIBILIDAD COGNITIVA Y LECTURA FÁCIL (OBLIGATORIO):',
+      '   - Verbos de acción amigables: La "descripcion" de CADA paso DEBE comenzar con un verbo de acción en imperativo amable (ej. "Visita el...", "Acude a...", "Pregunta por...", "Platica con...").',
+      '   - Cero burocracia: Traduce términos clínicos o legales complejos a lenguaje cotidiano (ej. en lugar de "evaluar perfil de funcionamiento", usa "para entender qué apoyos necesitas").',
+      '   - Explicación de siglas: Si usas siglas como CEDis, CAM o USAER, explica brevemente para qué sirven en palabras sencillas.',
       '',
-      '6. CADA PASO DEBE INCLUIR:',
-      '   - título: ≤100 caracteres, específico y accionable',
-      '   - descripción: ≤200 caracteres, concreta y accionable',
-      '   - categoría: debe ser uno de: habla, motricidad, visual, auditiva, tea, cognitiva, educacion, laboral, social, general',
+      '6. MÍNIMO 5 PASOS, MÁXIMO 7 PASOS. Generar entre 5 y 7 pasos concretos y accionables.',
       '',
-      '7. CONTEXTO MÉXICO. Cada paso debe ser específico, realista y adaptado al contexto de México,',
-      '    considerando la disponibilidad de recursos, infraestructura sanitaria y contexto cultural.',
+      '7. CADA PASO DEBE INCLUIR:',
+      '   - titulo: ≤100 caracteres, claro, directo y motivador',
+      '   - descripcion: ≤200 caracteres, iniciando SIEMPRE con un verbo de acción amable en Lectura Fácil',
+      '   - categoria: debe ser uno de: habla, motricidad, visual, auditiva, tea, cognitiva, educacion, laboral, social, general',
       '',
-      '8. RESPUESTA OBLIGATORIA SOLO JSON. Responde SOLO con JSON válido en este formato exacto:',
-      "   {'pasos': [{'titulo': 'título del paso', 'descripcion': 'descripción concreta y accionable', 'categoria': 'habla|motricidad|visual|auditiva|tea|cognitiva|educacion|laboral|social|general'}] }",
+      '8. CONTEXTO MÉXICO. Cada paso debe ser específico, realista y adaptado al contexto de México (centros de salud, DIF, CAM, USAER).',
       '',
-      '9. PROHIBIDO LO SIGUIENTE EN CUALQUIER PASO:',
+      '9. RESPUESTA OBLIGATORIA SOLO JSON. Responde SOLO con JSON válido en este formato exacto:',
+      "   {'pasos': [{'titulo': 'título del paso', 'descripcion': 'descripción clara en Lectura Fácil iniciando con verbo de acción', 'categoria': 'habla|motricidad|visual|auditiva|tea|cognitiva|educacion|laboral|social|general'}] }",
+      '',
+      '10. PROHIBIDO LO SIGUIENTE EN CUALQUIER PASO:',
       '   - Cualquier diagnóstico médico directo',
       '   - Nombres de fármacos o tratamientos específicos sin evaluación previa',
       '   - Pasos que sugieran intervención terapéutica antes de evaluación diagnóstica',
       '',
       'PERFIL DEL USUARIO (para contexto, no para generar pasos médicos):',
-      '- Discapacidades: ' + discapacidades,
-      '- Etapa de vida: ' + '(perfil.etapaVida ?? "no especificada")',
-      '- Ciudad: ' + '(registro?.ciudad ?? "no especificada") + ", " + (registro?.estado ?? "")',
-      '- Metas actuales: ' + metas,
-      '- Áreas de interés: ' + areas,
-      '- Nivel de apoyo: ' + '(perfil.nivelApoyo ?? "no especificado")',
-      '- Escalas de vida: ' + escalasVida,
-      '- Viabilidad económica: ' + '(perfil.viabilidadEconomica ?? "no especificada")',
+      'Discapacidades: \n' + discapacidades,
+      `- Etapa de vida: ${perfil.etapaVida ?? 'no especificada'}`,
+      `- Ciudad: ${registro?.ciudad ?? 'no especificada'}${registro?.estado ? `, ${registro.estado}` : ''}`,
+      'Metas actuales: \n' + metas,
+      'Áreas de interés: \n' + areas,
+      `- Nivel de apoyo: ${perfil.nivelApoyo ?? 'no especificado'}`,
+      'Escalas de vida: \n' + escalasVida,
+      `- Viabilidad económica: ${perfil.viabilidadEconomica ?? 'no especificada'}`,
       '',
-      'Genera entre 5 y 7 pasos siguiendo estrictamente las guías CENETEC/OMS,',
-      'con evaluación médica inicial antes de cualquier intervención terapéutica.',
-      ]
+      ...seccionEvidencia,
+      '',
+      'Genera entre 5 y 7 pasos aplicando Lectura Fácil. Garantiza que cada "descripcion" empiece con un verbo de acción amable (Visita, Acude, Pregunta, Platica) y mantén el rigor técnico CENETEC/OMS.'
+    ];
 
 
     const result = await this.ai.models.generateContent({

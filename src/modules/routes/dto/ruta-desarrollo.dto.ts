@@ -117,6 +117,14 @@ export class CrearPasoDto {
   @ApiPropertyOptional({ description: 'Orden del paso en la ruta', example: 1 })
   @IsOptional() @IsNumber() @Min(1)
   orden?: number
+
+  @ApiPropertyOptional({
+    description: 'Categoría del paso',
+    enum: ['habla', 'motricidad', 'visual', 'auditiva', 'tea', 'cognitiva', 'educacion', 'laboral', 'social', 'funcional', 'general'],
+    example: 'laboral',
+  })
+  @IsOptional() @Transform(({ value }) => sanitizeHtml(value)) @IsString() @MaxLength(50, { message: 'La categoría no puede exceder 50 caracteres' })
+  categoria?: string
 }
 
 /**
@@ -215,6 +223,12 @@ export class PasoRutaDto {
 
   @ApiProperty({ example: 1 })
   orden!: number
+
+  @ApiPropertyOptional({
+    description: 'Categoría del paso (habla, motricidad, visual, auditiva, tea, cognitiva, educacion, laboral, social, funcional, general)',
+    example: 'laboral',
+  })
+  categoria?: string
 
   @ApiProperty({ example: false })
   completado!: boolean

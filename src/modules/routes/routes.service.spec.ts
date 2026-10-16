@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { RoutesService } from './routes.service';
 import { KnowledgeBaseService } from './knowledge-base.service';
+import { KnowledgeVectorService } from './knowledge-vector.service';
 import { FIRESTORE } from '../../database/firebase.provider';
 import { COLECCIONES } from '../../database/firestore.constants';
 import { ConfigService } from '@nestjs/config';
@@ -143,6 +144,11 @@ const knowledgeBaseMock = {
   obtenerVacantesRelevantes: jest.fn().mockResolvedValue([]),
 };
 
+const knowledgeVectorMock = {
+  buscarContextoRelevante: jest.fn().mockResolvedValue([]),
+  ingestarDataset: jest.fn().mockResolvedValue({ procesados: 0, ingestados: 0, fallidos: 0, errores: [] }),
+};
+
 async function crearService(firestoreMock: any) {
   const module: TestingModule = await Test.createTestingModule({
     providers: [
@@ -151,6 +157,7 @@ async function crearService(firestoreMock: any) {
       { provide: KnowledgeBaseService, useValue: knowledgeBaseMock },
       { provide: ConfigService, useValue: configMock },
       { provide: RoutesAnalyticsService, useValue: analyticsMock },
+      { provide: KnowledgeVectorService, useValue: knowledgeVectorMock },
     ],
   }).compile();
   return module.get<RoutesService>(RoutesService);
@@ -406,6 +413,27 @@ describe('RoutesService', () => {
       expect(result.orden).toBe(1);
     });
 
+    it('should persist categoria from the dto and default to general', async () => {
+      const fx = buildFirestore({
+        rutas: { ruta1: { ...rutaBase, totalPasos: 1 } },
+        pasos: [{ id: 'p1', data: { rutaId: 'ruta1', titulo: 'Uno', orden: 1 } }],
+        nuevoPasoId: 'p2',
+      });
+      const service = await crearService(fx.firestoreMock);
+
+      const conCategoria: any = await service.agregarPaso('user1', 'ruta1', { titulo: 'Postularse a vacante', categoria: 'laboral' } as any);
+
+      const guardado1 = fx.nuevoPasoRef.set.mock.calls[0][0];
+      expect(guardado1.categoria).toBe('laboral');
+      expect(conCategoria.categoria).toBe('laboral');
+
+      const sinCategoria: any = await service.agregarPaso('user1', 'ruta1', { titulo: 'Paso sin categoría' } as any);
+
+      const guardado2 = fx.nuevoPasoRef.set.mock.calls[1][0];
+      expect(guardado2.categoria).toBe('general');
+      expect(sinCategoria.categoria).toBe('general');
+    });
+
     it('should throw ForbiddenException when ruta belongs to another user', async () => {
       const fx = buildFirestore({ rutas: { ruta1: { ...rutaBase, usuarioId: 'otro' } } });
       const service = await crearService(fx.firestoreMock);
@@ -590,6 +618,66 @@ describe('RoutesService', () => {
       expect(result.nombre).toBe('Desarrollo de Comunicación y Habla');
     });
 
+    it('should persist the categoria of every generated paso into pasosRuta', async () => {
+      const perfilCol = {
+        where: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({
+          empty: false,
+          docs: [{ data: () => ({ tiposDiscapacidad: '["habla"]', etapaVida: 'infancia' }) }],
+        }),
+      };
+      const registroDoc = {
+        get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ ciudad: 'Mérida' }) }),
+      };
+      const nuevaRutaRef = crearRef('ruta-nueva', null, false);
+      const pasosGuardados: DocData[] = [];
+      const pasosColExtend = {
+        doc: jest.fn(() => {
+          const ref = crearRef('paso-nuevo', null, false);
+          ref.set.mockImplementation((dato: DocData) => {
+            pasosGuardados.push(dato);
+            return Promise.resolve(undefined);
+          });
+          return ref;
+        }),
+        where: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
+      };
+      const firestoreExtended = {
+        collection: jest.fn((nombre: string) => {
+          if (nombre === COLECCIONES.perfilesExtendidos) return perfilCol;
+          if (nombre === COLECCIONES.perfiles) return { doc: jest.fn(() => registroDoc) };
+          if (nombre === COLECCIONES.rutasDesarrollo) return {
+            ...buildFirestore({ rutas: {} }).rutasCol,
+            doc: jest.fn((id?: string) => (id ? crearRef(id, null, false) : nuevaRutaRef)),
+          };
+          if (nombre === COLECCIONES.pasosRuta) return pasosColExtend;
+          throw new Error(`Colección no mockeada: ${nombre}`);
+        }),
+      };
+
+      knowledgeBaseMock.obtenerRutaExperta.mockReturnValueOnce({
+        nombre: 'Ruta laboral',
+        descripcion: 'Ruta hacia el empleo',
+        areaInteres: 'laboral',
+        pasos: [
+          { titulo: 'Preparar currículum accesible', descripcion: 'Redactar CV con formatos accesibles.', categoria: 'laboral', orden: 1 },
+          { titulo: 'Buscar vacantes inclusivas', descripcion: 'Postularse en empresas con programa de inclusión.', categoria: 'laboral', orden: 2 },
+        ],
+      });
+
+      const service = await crearService(firestoreExtended);
+      service.obtenerRuta = jest.fn().mockResolvedValue({ id: 'ruta-nueva', nombre: 'Ruta laboral', estado: 'activa', pasos: [] });
+
+      await service.generarRutaPersonalizada('user1');
+
+      expect(pasosGuardados).toHaveLength(2);
+      expect(pasosGuardados.map(p => p.categoria)).toEqual(['laboral', 'laboral']);
+      expect(pasosGuardados[0]).toMatchObject({ rutaId: 'ruta-nueva', orden: 1, completado: false });
+      expect(pasosGuardados[1]).toMatchObject({ orden: 2, completado: false });
+    });
+
     it('should return existing active route if user already has one', async () => {
       const fx = buildFirestore({
         rutas: { 'ruta-activa': { ...rutaBase, estado: 'activa' } },
@@ -671,6 +759,102 @@ describe('RoutesService', () => {
       expect(result.ruta).toBeNull();
       expect(result.pasos).toEqual([]);
       expect(result.mensaje).toContain('No tienes una ruta activa');
+    });
+
+    it('should return vacantes when pasoActual.categoria is laboral', async () => {
+      const firestoreExtended = {
+        collection: jest.fn((nombre: string) => {
+          if (nombre === COLECCIONES.rutasDesarrollo) return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ id: 'ruta-activa', data: () => ({ ...rutaBase, estado: 'activa' }) }],
+            }),
+          };
+          if (nombre === COLECCIONES.pasosRuta) return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [
+                { id: 'p1', data: () => ({ rutaId: 'ruta-activa', titulo: 'Integración social', orden: 1, completado: true, categoria: 'social' }) },
+                { id: 'p2', data: () => ({ rutaId: 'ruta-activa', titulo: 'Buscar empleo inclusivo', orden: 2, completado: false, categoria: 'laboral' }) },
+              ],
+            }),
+          };
+          if (nombre === COLECCIONES.perfilesExtendidos) return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ data: () => ({ usuarioId: 'user1', tiposDiscapacidad: '["habla"]' }) }],
+            }),
+          };
+          if (nombre === COLECCIONES.perfiles) return {
+            doc: jest.fn(() => ({
+              get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ ciudad: 'Mérida', estado: 'Yucatán' }) }),
+            })),
+          };
+          throw new Error(`Colección no mockeada: ${nombre}`);
+        }),
+      };
+
+      const vacantesEsperadas = [{ id: 'v1', titulo: 'Auxiliar administrativo', modalidad: 'presencial', ciudad: 'Mérida' }];
+      knowledgeBaseMock.obtenerVacantesRelevantes.mockClear().mockResolvedValueOnce(vacantesEsperadas);
+      knowledgeBaseMock.obtenerInstitucionesCercanas.mockClear();
+
+      const service = await crearService(firestoreExtended);
+      const result: any = await service.obtenerMiRuta('user1');
+
+      expect(result.pasos).toHaveLength(2);
+      expect(result.pasoActual.categoria).toBe('laboral');
+      expect(result.pasos.map((p: any) => p.categoria)).toEqual(['social', 'laboral']);
+      expect(knowledgeBaseMock.obtenerVacantesRelevantes).toHaveBeenCalledWith('Mérida', ['habla']);
+      expect(result.entidadesLocales.vacantes).toEqual(vacantesEsperadas);
+      expect(result.entidadesLocales.instituciones).toEqual([]);
+    });
+
+    it('should not request vacantes when pasoActual has no laboral category', async () => {
+      const firestoreExtended = {
+        collection: jest.fn((nombre: string) => {
+          if (nombre === COLECCIONES.rutasDesarrollo) return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ id: 'ruta-activa', data: () => ({ ...rutaBase, estado: 'activa' }) }],
+            }),
+          };
+          if (nombre === COLECCIONES.pasosRuta) return {
+            where: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ id: 'p1', data: () => ({ rutaId: 'ruta-activa', titulo: 'Terapia de habla', orden: 1, completado: false, categoria: 'habla' }) }],
+            }),
+          };
+          if (nombre === COLECCIONES.perfilesExtendidos) return {
+            where: jest.fn().mockReturnThis(),
+            limit: jest.fn().mockReturnThis(),
+            get: jest.fn().mockResolvedValue({
+              empty: false,
+              docs: [{ data: () => ({ usuarioId: 'user1', tiposDiscapacidad: '["habla"]' }) }],
+            }),
+          };
+          if (nombre === COLECCIONES.perfiles) return {
+            doc: jest.fn(() => ({
+              get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ ciudad: 'Mérida' }) }),
+            })),
+          };
+          throw new Error(`Colección no mockeada: ${nombre}`);
+        }),
+      };
+
+      knowledgeBaseMock.obtenerVacantesRelevantes.mockClear();
+
+      const service = await crearService(firestoreExtended);
+      const result: any = await service.obtenerMiRuta('user1');
+
+      expect(result.pasoActual.categoria).toBe('habla');
+      expect(knowledgeBaseMock.obtenerVacantesRelevantes).not.toHaveBeenCalled();
+      expect(result.entidadesLocales.vacantes).toEqual([]);
     });
   });
 

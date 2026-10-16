@@ -5,6 +5,40 @@ import { getApps, initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import { COLECCIONES } from '../../database/firestore.constants';
 
+interface InstitucionSeed {
+  id: string;
+  nombre: string;
+  categoria: string;
+  ciudad: string;
+  latitud: number;
+  longitud: number;
+  descripcion: string;
+  telefono: string;
+  whatsapp: string;
+  email: string;
+  tiposDiscapacidad: string;
+  edadMinima: number;
+  edadMaxima: number;
+  verificada: boolean;
+  activa: boolean;
+  tipoPlan: string;
+  creadoPor: string;
+  fechaCreacion: string;
+}
+
+interface ServicioSeed {
+  id: string;
+  nombre: string;
+  categoria: string;
+  costo: string;
+  institucionId: string;
+  ciudad: string;
+  horario: string;
+  estado: string;
+  creadoPor: string;
+  fechaCreacion: string;
+}
+
 @Injectable()
 export class SeedInstitutionsService {
   private readonly logger = new Logger(SeedInstitutionsService.name);
@@ -25,7 +59,7 @@ export class SeedInstitutionsService {
             credential: cert(parsed),
             projectId: parsed.project_id || projectId,
           });
-        } catch (e) {
+        } catch {
           this.logger.warn('No se pudo parsear FIREBASE_CREDENTIALS, usando projectId solo');
           initializeApp({ projectId });
         }
@@ -74,8 +108,8 @@ export class SeedInstitutionsService {
       throw new Error('El CSV debe tener columnas: nombre, latitud, longitud, categoria_servicio, ciudad');
     }
 
-    const instituciones: any[] = [];
-    const servicios: any[] = [];
+    const instituciones: InstitucionSeed[] = [];
+    const servicios: ServicioSeed[] = [];
 
     // Saltar header, procesar filas
     for (let i = 1; i < lineas.length; i++) {
@@ -119,7 +153,7 @@ export class SeedInstitutionsService {
         servicios.push({
           id: `svc-${instId}-${svc.tipo}`,
           nombre: svc.nombre,
-          categoria: svc.categoria,
+          categoria: svc.categoria ?? 'general',
           costo: svc.costo ?? 'Gratuito',
           institucionId: instId,
           ciudad,
@@ -172,7 +206,7 @@ export class SeedInstitutionsService {
     return resultado.length > 0 ? resultado : mapa.funcional;
   }
 
-  private async insertarInstitucionesLote(instituciones: any[]): Promise<void> {
+  private async insertarInstitucionesLote(instituciones: InstitucionSeed[]): Promise<void> {
     const batchSize = 500;
     for (let i = 0; i < instituciones.length; i += batchSize) {
       const lote = this.db.batch();
@@ -185,7 +219,7 @@ export class SeedInstitutionsService {
     }
   }
 
-  private async insertarServiciosLote(servicios: any[]): Promise<void> {
+  private async insertarServiciosLote(servicios: ServicioSeed[]): Promise<void> {
     const batchSize = 500;
     for (let i = 0; i < servicios.length; i += batchSize) {
       const lote = this.db.batch();
