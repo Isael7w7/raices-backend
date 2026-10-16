@@ -57,6 +57,3 @@ opencode.json
 # Auditorías técnicas
 docs/AUDITORIA-TECNICA-COMPLETA.md
 docs/AUDITORIA.md
-
-# Logs de despliegue local
-deploy.log
