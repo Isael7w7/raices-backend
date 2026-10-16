@@ -1,0 +1,377 @@
+[
+  {
+    "knowledge_id": "KB-MARC-INT-001",
+    "title": "Modelo Biopsicosocial de la Discapacidad y Estructura de la CIF (OMS)",
+    "category": "Derechos y marco jurídico",
+    "subcategory": "Marco conceptual y evaluación del funcionamiento",
+    "disability_or_condition": "Todas las condiciones y perfiles funcionales",
+    "user_profile": "Personas con discapacidad, familiares, docentes, profesionales de la salud y desarrolladores de políticas",
+    "content": "La Clasificación Internacional del Funcionamiento, de la Discapacidad y de la Salud (CIF) de la OMS y la Convención sobre los Derechos de las Personas con Discapacidad (CDPD) establecen que la discapacidad no es un atributo inherente a la persona ni sinónimo de enfermedad. La discapacidad es un concepto que evoluciona y resulta de la interacción entre las personas con deficiencias (físicas, mentales, intelectuales o sensoriales a largo plazo) y las barreras debidas a la actitud y al entorno que evitan su participación plena y efectiva en la sociedad, en igualdad de condiciones con las demás. La CIF organiza la información en dos partes: (1) Funcionamiento y Discapacidad (Funciones y Estructuras Corporales, y Actividades y Participación) y (2) Factores Contextuales (Factores Ambientales y Factores Personales).",
+    "practical_guidance": [
+      "Al orientar a una persona usuaria, diferenciar siempre el diagnóstico médico (CIE-11) del perfil de funcionamiento y las necesidades de apoyo en su entorno (CIF).",
+      "Evaluar qué barreras físicas, comunicativas, sensoriales o actitudinales del entorno están limitando la actividad o participación antes de asumir que la limitación proviene únicamente de la condición de salud.",
+      "Utilizar la terminología centrada en la persona ('persona con discapacidad', 'persona con hipoacusia') o, cuando la comunidad o la persona usuaria lo prefiera expresamente en contextos de identidad (como la comunidad Sorda o personas autistas), respetar su preferencia lingüística."
+    ],
+    "limitations_and_warnings": "La CIF no clasifica personas, sino estados de salud y dominios relacionados con el funcionamiento en un contexto dado. Dos personas con el mismo diagnóstico médico pueden tener niveles de funcionamiento y necesidades de apoyo radicalmente distintos.",
+    "source_title": "Clasificación Internacional del Funcionamiento, de la Discapacidad y de la Salud (CIF) y Convención sobre los Derechos de las Personas con Discapacidad",
+    "source_institution": "Organización Mundial de la Salud (OMS) / Organización de las Naciones Unidas (ONU)",
+    "source_url": "https://www.who.int",
+    "source_version_date": "CIF 2001 / CDPD 2006 (Vigente)",
+    "source_locator": "Introducción y Marco Conceptual de la CIF; Preámbulo inciso (e) y Artículo 1 de la CDPD",
+    "evidence_type": "Clasificación internacional y Tratado internacional vinculante",
+    "jurisdiction": "Internacional y México (rango constitucional conforme al Art. 1 CPEUM)",
+    "last_verified": "2026-10-16",
+    "review_status": "Marco normativo y conceptual verificado",
+    "keywords": [
+      "CIF",
+      "modelo biopsicosocial",
+      "modelo social",
+      "barreras del entorno",
+      "funcionamiento",
+      "participación",
+      "CDPD"
+    ],
+    "related_knowledge_ids": ["KB-EDUC-MX-001", "KB-JURI-MX-001"]
+  },
+  {
+    "knowledge_id": "KB-CLIN-MX-001",
+    "title": "Abordaje Funcional y Rehabilitación Interdisciplinaria en Parálisis Cerebral",
+    "category": "Información clínica y de salud",
+    "subcategory": "Rehabilitación neurológica y pediátrica",
+    "disability_or_condition": "Discapacidad motriz y física: Parálisis cerebral",
+    "user_profile": "Familiares, cuidadores, fisioterapeutas, terapeutas ocupacionales y médicos rehabilitadores",
+    "content": "La parálisis cerebral comprende un grupo de trastornos permanentes del desarrollo del movimiento y la postura, que causan limitación en la actividad, atribuidos a alteraciones no progresivas ocurridas en el cerebro fetal o infantil en desarrollo. Los trastornos motores se acompañan frecuentemente de alteraciones de la sensibilidad, percepción, cognición, comunicación, conducta, epilepsia y problemas musculoesqueléticos secundarios (como contracturas o luxación de cadera). Su clasificación funcional estándar para movilidad se realiza mediante el Sistema de Clasificación de la Función Motora Gruesa (GMFCS, niveles I a V), complementado con MACS (habilidad manual) y CFCS (comunicación).",
+    "practical_guidance": [
+      "Priorizar el entrenamiento orientado a tareas funcionales significativas y la participación activa en el entorno cotidiano por encima de movilizaciones pasivas aisladas.",
+      "Vigilar sistemáticamente la alineación postural en sedestación y bipedestación para prevenir deformidades secundarias y luxación de cadera (especialmente en niveles GMFCS III a V).",
+      "Evaluar la seguridad y eficacia de la deglución cuando existan signos de tos durante la alimentación, tiempos prolongados para comer o infecciones respiratorias recurrentes.",
+      "Integrar tempranamente Sistemas Aumentativos y Alternativos de Comunicación (SAAC) si existe disartria o anartria."
+    ],
+    "limitations_and_warnings": "La IA no debe prescribir esquemas farmacológicos para la espasticidad (como toxina botulínica o baclofeno) ni indicar órtesis o cirugías ortopédicas sin valoración presencial por medicina de rehabilitación y ortopedia pediátrica. Cualquier signo de dolor agudo al movilizar, cianosis o atragantamiento durante la ingesta requiere derivación médica inmediata.",
+    "source_title": "Catálogo Maestro de Guías de Práctica Clínica: Abordaje y rehabilitación de la Parálisis Cerebral Infantil / Guías técnicas de rehabilitación OMS",
+    "source_institution": "CENETEC / IMSS / Secretaría de Salud / OMS",
+    "source_url": "https://www.gob.mx/salud/cenetec",
+    "source_version_date": "Serie GPC vigente / Actualización clínica internacional",
+    "source_locator": "Apartados de Clasificación Funcional, Rehabilitación Física y Prevención de Complicaciones Secundarias",
+    "evidence_type": "Guía oficial de práctica clínica y consenso internacional",
+    "jurisdiction": "México",
+    "last_verified": "2026-10-16",
+    "review_status": "Contenido clínico consolidado; enlace directo a PDF pendiente de validación en vivo",
+    "keywords": [
+      "parálisis cerebral",
+      "GMFCS",
+      "rehabilitación pediátrica",
+      "posicionamiento",
+      "espasticidad",
+      "sedestación",
+      "disfagia"
+    ],
+    "related_knowledge_ids": [
+      "KB-COMM-INT-001",
+      "KB-MOVI-INT-001",
+      "KB-SAFE-MX-001"
+    ]
+  },
+  {
+    "knowledge_id": "KB-CLIN-MX-002",
+    "title": "Detección Temprana, Diagnóstico y Rehabilitación de la Hipoacusia Infantil (Ruta 1-3-6)",
+    "category": "Información clínica y de salud",
+    "subcategory": "Rehabilitación auditiva y sensorial",
+    "disability_or_condition": "Discapacidad auditiva: Hipoacusia neurosensorial y conductiva",
+    "user_profile": "Madres, padres, cuidadores, pediatras, audiólogos y docentes de educación inicial",
+    "content": "La identificación temprana de la hipoacusia congénita o neonatal es determinante para el desarrollo lingüístico, cognitivo y socioemocional en la infancia. Los lineamientos nacionales de salud establecen el Tamiz Auditivo Neonatal universal (mediante emisiones otoacústicas o potenciales evocados auditivos de tronco cerebral automatizados). Se sigue el estándar temporal 1-3-6: realizar el tamiz antes del primer mes de vida, confirmar el diagnóstico audiológico integral antes de los 3 meses e iniciar la habilitación temprana (adaptación de auxiliares auditivos, valoración para implante coclear y/o acceso temprano a la Lengua de Señas Mexicana) antes de los 6 meses de edad.",
+    "practical_guidance": [
+      "Orientar a las familias de recién nacidos a exigir o verificar el resultado del Tamiz Auditivo Neonatal antes del alta hospitalaria o durante el primer mes de vida.",
+      "Explicar que garantizar un lenguaje accesible desde los primeros meses (ya sea mediante estimulación auditivo-verbal con tecnología auditiva adecuada, Lengua de Señas Mexicana o un enfoque bilingüe) previene la privación lingüística en la primera infancia.",
+      "Mantener vigilancia auditiva en niñas y niños con factores de riesgo (prematurez extrema, hiperbilirrubinemia grave, meningitis, uso de medicamentos ototóxicos o antecedentes familiares de sordera infantil) aunque hayan pasado el tamiz inicial."
+    ],
+    "limitations_and_warnings": "La elección entre rehabilitación auditivo-verbal, implante coclear y/o adquisición de la Lengua de Señas Mexicana no debe presentarse como excluyente; depende del perfil audiológico, anatómico y de las decisiones informadas de la familia y la persona. La IA no interpreta audiometrías ni potenciales evocados para fines diagnósticos definitivos.",
+    "source_title": "Guías de Práctica Clínica sobre Hipoacusia Neurosensorial Bilateral y Tamiz Auditivo Neonatal / Ley General para la Inclusión de las Personas con Discapacidad",
+    "source_institution": "CENETEC / Secretaría de Salud / IMSS",
+    "source_url": "https://www.gob.mx/salud/cenetec",
+    "source_version_date": "Serie GPC vigente",
+    "source_locator": "Algoritmos de Tamiz Auditivo Neonatal, Diagnóstico Audiológico y Rehabilitación Temprana",
+    "evidence_type": "Guía oficial de práctica clínica y marco legal nacional",
+    "jurisdiction": "México",
+    "last_verified": "2026-10-16",
+    "review_status": "Contenido clínico consolidado; enlace directo a PDF pendiente de validación en vivo",
+    "keywords": [
+      "hipoacusia",
+      "sordera",
+      "tamiz auditivo neonatal",
+      "auxiliares auditivos",
+      "implante coclear",
+      "Lengua de Señas Mexicana",
+      "LSM",
+      "privación lingüística"
+    ],
+    "related_knowledge_ids": ["KB-EDUC-MX-001", "KB-COMM-INT-001"]
+  },
+  {
+    "knowledge_id": "KB-CLIN-MX-003",
+    "title": "Evaluación, Apoyos y Armonización Criterial en el Trastorno del Espectro Autista (TEA)",
+    "category": "Información clínica y de salud",
+    "subcategory": "Condiciones del neurodesarrollo",
+    "disability_or_condition": "Discapacidades del neurodesarrollo: Autismo (TEA)",
+    "user_profile": "Personas autistas, familiares, docentes, psicólogos, terapeutas y profesionales de salud",
+    "content": "El Trastorno o Condición del Espectro Autista se caracteriza por diferencias persistentes en la comunicación e interacción social en diversos contextos, junto con patrones restrictivos y repetitivos de comportamiento, intereses o actividades, los cuales incluyen frecuentemente hiper o hiporreactividad a estímulos sensoriales. Aunque algunas Guías de Práctica Clínica históricas en México todavía mencionan subcategorías del DSM-IV-TR (como Síndrome de Asperger o Trastorno Generalizado del Desarrollo no especificado), las clasificaciones internacionales vigentes (DSM-5-TR y CIE-11 de la OMS) unifican el diagnóstico bajo Trastorno del Espectro Autista, especificando tres niveles de necesidad de apoyo (Nivel 1: requiere apoyo; Nivel 2: requiere apoyo notable; Nivel 3: requiere apoyo muy notable) y registrando si existe o no discapacidad intelectual o deterioro del lenguaje acompañante.",
+    "practical_guidance": [
+      "Utilizar apoyos visuales (agendas visuales, anticipadores de transición, estructuración clara de espacios) para reducir la incertidumbre y la sobrecarga cognitiva.",
+      "Identificar y mitigar desencadenantes de sobrecarga sensorial en el hogar, escuela o trabajo (iluminación fluorescente parpadeante, ruido ambiental excesivo, texturas aversivas), permitiendo el uso de herramientas de autorregulación (audífonos con cancelación de ruido, lentes con filtro, pausas sensoriales o movimientos de autorregulación / 'stimming' no lesivos).",
+      "Priorizar intervenciones psicoeducativas, comunicativas y mediadas por la familia basadas en el desarrollo y el respeto a la persona, evitando prácticas aversivas o que busquen forzar el enmascaramiento ('masking') a costa del bienestar emocional."
+    ],
+    "limitations_and_warnings": "ADVERTENCIA DE SEGURIDAD: No existe ningún tratamiento farmacológico ni suplemento que 'cure' el autismo; los fármacos solo se prescriben por especialistas médicos para condiciones coocurrentes específicas (ej. epilepsia, trastornos del sueño severos, ansiedad incapacitante). La IA debe rechazar categóricamente terapias pseudocientíficas o peligrosas (como dióxido de cloro/MMS, quelación de metales pesados o cámaras hiperbáricas sin indicación médica aprobada).",
+    "source_title": "GPC Diagnóstico y Tratamiento del Trastorno del Espectro Autista / Ley General para la Atención y Protección a Personas con la Condición del Espectro Autista / CIE-11 OMS",
+    "source_institution": "CENETEC / Secretaría de Salud / Organización Mundial de la Salud (OMS)",
+    "source_url": "https://www.gob.mx/salud/cenetec",
+    "source_version_date": "GPC histórica contrastada con CIE-11 (2022) y Ley Federal (2015)",
+    "source_locator": "Criterios diagnósticos, Niveles de apoyo e Intervenciones basadas en evidencia",
+    "evidence_type": "Guía oficial, Ley Federal y Clasificación Internacional OMS",
+    "jurisdiction": "México e Internacional",
+    "last_verified": "2026-10-16",
+    "review_status": "Armonizado con advertencia de actualización sobre DSM-IV-TR a DSM-5-TR/CIE-11",
+    "keywords": [
+      "autismo",
+      "TEA",
+      "neurodesarrollo",
+      "integración sensorial",
+      "apoyos visuales",
+      "sobrecarga sensorial",
+      "CIE-11",
+      "ajustes razonables"
+    ],
+    "related_knowledge_ids": [
+      "KB-EDUC-MX-001",
+      "KB-COMM-INT-001",
+      "KB-SAFE-MX-001"
+    ]
+  },
+  {
+    "knowledge_id": "KB-CLIN-MX-004",
+    "title": "Rehabilitación Funcional y Prevención de Complicaciones en Lesión Medular y Amputaciones",
+    "category": "Información clínica y de salud",
+    "subcategory": "Rehabilitación física y musculoesquelética",
+    "disability_or_condition": "Discapacidad motriz y física: Lesión medular y amputaciones de extremidades",
+    "user_profile": "Personas usuarias de silla de ruedas o prótesis, familiares, cuidadores y personal de rehabilitación",
+    "content": "En personas con lesión medular y personas con amputación de extremidades, la rehabilitación integral busca maximizar la independencia funcional, prescribir y entrenar el uso de ayudas técnicas (sillas de ruedas adecuadas al perfil antropométrico o prótesis) y prevenir complicaciones secundarias potencialmente graves. En lesión medular destacan el cuidado de la piel para evitar úlceras por presión, el manejo de vejiga e intestino neurogénicos y la vigilancia de disreflexia autonómica (en lesiones iguales o superiores al nivel torácico T6). En amputaciones destaca el cuidado y modelado del muñón (vendaje compresivo), la desensibilización, el manejo del dolor de miembro fantasma y el fortalecimiento del miembro residual y contralateral.",
+    "practical_guidance": [
+      "En lesión medular: realizar cambios posturales y alivio de presión (pulsiones o basculación en silla de ruedas cada 15 a 30 minutos, y cambios de decúbito en cama cada 2 horas), revisando diariamente la piel con un espejo en prominencias óseas (sacro, isquiones, trocánteres, talones).",
+      "En amputaciones: mantener la higiene diaria del muñón con agua y jabón neutro, secar sin frotar, revisar la piel tras usar el encaje protésico y evitar posturas que generen contracturas en flexión de cadera o rodilla (no colocar almohadas debajo del muñón de forma prolongada)."
+    ],
+    "limitations_and_warnings": "CRITERIO DE EMERGENCIA MÉDICA: En personas con lesión medular a nivel T6 o superior, la aparición súbita de dolor de cabeza intenso y pulsátil, hipertensión arterial brusca, sudoración profusa por encima del nivel de la lesión, piel de gallina o bradicardia sugiere DISREFLEXIA AUTONÓMICA (frecuentemente desencadenada por globo vesical/sonda obstruida o impactación fecal). Es una urgencia médica potencialmente mortal: se debe sentar a la persona inmediatamente para bajar la presión intracraneal, aflojar ropa apretada, verificar permeabilidad de la sonda urinaria y acudir a urgencias.",
+    "source_title": "Catálogo Maestro de GPC: Rehabilitación del paciente con lesión medular y Rehabilitación del paciente adulto con amputación de extremidad inferior",
+    "source_institution": "CENETEC / IMSS / ISSSTE",
+    "source_url": "https://www.imss.gob.mx",
+    "source_version_date": "Serie GPC vigente",
+    "source_locator": "Secciones de Prevención de Úlceras por Presión, Manejo de Muñón y Urgencias en Lesión Medular",
+    "evidence_type": "Guía oficial de práctica clínica",
+    "jurisdiction": "México",
+    "last_verified": "2026-10-16",
+    "review_status": "Contenido clínico consolidado; enlace directo a PDF pendiente de validación en vivo",
+    "keywords": [
+      "lesión medular",
+      "amputación",
+      "muñón",
+      "úlceras por presión",
+      "disreflexia autonómica",
+      "silla de ruedas",
+      "prótesis",
+      "vejiga neurogénica"
+    ],
+    "related_knowledge_ids": ["KB-MOVI-INT-001", "KB-SAFE-MX-001"]
+  },
+  {
+    "knowledge_id": "KB-EDUC-MX-001",
+    "title": "Educación Inclusiva en México: BAP, DUA, Ajustes Razonables y Servicios USAER / CAM",
+    "category": "Educación y aprendizaje",
+    "subcategory": "Modelos educativos, apoyos escolares y marco SEP",
+    "disability_or_condition": "Estudiantes con discapacidad motriz, visual, auditiva, intelectual, psicosocial, múltiple o condiciones del neurodesarrollo",
+    "user_profile": "Docentes de aula regular, especialistas de educación especial, directivos, estudiantes y familias",
+    "content": "El Sistema Educativo Nacional de México, a través de la Secretaría de Educación Pública (SEP) y la Estrategia Nacional de Educación Inclusiva (ENEI), ha transitado del modelo de integración (que utilizaba el término hoy superado de 'Necesidades Educativas Especiales - NEE') hacia el modelo de Educación Inclusiva. Este enfoque se centra en identificar, minimizar y eliminar las Barreras para el Aprendizaje y la Participación (BAP), las cuales se encuentran en los contextos (físicas, actitudinales, pedagógicas/didácticas, normativas y comunicativas) y no en el estudiante. Los servicios públicos de educación especial operan principalmente en dos modalidades: USAER (Unidad de Servicios de Apoyo a la Educación Regular, o UDEEI en la Ciudad de México), que asesora y acompaña a las escuelas regulares, y CAM (Centro de Atención Múltiple), que escolariza y forma para el trabajo a estudiantes que requieren apoyos generalizados o permanentes.",
+    "practical_guidance": [
+      "Planificar desde el origen aplicando el Diseño Universal para el Aprendizaje (DUA) mediante tres principios: (1) múltiples formas de implicación y motivación, (2) múltiples formas de representación de la información (visual, auditiva, táctil, Lectura Fácil) y (3) múltiples formas de acción y expresión para demostrar lo aprendido.",
+      "Implementar Ajustes Razonables cuando el DUA no sea suficiente para un estudiante específico: por ejemplo, ubicación preferencial en el aula, tiempo adicional en evaluaciones, uso de comunicadores o calculadoras, materiales en macrotipo o Braille, o evaluaciones orales/prácticas en lugar de escritas.",
+      "Elaborar el Plan de Intervención o documento de apoyos en corresponsabilidad entre el docente de grupo, el equipo de apoyo (USAER) y la familia."
+    ],
+    "limitations_and_warnings": "Ninguna escuela pública o privada en México puede negar la inscripción, condicionar la permanencia ni exigir un 'monitor' o 'sombra' pagado por la familia como requisito para admitir a un estudiante con discapacidad, ya que ello constituye un acto de discriminación prohibido por la Ley General de Educación, la LGIPD y criterios de la Suprema Corte de Justicia de la Nación (SCJN).",
+    "source_title": "Estrategia Nacional de Educación Inclusiva (ENEI) / Ley General de Educación / Lineamientos de Educación Especial",
+    "source_institution": "Secretaría de Educación Pública (SEP)",
+    "source_url": "https://www.gob.mx/sep",
+    "source_version_date": "2019 - Vigente",
+    "source_locator": "Apartados de Barreras para el Aprendizaje y la Participación (BAP), Diseño Universal para el Aprendizaje (DUA) y Ajustes Razonables",
+    "evidence_type": "Norma educativa y lineamiento oficial",
+    "jurisdiction": "México",
+    "last_verified": "2026-10-16",
+    "review_status": "Contenido normativo consolidado",
+    "keywords": [
+      "SEP",
+      "USAER",
+      "CAM",
+      "BAP",
+      "Barreras para el Aprendizaje y la Participación",
+      "DUA",
+      "Diseño Universal para el Aprendizaje",
+      "ajustes razonables",
+      "educación inclusiva"
+    ],
+    "related_knowledge_ids": [
+      "KB-MARC-INT-001",
+      "KB-JURI-MX-001",
+      "KB-COMM-INT-001"
+    ]
+  },
+  {
+    "knowledge_id": "KB-COMM-INT-001",
+    "title": "Sistemas Aumentativos y Alternativos de Comunicación (SAAC) y Accesibilidad Cognitiva",
+    "category": "Comunicación",
+    "subcategory": "Comunicación aumentativa, alternativa y Lectura Fácil",
+    "disability_or_condition": "Dificultades de comunicación, lenguaje y habla, autismo, parálisis cerebral, discapacidad intelectual, afasia, ELA",
+    "user_profile": "Personas con necesidades complejas de comunicación, familias, terapeutas de lenguaje y docentes",
+    "content": "Los Sistemas Aumentativos y Alternativos de Comunicación (SAAC) son formas de expresión distintas al lenguaje hablado que tienen como objetivo aumentar (aumentativos) y/o compensar (alternativos) las dificultades de comunicación y lenguaje. Se dividen en sistemas sin ayuda (gestos, lengua de señas, guiños oculares) y sistemas con ayuda, que pueden ser de baja tecnología (tableros con pictogramas como ARASAAC, cuadernos de comunicación, tableros alfabéticos) o de alta tecnología (comunicadores dinámicos en tabletas con salida de voz sintética, pulsadores o sistemas de seguimiento ocular / eye-tracking). Por su parte, la Lectura Fácil es una metodología de accesibilidad cognitiva que adapta textos, estructura y diseño para hacerlos comprensibles a personas con dificultades de comprensión lectora o discapacidad intelectual.",
+    "practical_guidance": [
+      "Desmitificar la creencia de que los SAAC frenan el habla: la evidencia científica (revisiones sistemáticas) demuestra consistentemente que el uso de SAAC NO impide ni retrasa la aparición del habla oral; por el contrario, estimula la intención comunicativa, el desarrollo lingüístico y reduce conductas derivadas de la frustración.",
+      "Aplicar el 'Lenguaje Natural Asistido' (modelado): los interlocutores (familia, docentes) deben señalar los pictogramas en el tablero o comunicador mientras hablan con la persona, sin exigirle que repita como prueba antes de validar su comunicación.",
+      "Asegurar que el sistema de comunicación incluya vocabulario núcleo (palabras de alta frecuencia como 'quiero', 'más', 'no', 'ayuda', 'ir', 'parar') y no únicamente sustantivos para pedir comida u objetos.",
+      "Asegurar que el SAAC esté disponible para la persona en todo momento y en todos sus entornos (hogar, escuela, comunidad), nunca guardado ni retirado como castigo."
+    ],
+    "limitations_and_warnings": "La selección del método de acceso (señalización directa con el dedo, barrido por pulsador o mirada) requiere evaluar las capacidades motrices, visuales y cognitivas de la persona usuaria para evitar fatiga física o abandono del dispositivo.",
+    "source_title": "Revisiones sistemáticas en SAAC (PubMed/SciELO) y Guías de Productos de Apoyo Comunicativo",
+    "source_institution": "Organización Mundial de la Salud (OMS) / Literatura Científica Revisada por Pares",
+    "source_url": "https://pubmed.ncbi.nlm.nih.gov",
+    "source_version_date": "Consenso científico 2020-2026",
+    "source_locator": "Síntesis de evidencia sobre AAC (Augmentative and Alternative Communication), modelado de lenguaje natural asistido y accesibilidad cognitiva",
+    "evidence_type": "Revisión sistemática y Guía técnica de productos de apoyo",
+    "jurisdiction": "Internacional (Aplicable en México)",
+    "last_verified": "2026-10-16",
+    "review_status": "Evidencia científica verificada",
+    "keywords": [
+      "SAAC",
+      "comunicación aumentativa y alternativa",
+      "pictogramas",
+      "vocabulario núcleo",
+      "lenguaje natural asistido",
+      "Lectura Fácil",
+      "accesibilidad cognitiva"
+    ],
+    "related_knowledge_ids": [
+      "KB-CLIN-MX-001",
+      "KB-CLIN-MX-003",
+      "KB-TECH-INT-001"
+    ]
+  },
+  {
+    "knowledge_id": "KB-TECH-INT-001",
+    "title": "Accesibilidad Digital, Tiflotecnología y Estándares Web (WCAG 2.1 / 2.2)",
+    "category": "Tecnologías de apoyo",
+    "subcategory": "Accesibilidad web, lectores de pantalla y tecnologías de asistencia",
+    "disability_or_condition": "Discapacidad visual, auditiva, motriz, cognitiva y del neurodesarrollo",
+    "user_profile": "Personas usuarias de tecnologías de apoyo, desarrolladores, docentes y creadores de contenido",
+    "content": "La accesibilidad digital garantiza que sitios web, aplicaciones móviles, documentos electrónicos y plataformas educativas o laborales puedan ser percibidos, operados, comprendidos y utilizados de forma robusta por todas las personas, independientemente de cómo accedan a ellos (los cuatro principios POUR de las pautas WCAG 2.1 y 2.2 del W3C: Perceptible, Operable, Comprensible y Robusto). Las personas con ceguera o baja visión utilizan tiflotecnología como lectores de pantalla (NVDA y JAWS en Windows, VoiceOver en iOS/macOS, TalkBack en Android, Orca en Linux), líneas Braille y magnificadores de pantalla. Las personas con discapacidad motriz utilizan navegación por teclado, conmutadores (switches), control por voz o punteros cefálicos/oculares.",
+    "practical_guidance": [
+      "En documentos y entornos digitales: utilizar encabezados jerárquicos reales (H1, H2, H3) y no solo texto agrandado o en negritas, para que los usuarios de lectores de pantalla puedan navegar por la estructura del documento.",
+      "Incluir siempre texto alternativo descriptivo ('alt text') en imágenes informativas; si la imagen es puramente decorativa, marcarla como decorativa (atributo alt vacío) para no saturar al lector de pantalla.",
+      "Garantizar una relación de contraste de color mínima de 4.5:1 para texto normal y 3:1 para texto grande (Nivel AA de WCAG), y nunca transmitir información basándose únicamente en el color (ej. 'los campos en rojo son obligatorios' sin un icono o etiqueta textual).",
+      "Asegurar que todas las funciones sean ejecutables mediante el teclado (tecla Tab, Enter, Espacio y flechas) sin trampas de foco, y proveer subtítulos sincronizados en videos."
+    ],
+    "limitations_and_warnings": "Los widgets o 'overlays' automatizados de accesibilidad web no sustituyen el cumplimiento estructural del código conforme a WCAG 2.1/2.2 y, en ocasiones, interfieren con los lectores de pantalla nativos de la persona usuaria.",
+    "source_title": "Web Content Accessibility Guidelines (WCAG) 2.1 / 2.2",
+    "source_institution": "World Wide Web Consortium (W3C) - Web Accessibility Initiative (WAI)",
+    "source_url": "https://www.w3.org/WAI/",
+    "source_version_date": "WCAG 2.1 (2018) / WCAG 2.2 (2023)",
+    "source_locator": "Principios Perceptible, Operable, Comprensible y Robusto (Criterios de conformidad Nivel A y AA)",
+    "evidence_type": "Estándar técnico internacional",
+    "jurisdiction": "Internacional y referencial en lineamientos de accesibilidad digital en México",
+    "last_verified": "2026-10-16",
+    "review_status": "Estándar técnico verificado",
+    "keywords": [
+      "WCAG",
+      "accesibilidad web",
+      "tiflotecnología",
+      "lector de pantalla",
+      "NVDA",
+      "VoiceOver",
+      "TalkBack",
+      "contraste de color",
+      "texto alternativo"
+    ],
+    "related_knowledge_ids": ["KB-COMM-INT-001", "KB-EDUC-MX-001"]
+  },
+  {
+    "knowledge_id": "KB-JURI-MX-001",
+    "title": "Derechos, Capacidad Jurídica con Apoyos, Inclusión Laboral y Rutas de Atención en México",
+    "category": "Derechos y marco jurídico",
+    "subcategory": "Legislación mexicana, capacidad jurídica e inclusión laboral",
+    "disability_or_condition": "Todas las personas con discapacidad en México",
+    "user_profile": "Personas con discapacidad, familias, empleadores, trabajadores sociales y asesores jurídicos",
+    "content": "En México, los derechos de las personas con discapacidad están protegidos al más alto nivel por el Artículo 1.º de la Constitución Política de los Estados Unidos Mexicanos (que prohíbe toda discriminación motivada por las discapacidades), la Convención sobre los Derechos de las Personas con Discapacidad (CDPD) y la Ley General para la Inclusión de las Personas con Discapacidad (LGIPD). En materia civil y de autonomía, México ha transitado (mediante criterios jurisprudenciales de la SCJN y el Código Nacional de Procedimientos Civiles y Familiares) hacia el reconocimiento pleno de la capacidad jurídica de todas las personas mayores de edad con discapacidad (Artículo 12 de la CDPD), sustituyendo la figura tradicional del estado de interdicción (que anulaba la voluntad de la persona) por un sistema de apoyos y salvaguardias designados por la propia persona para el ejercicio de sus derechos.",
+    "practical_guidance": [
+      "Para el reconocimiento oficial y acceso a programas o descuentos: tramitar el Certificado de Discapacidad / Certificado Electrónico de Discapacidad (CEDis) en los centros de salud o unidades de valoración autorizadas por la Secretaría de Salud y los Sistemas DIF estatales/nacionales.",
+      "Ante actos de discriminación por discapacidad en servicios públicos, escuelas o empresas privadas: presentar queja ante el Consejo Nacional para Prevenir la Discriminación (CONAPRED), la Comisión Nacional de los Derechos Humanos (CNDH) o las comisiones estatales de derechos humanos.",
+      "Para inclusión laboral: acudir a la Red Nacional de Vinculación Laboral / Servicio Nacional de Empleo (SNE) de la Secretaría del Trabajo y Previsión Social (STPS) y a los centros de evaluación de habilidades laborales (como el sistema VALPAR en el DIF/rehabilitación laboral)."
+    ],
+    "limitations_and_warnings": "La IA proporciona orientación informativa sobre el marco legal vigente en México, pero no constituye representación ni asesoría jurídica vinculante para litigios específicos. Los requisitos administrativos locales (como padrones de pensiones o credenciales estatales) pueden variar según la entidad federativa y las reglas de operación del ejercicio fiscal en curso.",
+    "source_title": "Ley General para la Inclusión de las Personas con Discapacidad (LGIPD) / Convención sobre los Derechos de las Personas con Discapacidad / Código Nacional de Procedimientos Civiles y Familiares",
+    "source_institution": "Congreso de la Unión / CONADIS / Suprema Corte de Justicia de la Nación (SCJN)",
+    "source_url": "https://www.gob.mx/conadis",
+    "source_version_date": "LGIPD 2011 (Reformas vigentes) / CNPCF 2023-2026",
+    "source_locator": "Artículos sobre Salud, Educación, Trabajo, Accesibilidad y Capacidad Jurídica",
+    "evidence_type": "Ley Federal y Jurisprudencia Constitucional",
+    "jurisdiction": "México",
+    "last_verified": "2026-10-16",
+    "review_status": "Marco jurídico nacional verificado",
+    "keywords": [
+      "LGIPD",
+      "capacidad jurídica",
+      "interdicción",
+      "toma de decisiones con apoyo",
+      "certificado de discapacidad",
+      "CONAPRED",
+      "inclusión laboral",
+      "ajustes razonables"
+    ],
+    "related_knowledge_ids": [
+      "KB-MARC-INT-001",
+      "KB-EDUC-MX-001",
+      "KB-SAFE-MX-001"
+    ]
+  },
+  {
+    "knowledge_id": "KB-SAFE-MX-001",
+    "title": "Seguridad Clínica, Cuidado al Cuidador y Criterios de Derivación Urgente",
+    "category": "Seguridad, emergencias y criterios de derivación",
+    "subcategory": "Banderas rojas clínicas, crisis y protección de derechos",
+    "disability_or_condition": "Transversal a todas las condiciones de discapacidad y perfiles de cuidado",
+    "user_profile": "Personas con discapacidad, familiares, cuidadores primarios y operadores del sistema de IA",
+    "content": "Un sistema de orientación basado en inteligencia artificial debe distinguir con precisión entre una consulta de orientación cotidiana y una situación de urgencia médica, crisis de salud mental, riesgo de violencia/abuso o colapso severo del cuidador. Asimismo, el bienestar de la persona con discapacidad está estrechamente vinculado a la salud física y mental de sus cuidadores primarios, quienes enfrentan riesgos documentados de sobrecarga física (lesiones musculoesqueléticas por transferencias inadecuadas) y desgaste emocional (síndrome de sobrecarga del cuidador, evaluable clínicamente mediante escalas validadas como la Escala de Sobrecarga del Cuidador de Zarit).",
+    "practical_guidance": [
+      "Derivar inmediatamente a servicios de urgencias médicas (número único de emergencias 911 en México) ante: signos de disreflexia autonómica en lesión medular, atragantamiento o cianosis por disfagia, crisis convulsivas prolongadas (estatus epiléptico, duración mayor a 5 minutos) o de primera vez, fiebre con signos de infección en úlceras por presión profundas, o déficit neurológico agudo.",
+      "Ante crisis de salud mental, ideación suicida o sobrecarga emocional aguda: orientar hacia valoración profesional urgente y proporcionar la Línea de la Vida en México (800 911 2000) o el servicio de emergencias 911.",
+      "Para proteger la salud física de los cuidadores durante transferencias (cama a silla de ruedas o baño): mantener la espalda alineada, flexionar rodillas y caderas utilizando la fuerza de las piernas, acercar el centro de gravedad a la persona, evitar giros de tronco con carga y utilizar tablas de transferencia o grúas mecánicas cuando el peso o el control postural lo requieran."
+    ],
+    "limitations_and_warnings": "PROHIBICIÓN ESTRICTA PARA LA IA: Nunca indicar que se espere antes de acudir a urgencias cuando se presenten banderas rojas fisiológicas o neurológicas. Nunca sugerir suspender anticonvulsivantes, psicofármacos o medicamentos de base sin supervisión médica.",
+    "source_title": "Protocolos de Atención en Urgencias y Guías de Orientación a Cuidadores (SSA / IMSS / OMS)",
+    "source_institution": "Secretaría de Salud / IMSS / Organización Mundial de la Salud",
+    "source_url": "https://www.gob.mx/salud",
+    "source_version_date": "Protocolos vigentes 2026",
+    "source_locator": "Criterios de referencia urgente, Higiene de columna en movilización de pacientes y Prevención de sobrecarga del cuidador",
+    "evidence_type": "Guía oficial clínica y protocolo de seguridad",
+    "jurisdiction": "México",
+    "last_verified": "2026-10-16",
+    "review_status": "Verificado para reglas de seguridad del sistema",
+    "keywords": [
+      "emergencias",
+      "derivación urgente",
+      "banderas rojas",
+      "cuidadores",
+      "sobrecarga del cuidador",
+      "transferencias seguras",
+      "911",
+      "seguridad clínica"
+    ],
+    "related_knowledge_ids": [
+      "KB-CLIN-MX-001",
+      "KB-CLIN-MX-004",
+      "KB-JURI-MX-001"
+    ]
+  }
+]

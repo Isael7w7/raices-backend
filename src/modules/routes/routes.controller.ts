@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiOkResponse, ApiCreatedResponse, 
 import { RoutesService } from './routes.service'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto, RutaDesarrolloDto, PasoRutaDto, ResumenRutasDto, RutaPersonalizadaResponseDto, MiRutaResponseDto } from './dto/ruta-desarrollo.dto'
 import { RoutesAnalyticsService } from './routes-analytics.service'
+import { KnowledgeVectorService, DocumentoConocimiento } from './knowledge-vector.service'
 import { Throttle } from '@nestjs/throttler'
 import { throttlePorEntorno } from '../../common/utils/throttle'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
@@ -20,6 +21,7 @@ export class RoutesController {
   constructor(
     private readonly svc: RoutesService,
     private readonly analytics: RoutesAnalyticsService,
+    private readonly conocimiento: KnowledgeVectorService,
   ) {}
 
   // ═══════════════════════════════════════════════════════════════════
@@ -129,6 +131,42 @@ export class RoutesController {
   @ApiResponse({ status: 401, description: 'No autenticado' })
   async generarRutaPersonalizada(@CurrentUser() user: CurrentUserPayload) {
     return this.svc.generarRutaPersonalizada(user.id)
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Conocimiento vectorial (RAG) — solo admin
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Declararse antes de las rutas con ':id' para evitar capturas accidentales.
+  @Post('conocimiento/ingestar')
+  @HttpCode(201)
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  @ApiOperation({
+    summary: 'Ingestar dataset de conocimiento clínico (solo admin)',
+    description: 'Recibe el array JSON del dataset oficial (CENETEC/SEP/OMS), genera los embeddings con Vertex AI (text-embedding-004) y los guarda en la colección `conocimientoClinico` para groundear la generación de rutas.',
+  })
+  @ApiBody({
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          knowledge_id: { type: 'string' },
+          title: { type: 'string' },
+          content: { type: 'string' },
+          practical_guidance: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+          limitations_and_warnings: { oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        },
+      },
+    },
+  })
+  @ApiCreatedResponse({ description: 'Resumen de la ingesta: procesados, ingestados, fallidos y errores' })
+  @ApiResponse({ status: 400, description: 'Body inválido o embeddings no configurados' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'Solo administradores' })
+  ingestarConocimiento(@Body() data: DocumentoConocimiento[]) {
+    return this.conocimiento.ingestarDataset(data)
   }
 
   // ═══════════════════════════════════════════════════════════════════

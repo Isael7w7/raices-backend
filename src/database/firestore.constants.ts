@@ -35,6 +35,8 @@ export const COLECCIONES = {
   validacionesIA: 'validacionesIA',
   rutasDesarrollo: 'rutasDesarrollo',
   pasosRuta: 'pasosRuta',
+  // Conocimiento oficial (CENETEC / SEP / OMS) vectorizado para RAG en rutas
+  conocimientoClinico: 'conocimientoClinico',
   analiticas: '_analiticas',
   auditoria: '_auditoria',
 } as const

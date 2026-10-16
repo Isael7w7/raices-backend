@@ -117,6 +117,36 @@ describe('Rutas de Desarrollo (E2E)', () => {
     })
   })
 
+  describe('GET /api/rutas-desarrollo/analytics', () => {
+    it('401: sin token', async () => {
+      const res = await request(http).get('/api/rutas-desarrollo/analytics')
+      expect(res.status).toBe(401)
+    })
+
+    it('200: retorna las métricas del algoritmo (la ruta NO debe ser eclipsada por :id)', async () => {
+      // Regresión: @Get('analytics') declarado después de @Get(':id') hacía
+      // que Nest intentara buscar una ruta con id="analytics" → 404.
+      await request(http)
+        .post('/api/rutas-desarrollo')
+        .send({ nombre: 'Ruta para analytics', areaInteres: 'educacion' })
+        .set('Authorization', token('uid-rutas'))
+
+      // @Roles('admin'): el endpoint exige rol admin, el usuario pcd recibiría 403.
+      await sembrarPerfil({ id: 'uid-admin-rutas', email: 'admin-rutas@test.com', rol: 'admin', activo: true, nombreCompleto: 'Admin' })
+
+      const res = await request(http)
+        .get('/api/rutas-desarrollo/analytics')
+        .set('Authorization', token('uid-admin-rutas'))
+
+      expect(res.status).toBe(200)
+      expect(res.body).toHaveProperty('totalRutas')
+      expect(res.body).toHaveProperty('tasaCompletado')
+      expect(res.body).toHaveProperty('porDiscapacidad')
+      expect(res.body).toHaveProperty('pasosMasSaltados')
+      expect(res.body.totalRutas).toBeGreaterThanOrEqual(1)
+    })
+  })
+
   describe('GET /api/rutas-desarrollo/:id', () => {
     it('401: sin token', async () => {
       const res = await request(http).get('/api/rutas-desarrollo/some-id')

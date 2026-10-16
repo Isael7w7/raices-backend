@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing'
-import { NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common'
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
 import { plainToInstance } from 'class-transformer'
 import { InstitutionsService } from './institutions.service'
 import { UpdateInstitucionDto } from './dto/update-institucion.dto'

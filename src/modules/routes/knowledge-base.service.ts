@@ -117,17 +117,6 @@ const RUTAS_EXPERTAS_POR_DISCAPACIDAD: Record<string, RutaExperta> = {
 
 /** Ruta genérica cuando no hay match de discapacidad específica. */
 
-/** Ruta TEA early childhood - 3 pasos fundamentales. */
-const RUTA_TEAC_I: RutaExperta = {
-  nombre: 'Desarrollo Temprano TEA',
-  descripcion: 'Ruta estructurada de 3 pasos para la primera infancia con Trastorno del Espectro Autista.',
-  areaInteres: 'tea',
-  pasos: [
-    { titulo: 'Evaluación Neurológica y Diagnóstico Clínico', descripcion: 'Evaluación integral con neurólogo para identificar fortalezas y áreas de apoyo del TEA en la primera infancia.', categoria: 'tea', orden: 1 },
-    { titulo: 'Terapia Ocupacional e Integración Sensorial', descripcion: 'Sesiones de terapia ocupacional enfocadas en integración sensorial, regulación emocional y habilidades de vida diaria.', categoria: 'tea', orden: 2 },
-    { titulo: 'Terapia de Lenguaje y Comunicación Alternativa', descripcion: 'Sesiones de terapia del lenguaje y comunicación alternativa (PECS, signos, recursos AAC) para desarrollar comunicación funcional.', categoria: 'tea', orden: 3 },
-  ],
-}
 const RUTA_GENERICA: RutaExperta = {
   nombre: 'Desarrollo Integral y Vida Independiente',
   descripcion: 'Ruta general para fortalecer habilidades de vida, acceso a servicios y participación social.',
