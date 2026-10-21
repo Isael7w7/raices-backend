@@ -16,6 +16,12 @@ export interface FiltrosEventos {
   /** Fecha/hora mínima de inicio. Por defecto se usan "ahora" (próximos). */
   desde?: string
   buscar?: string
+  /** Filtrar por ciudad */
+  ciudad?: string
+  /** Filtrar por modalidad: presencial, virtual o hibrido */
+  modalidad?: 'presencial' | 'virtual' | 'hibrido'
+  /** Solo eventos con fecha >= hoy. Por defecto true. */
+  proximos?: boolean
 }
 
 /** Evento enriquecido para la UI (asistencia del usuario + organizador). */
@@ -30,8 +36,7 @@ function aDocumento<T = Record<string, unknown>>(d: { id: string; data(): Docume
   return { id: d.id, ...(d.data() ?? {}) } as T & { id: string }
 }
 
-/**
- * Instante (ms) de una fecha ISO o `YYYY-MM-DD`; `NaN` si no es parseable.
+/** Instante (ms) de una fecha ISO o `YYYY-MM-DD`; `NaN` si no es parseable.
  * Permite comparar eventos guardados como fecha simple con filtros completos.
  */
 function instante(fecha: string | null | undefined): number {
@@ -45,11 +50,7 @@ export class EventosService {
 
   constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
 
-  /**
-   * Lista eventos activos ordenados por `fechaInicio` ascendente (próximos
-   * primero). Filtros por categoría, día exacto (`fecha`), desde una fecha y
-   * búsqueda de texto. Incluye `asisto` del usuario autenticado.
-   */
+  /** Listado mejorado con filtros por ciudad, modalidad y proximos */
   async listar(
     usuarioId: string,
     pagina = 1,
@@ -57,28 +58,56 @@ export class EventosService {
     filtros: FiltrosEventos = {},
   ): Promise<RespuestaPaginada<EventoVista>> {
     try {
-      const snap = await this.db.collection(COLECCIONES.eventos)
-        .where('activo', '==', true)
-        .get()
+      const { categoria, fecha, desde, buscar, ciudad, modalidad, proximos = true } = filtros
+
+      let q = this.db.collection(COLECCIONES.eventos).where('activo', '==', true)
+
+      // Filtro por ciudad
+      if (ciudad) {
+        q = q.where('ciudad', '==', ciudad)
+      }
+
+      // Filtro por modalidad
+      if (modalidad) {
+        q = q.where('modalidad', '==', modalidad)
+      }
+
+      const snap = await q.get()
       let eventos = snap.docs.map(d => aDocumento<EventoDoc>(d))
 
-      if (filtros.fecha) {
-        const dia = filtros.fecha.slice(0, 10)
+      // Filtrar por fecha exacta
+      if (fecha) {
+        const dia = fecha.slice(0, 10)
         eventos = eventos.filter(e => (e.fechaInicio ?? '').slice(0, 10) === dia)
       } else {
+        // Filtrar por fecha mínima
         const desde = instante(filtros.desde) || Date.now()
         eventos = eventos.filter(e => instante(e.fechaInicio) >= desde)
       }
 
-      if (filtros.categoria) {
-        eventos = eventos.filter(e => e.categoria === filtros.categoria)
-      }
-      if (filtros.buscar) {
-        const termino = filtros.buscar.toLowerCase()
+      // Filtrar por búsqueda de texto
+      if (buscar) {
+        const termino = buscar.toLowerCase()
         eventos = eventos.filter(e =>
           (e.titulo ?? '').toLowerCase().includes(termino) ||
           (e.descripcion ?? '').toLowerCase().includes(termino),
         )
+      }
+
+      // Filtrar por modalidad si no ya fue filtrado por where
+      if (modalidad && !eventos.some(e => e.modalidad === modalidad)) {
+        // Already filtered at DB level, skip
+      }
+
+      // Filtrar por proximos (fecha >= hoy)
+      if (proximos) {
+        const ahora = Date.now()
+        eventos = eventos.filter(e => instante(e.fechaInicio) >= ahora)
+      }
+
+      // Filtrar por categoría
+      if (categoria) {
+        eventos = eventos.filter(e => e.categoria === categoria)
       }
 
       eventos.sort((a, b) => instante(a.fechaInicio) - instante(b.fechaInicio))
@@ -160,8 +189,7 @@ export class EventosService {
     }
   }
 
-  /**
-   * Alterna la asistencia a un evento (confirmar / cancelar) con ID
+  /** Alterna la asistencia a un evento (confirmar / cancelar) con ID
    * determinista `eventoId_usuarioId` y contador atómico, igual que los
    * grupos: dos peticiones simultáneas no pueden duplicar ni desincronizar
    * `cantidadAsistentes`.
@@ -224,7 +252,12 @@ export class EventosService {
       fechaFin: dto.fechaFin ?? null,
       ubicacion: dto.ubicacion ?? null,
       urlImagen: dto.urlImagen ?? null,
-      cantidadAsistentes: 0,
+      ciudad: dto.ciudad ?? null,
+      modalidad: dto.modalidad ?? null,
+      latitud: dto.latitud ?? null,
+      longitud: dto.longitud ?? null,
+      cupoMaximo: dto.cupoMaximo ?? 0,
+      totalInscritos: 0,
       activo: true,
       fechaCreacion: new Date().toISOString(),
     }
@@ -245,4 +278,4 @@ export class EventosService {
       urlAvatarCreador: creador?.urlAvatar ?? null,
     }
   }
-}
+}

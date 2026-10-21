@@ -40,4 +40,35 @@ export class CrearEventoDto {
   @IsOptional() @IsString()
   @MaxLength(2000, { message: 'La URL de la imagen no puede exceder 2000 caracteres' })
   urlImagen?: string
-}
+
+  @ApiPropertyOptional({ description: 'Ciudad donde se realiza el evento', example: 'Mérida', maxLength: 100 })
+  @IsOptional() @IsString()
+  @MaxLength(100, { message: 'La ciudad no puede exceder 100 caracteres' })
+  ciudad?: string
+
+  @ApiPropertyOptional({ description: 'Modalidad del evento: presencial, virtual o hibrido', example: 'presencial', enum: ['presencial', 'virtual', 'hibrido'] })
+  @IsOptional()
+  @IsIn(['presencial', 'virtual', 'hibrido'], { message: 'La modalidad debe ser una de: presencial, virtual, hibrido' })
+  modalidad?: 'presencial' | 'virtual' | 'hibrido'
+
+  @ApiPropertyOptional({ description: 'Coordenadas geográficas para el mapa', example: 20.9674 })
+  @IsOptional()
+  @IsNumber({}, { message: 'La latitud debe ser un número' })
+  latitud?: number
+
+  @ApiPropertyOptional({ description: 'Coordenadas geográficas para el mapa', example: -89.5926 })
+  @IsOptional()
+  @IsNumber({}, { message: 'La longitud debe ser un número' })
+  longitud?: number
+
+  @ApiPropertyOptional({ description: 'Cupo máximo de asistentes', example: 50 })
+  @IsOptional()
+  @IsNumber({}, { message: 'El cupo máximo debe ser un número' })
+  cupoMaximo?: number
+
+  @ApiPropertyOptional({ description: 'Etiquetas de accesibilidad del evento', example: ['rampas_acceso', 'interprete_lsm'], isArray: true })
+  @IsOptional()
+  @IsArray()
+  @Items?: any[]
+  etiquetasAccesibilidad?: string[]
+}
