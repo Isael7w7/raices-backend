@@ -276,6 +276,6 @@ export class EventosService {
       asisto: false,
       nombreCreador: creador?.nombreCompleto ?? user.nombreCompleto ?? null,
       urlAvatarCreador: creador?.urlAvatar ?? null,
-    }
+    } as EventoVista
   }
 }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
-import { IsDateString, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator'
+import { IsArray, IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, MaxLength } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { sanitizeHtml } from '../../../common/utils/sanitize-html'
 import { CATEGORIAS_EVENTO } from '../../../common/interfaces/firestore-documents.interface'

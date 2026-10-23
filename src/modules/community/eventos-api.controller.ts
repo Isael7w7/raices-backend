@@ -18,8 +18,8 @@ import { Roles } from '../../common/decorators/roles.decorator'
 import { CrearEventoDto } from './dto/crear-evento.dto'
 import { ListarEventosDto } from './dto/listar-eventos.dto'
 import { EventosService } from './eventos.service'
-import { EventoDoc } from '../interfaces/firestore-documents.interface'
-import { RespuestaPaginada } from '../common/dto/paginacion.dto'
+import { EventoDoc } from '../../common/interfaces/firestore-documents.interface'
+import { RespuestaPaginada } from '../../common/dto/paginacion.dto'
 
 @Controller('eventos')
 @ApiTags('Eventos API')

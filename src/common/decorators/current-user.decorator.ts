@@ -1,6 +1,8 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common'
 import { CurrentUserPayload } from '../interfaces/current-user.interface'
 
+export type { CurrentUserPayload }
+
 /**
  * Param decorator que inyecta el usuario autenticado del request.
  * Se usa en conjunto con Firebase Auth Guard que popula request.user.

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
-import { IsDateString, IsIn, IsOptional } from 'class-validator'
+import { IsBoolean, IsDateString, IsIn, IsOptional, IsString } from 'class-validator'
 import { PaginacionDto } from '../../../common/dto/paginacion.dto'
 import { CATEGORIAS_EVENTO } from '../../../common/interfaces/firestore-documents.interface'
 
