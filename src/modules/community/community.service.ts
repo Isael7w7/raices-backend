@@ -1,4 +1,4 @@
-import { Injectable, Inject, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common'
+import { Injectable, Inject, Logger, NotFoundException, ForbiddenException, BadRequestException, Optional } from '@nestjs/common'
 import { Firestore, FieldValue, Query, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -9,6 +9,7 @@ import { paginar, ordenar, RespuestaPaginada } from '../../common/dto/paginacion
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
 import { tieneMultimediaGaleria, construirItemGaleria, ItemGaleria } from './multimedia-galeria'
+import { ModeracionService, ResultadoModeracion } from './moderacion.service'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
 import { CrearForoDto } from './dto/crear-foro.dto'
 import { CrearRespuestaForoDto } from './dto/crear-respuesta-foro.dto'
@@ -56,8 +57,17 @@ interface PublicacionDoc {
   contenido?: string
   mediaUrl?: string | null
   categoriaCreativa?: string | null
+  /** Estado de moderación: las `rechazada` no son visibles en el feed. */
+  estado?: string
+  /** Detalle de la revisión automática (categoría, razón, sugerencia). */
+  moderacion?: unknown
   fechaCreacion?: string
   [key: string]: unknown
+}
+
+/** Publicación oculta del feed (rechazada por la moderación automática). */
+function esRechazada(p: PublicacionDoc): boolean {
+  return (p.estado ?? 'aprobada') === 'rechazada'
 }
 
 /** Documento de la colección `comentarios`. */
@@ -108,7 +118,36 @@ function idsValidos(ids: (string | undefined | null)[]): string[] {
 export class CommunityService {
   private readonly logger = new Logger(CommunityService.name)
 
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    // Opcional: los specs unitarios construyen el servicio sin el módulo de IA.
+    @Optional() private readonly moderacion?: ModeracionService,
+  ) {}
+
+  /**
+   * Revisa el contenido con la moderación automática (Gemini con fallback
+   * por reglas). Nunca lanza: si algo falla inesperadamente, publica con
+   * estado `aprobada` para no bloquear a la comunidad.
+   */
+  private async moderarContenido(contenido: string, categoriaUsuario?: string): Promise<ResultadoModeracion> {
+    if (!this.moderacion) {
+      return {
+        aprobado: true, categoria: 'comunidad',
+        razon: 'Sin servicio de moderación configurado.',
+        sugerenciaMejora: null, fuente: 'reglas', fecha: new Date().toISOString(),
+      }
+    }
+    try {
+      return await this.moderacion.moderarPublicacion(contenido, categoriaUsuario)
+    } catch (e) {
+      this.logger.error(`Error al moderar contenido: ${(e as Error).message}`, (e as Error).stack)
+      return {
+        aprobado: true, categoria: 'comunidad',
+        razon: 'No fue posible revisar el contenido; se publicó sin moderación.',
+        sugerenciaMejora: null, fuente: 'reglas', fecha: new Date().toISOString(),
+      }
+    }
+  }
 
   async getGroups(pagina = 1, limite = 20, ordenarPor?: string, direccion?: 'asc' | 'desc', buscar?: string): Promise<RespuestaPaginada<GrupoDoc & { id: string }>> {
     try {
@@ -146,7 +185,10 @@ export class CommunityService {
       if (grupoId) q = q.where('grupoId', '==', grupoId)
 
       const publicacionSnap = await q.get()
-      let publicaciones = publicacionSnap.docs.map(d => extraerDoc<PublicacionDoc>(d))
+      // Las publicaciones rechazadas por la moderación no son visibles en el feed.
+      let publicaciones = publicacionSnap.docs
+        .map(d => extraerDoc<PublicacionDoc>(d))
+        .filter(p => !esRechazada(p))
 
       if (buscar) {
         try {
@@ -250,12 +292,18 @@ export class CommunityService {
   ) {
     const media = normalizarMediaUrl(mediaUrl)
     verificarMultimediaPermitida(user, media)
+
+    // Moderación automática ANTES de hacerla visible en el feed.
+    const revision = await this.moderarContenido(contenido, categoriaCreativa)
+    const estado = revision.aprobado ? 'aprobada' : 'rechazada'
+
     const ref = this.db.collection(COLECCIONES.publicaciones).doc()
     await ref.set({
       id: ref.id, autorId: user.id, contenido, grupoId: grupoId ?? null,
       mediaUrl: media,
       categoriaCreativa: categoriaCreativa ?? null,
       exclusivoPadres: exclusivoPadres === true,
+      estado, moderacion: revision,
       cantidadMeGustas: 0, fechaCreacion: new Date().toISOString(),
     })
 
@@ -266,6 +314,7 @@ export class CommunityService {
       mediaUrl: media,
       categoriaCreativa: categoriaCreativa ?? null,
       exclusivoPadres: exclusivoPadres === true,
+      estado, moderacion: revision,
       cantidadMeGustas: 0,
       fechaCreacion: new Date().toISOString(),
       nombreCompleto: autor?.nombreCompleto ?? AUTOR_NO_DISPONIBLE.nombreCompleto,
@@ -327,13 +376,22 @@ export class CommunityService {
     const pub = doc.data() as Omit<PublicacionDoc, 'id'>
     if (pub.autorId !== user.id) throw new ForbiddenException('No tienes permiso para editar esta publicación')
 
-    const cambios: Record<string, unknown> = { contenido, fechaActualizacion: new Date().toISOString() }
+    // El contenido editado se vuelve a revisar: una edición no debe poder
+    // usar para introducir contenido rechazable en el feed.
+    const revision = await this.moderarContenido(contenido, typeof pub.categoriaCreativa === 'string' ? pub.categoriaCreativa : undefined)
+    const estado = revision.aprobado ? 'aprobada' : 'rechazada'
+
+    const cambios: Record<string, unknown> = {
+      contenido, fechaActualizacion: new Date().toISOString(),
+      estado, moderacion: revision,
+    }
     // Si se omite mediaUrl, se conserva el existente; si llega '' o null, se limpia
     if (mediaUrl !== undefined) cambios.mediaUrl = media
     await doc.ref.update(cambios)
     return {
       id, autorId: pub.autorId, contenido, grupoId: pub.grupoId ?? null,
       mediaUrl: mediaUrl !== undefined ? media : (pub.mediaUrl ?? null),
+      estado, moderacion: revision,
       cantidadMeGustas: pub.cantidadMeGustas ?? 0, fechaCreacion: pub.fechaCreacion,
     }
   }
@@ -645,8 +703,10 @@ export class CommunityService {
       .where('categoriaCreativa', '!=', null)
 
     const snap = await q.get()
+    // Las publicaciones rechazadas por la moderación tampoco aparecen en la galería.
     let publicaciones = snap.docs
       .map(d => extraerDoc<PublicacionDoc>(d))
+      .filter(p => !esRechazada(p))
       .filter(tieneMultimediaGaleria)
 
     if (categoriaCreativa) {

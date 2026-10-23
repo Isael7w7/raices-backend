@@ -16,6 +16,20 @@ export class PaginaGruposDto extends RespuestaPaginadaDto<GrupoDto> {
   @ApiProperty({ type: [GrupoDto] }) datos!: GrupoDto[]
 }
 
+/** Detalle de la revisión automática de moderación de una publicación. */
+export class ModeracionDto {
+  @ApiProperty({ example: 'duda_tramite', enum: ['comunidad', 'duda_tramite', 'logro_personal', 'recurso_util', 'spam', 'lenguaje_inapropiado', 'desinformacion', 'datos_sensibles'], description: 'Categoría asignada por la moderación' })
+  categoria!: string
+  @ApiProperty({ example: 'La publicación cumple las normas de la comunidad.' })
+  razon!: string
+  @ApiProperty({ example: 'Reescribe con respeto para que tu mensaje pueda ser publicado.', nullable: true, description: 'Recomendación constructiva en Lectura Fácil (solo rechazos, cuando aplica)' })
+  sugerenciaMejora!: string | null
+  @ApiProperty({ example: 'gemini', enum: ['gemini', 'reglas'], description: 'Fuente del resultado: IA (Gemini) o reglas de respaldo' })
+  fuente!: 'gemini' | 'reglas'
+  @ApiProperty({ example: '2026-10-22T12:00:00.000Z' })
+  fecha!: string
+}
+
 export class PublicacionDto {
   @ApiProperty({ example: 'pub-uid' }) id!: string
   @ApiProperty({ example: 'user-uid' }) autorId!: string
@@ -30,7 +44,12 @@ export class PublicacionDto {
   @ApiPropertyOptional({ example: false }) usuarioMeGusta?: boolean
   @ApiPropertyOptional({ example: 'https://storage.../media.jpg', nullable: true, description: 'URL del contenido multimedia adjunto, si lo hay' }) mediaUrl?: string | null
   @ApiPropertyOptional({ example: 'arte', nullable: true, description: 'Categoría creativa (solo para espacio Conectemos)' }) categoriaCreativa?: string | null
-  @ApiPropertyOptional({ example: false, description: 'Si la publicación es exclusiva para padres/tutores' }) exclusivoPadres?: boolean
+  @ApiPropertyOptional({ example: false, description: 'Si la publicación es exclusiva para padres/tutores' })
+  exclusivoPadres?: boolean
+  @ApiPropertyOptional({ example: 'aprobada', enum: ['aprobada', 'rechazada'], description: 'Estado de moderación. Las publicaciones `rechazada` no aparecen en el feed; se guardan ocultas para revisión.' })
+  estado?: string
+  @ApiPropertyOptional({ type: ModeracionDto, nullable: true, description: 'Detalle de la revisión automática (categoría, razón y sugerencia de mejora)' })
+  moderacion?: ModeracionDto | null
 }
 
 export class PaginaPublicacionesDto extends RespuestaPaginadaDto<PublicacionDto> {

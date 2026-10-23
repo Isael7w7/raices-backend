@@ -8,8 +8,9 @@ import {
   PaginaInstitucionesAdminDto, PaginaUsuariosAdminDto,
   PaginaResenasAdminDto, RespuestaToggleUsuarioDto, RespuestaToggleVerificacionDto,
   RespuestaRolDto, AlertaDto, ConfiguracionDto, VerificacionIdentidadInstitucionDto,
-  UsuarioAdminDto,
+  UsuarioAdminDto, PaginaPublicacionesRechazadasDto, RespuestaResolucionPublicacionDto,
 } from './dto/respuestas-admin.dto'
+import { ResolverPublicacionDto } from './dto/resolver-publicacion.dto'
 import { InstitucionDto } from '../institutions/dto/respuestas-institucion.dto'
 import { PaginacionDto } from '../../common/dto/paginacion.dto'
 import { Throttle } from '@nestjs/throttler'
@@ -312,6 +313,46 @@ export class AdminController {
   @ApiNoContentResponse({ description: 'Reseña eliminada y calificación recalculada' })
   @ApiResponse({ status: 404, description: 'Reseña no encontrada' })
   deleteReview(@Param('id') id: string) { return this.svc.deleteReview(id) }
+
+  /* ── Moderación de publicaciones ── */
+  @Get('publicaciones-rechazadas')
+  @UseETag()
+  @ApiOperation({
+    summary: 'Publicaciones rechazadas pendientes de revisión',
+    description: 'Lista paginada de publicaciones que la moderación automática rechazó y que aún esperan decisión del administrador. Incluye el detalle de la revisión y los datos del autor.',
+  })
+  @ApiQuery({ name: 'pagina', required: false, description: 'Número de página', example: 1 })
+  @ApiQuery({ name: 'limite', required: false, description: 'Elementos por página', example: 20 })
+  @ApiOkResponse({ type: PaginaPublicacionesRechazadasDto, description: 'Lista paginada de publicaciones pendientes de revisión' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
+  rejectedPosts(@Query() paginacion: PaginacionDto) {
+    return this.svc.getPublicacionesRechazadas(paginacion.pagina, paginacion.limite)
+  }
+
+  @Patch('publicaciones/:id/moderacion')
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  @UseInterceptors(AuditInterceptor)
+  @Audit({
+    accion: AUDIT_ACCIONES.MODERAR_PUBLICACION,
+    recurso: 'publicacion',
+    obtenerRecursoId: (id: string) => id,
+    extraerMetadatos: (resultado) => ({
+      estado: resultado?.estado,
+      decision: (resultado?.moderacion as Record<string, unknown> | undefined)?.fuente,
+    }),
+  })
+  @ApiOperation({
+    summary: 'Resolver publicación rechazada',
+    description: 'Decisión manual del administrador sobre una publicación rechazada por la moderación. `aprobar` la hace visible en el feed; `rechazar` confirma el rechazo y permanece oculta. En ambos casos queda registrada en auditoría.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la publicación' })
+  @ApiBody({ type: ResolverPublicacionDto })
+  @ApiOkResponse({ type: RespuestaResolucionPublicacionDto, description: 'Decisión registrada' })
+  @ApiResponse({ status: 400, description: 'La publicación no está pendiente de revisión' })
+  @ApiResponse({ status: 404, description: 'Publicación no encontrada' })
+  resolvePost(@Param('id') id: string, @Body() dto: ResolverPublicacionDto, @CurrentUser() user: CurrentUserPayload) {
+    return this.svc.resolverPublicacion(id, user.id, dto.decision, dto.nota)
+  }
 
   /* ── Alertas de riesgo ── */
   @Get('alertas')

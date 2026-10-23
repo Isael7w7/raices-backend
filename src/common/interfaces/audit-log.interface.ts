@@ -71,6 +71,9 @@ export const AUDIT_ACCIONES = {
   APROBAR_DOCUMENTO_IDENTIDAD: 'aprobar_documento_identidad',
   RECHAZAR_DOCUMENTO_IDENTIDAD: 'rechazar_documento_identidad',
 
+  // Comunidad
+  MODERAR_PUBLICACION: 'moderar_publicacion',
+
   // Genérico
   ACCION_ADMIN: 'accion_admin',
 } as const

@@ -38,17 +38,19 @@ describe('AdminService', () => {
   let firestoreMock: any
   let emailMock: { sendInstitutionApproved: jest.Mock }
   let storageMock: { delete: jest.Mock }
+  let notificacionesMock: { crear: jest.Mock }
 
   beforeEach(async () => {
     storageMock = { delete: jest.fn().mockResolvedValue(undefined) }
     emailMock = { sendInstitutionApproved: jest.fn().mockResolvedValue(undefined) }
+    notificacionesMock = { crear: jest.fn().mockResolvedValue({ id: 'n1' }) }
     firestoreMock = { collection: jest.fn(), batch: jest.fn() }
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminService,
         { provide: FIRESTORE, useValue: firestoreMock },
-        { provide: NotificationsService, useValue: {} },
+        { provide: NotificationsService, useValue: notificacionesMock },
         { provide: EmailService, useValue: emailMock },
         { provide: StorageService, useValue: storageMock },
       ],
@@ -956,6 +958,135 @@ describe('AdminService', () => {
 
       const result = await service.getAlerts()
       expect(result).toHaveLength(0)
+    })
+  })
+
+  // ── getPublicacionesRechazadas / resolverPublicacion ───────────
+
+  describe('getPublicacionesRechazadas', () => {
+    it('should list only pending rejected posts enriched with author data', async () => {
+      const pubs = [
+        { id: 'p1', autorId: 'u1', contenido: 'Spam', estado: 'rechazada', fechaCreacion: '2026-10-02', moderacion: { categoria: 'spam', razon: 'Parece una cadena.', fuente: 'gemini' } },
+        { id: 'p2', autorId: 'u2', contenido: 'Ya resuelta', estado: 'rechazada', resueltaPor: 'admin0', fechaCreacion: '2026-10-01' },
+      ]
+
+      firestoreMock.collection
+        .mockReturnValueOnce(chainCollection({ whereResult: { empty: false, docs: pubs.map(p => ({ id: p.id, data: () => p })), size: pubs.length } }))
+        .mockReturnValueOnce(chainCollection({ whereResult: { empty: false, docs: [{ id: 'u1', data: () => ({ nombreCompleto: 'María', email: 'maria@correo.mx', rol: 'pcd' }) }], size: 1 } }))
+
+      const result = await service.getPublicacionesRechazadas()
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].id).toBe('p1')
+      expect(result.datos[0].nombreAutor).toBe('María')
+      expect(result.datos[0].emailAutor).toBe('maria@correo.mx')
+      expect(result.datos[0].moderacion).toEqual({ categoria: 'spam', razon: 'Parece una cadena.', fuente: 'gemini' })
+    })
+
+    it('should return an empty page when there are no rejected posts', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce(chainCollection())
+
+      const result = await service.getPublicacionesRechazadas()
+      expect(result.datos).toHaveLength(0)
+      expect(result.total).toBe(0)
+    })
+  })
+
+  describe('resolverPublicacion', () => {
+    it('should approve a rejected post (estado aprobada, fuente admin)', async () => {
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', estado: 'rechazada', moderacion: { categoria: 'spam', razon: 'Parece una cadena.' } }, true, 'p1')
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: doc }))
+
+      const result = await service.resolverPublicacion('p1', 'admin1', 'aprobar')
+
+      expect(doc.ref.update).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'p1', estado: 'aprobada', resueltaPor: 'admin1',
+      }))
+      expect(result.estado).toBe('aprobada')
+      expect(result.resueltaPor).toBe('admin1')
+      expect(result.fechaResolucion).toBeTruthy()
+      expect(result.moderacion.fuente).toBe('admin')
+      expect(result.moderacion.razon).toBe('Aprobada tras revisión manual del administrador.')
+      expect(result.moderacion.categoria).toBe('spam')
+    })
+
+    it('should confirm the rejection keeping the post hidden', async () => {
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', estado: 'rechazada', moderacion: { categoria: 'lenguaje_inapropiado', razon: 'Insulto.' } }, true, 'p1')
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: doc }))
+
+      const result = await service.resolverPublicacion('p1', 'admin1', 'rechazar')
+
+      expect(doc.ref.update).toHaveBeenCalledWith(expect.objectContaining({ estado: 'rechazada', resueltaPor: 'admin1' }))
+      expect(result.estado).toBe('rechazada')
+      expect(result.moderacion.razon).toBe('Rechazada tras revisión manual del administrador.')
+    })
+
+    it('should use the admin nota as the moderation razon', async () => {
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', estado: 'rechazada', moderacion: { categoria: 'spam' } }, true, 'p1')
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: doc }))
+
+      const result = await service.resolverPublicacion('p1', 'admin1', 'aprobar', 'El contenido es pertinente para la comunidad.')
+
+      expect(result.moderacion.razon).toBe('El contenido es pertinente para la comunidad.')
+    })
+
+    it('should throw BadRequestException when the post is not rejected', async () => {
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: mockDoc({ id: 'p1', estado: 'aprobada' }, true, 'p1') }))
+
+      await expect(service.resolverPublicacion('p1', 'admin1', 'aprobar')).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw BadRequestException when the post was already resolved', async () => {
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: mockDoc({ id: 'p1', estado: 'rechazada', resueltaPor: 'admin0' }, true, 'p1') }))
+
+      await expect(service.resolverPublicacion('p1', 'admin1', 'rechazar')).rejects.toThrow(BadRequestException)
+    })
+
+    it('should throw NotFoundException when the post does not exist', async () => {
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: mockDoc(null, false) }))
+
+      await expect(service.resolverPublicacion('missing', 'admin1', 'aprobar')).rejects.toThrow(NotFoundException)
+    })
+
+    it('should notify the author when the post is approved', async () => {
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', estado: 'rechazada', moderacion: { categoria: 'spam', razon: 'Parece una cadena.' } }, true, 'p1')
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: doc }))
+
+      await service.resolverPublicacion('p1', 'admin1', 'aprobar', 'Contenido pertinente.')
+
+      expect(notificacionesMock.crear).toHaveBeenCalledWith(
+        'u1',
+        'publicacion_aprobada',
+        '¡Tu publicación fue aprobada!',
+        expect.stringContaining('ya es visible en la comunidad'),
+        'p1',
+      )
+    })
+
+    it('should notify the author when the rejection is confirmed, including the prior reason', async () => {
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', estado: 'rechazada', moderacion: { categoria: 'spam', razon: 'Parece una cadena de texto.' } }, true, 'p1')
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: doc }))
+
+      await service.resolverPublicacion('p1', 'admin1', 'rechazar')
+
+      expect(notificacionesMock.crear).toHaveBeenCalledWith(
+        'u1',
+        'publicacion_rechazada',
+        'Tu publicación fue rechazada',
+        expect.stringContaining('Motivo: Parece una cadena de texto.'),
+        'p1',
+      )
+    })
+
+    it('should still resolve the post when the notification fails', async () => {
+      notificacionesMock.crear.mockRejectedValueOnce(new Error('Firestore caído'))
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', estado: 'rechazada', moderacion: { categoria: 'spam' } }, true, 'p1')
+      firestoreMock.collection.mockReturnValueOnce(chainCollection({ docResult: doc }))
+
+      const result = await service.resolverPublicacion('p1', 'admin1', 'aprobar')
+
+      expect(result.estado).toBe('aprobada')
+      expect(doc.ref.update).toHaveBeenCalled()
     })
   })
 })

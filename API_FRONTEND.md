@@ -165,8 +165,8 @@
 | POST | `/comunidad/grupos/:id/unirse` | 🔒 | — | `200` · ⚡10/min |
 | POST | `/comunidad/grupos/:id/salir` | 🔒 | — | `200` · `403` si es creador · ⚡10/min |
 | GET | `/comunidad/publicaciones` | 🔒 | Query: `grupoId?` + paginación | Paginado |
-| POST | `/comunidad/publicaciones` | 🔒 + feature `comunidad` | `{ contenido (req ≤5000), grupoId?, mediaUrl?, categoriaCreativa?: 'arte'\|'dibujo'\|'historia'\|'general', exclusivoPadres? }` | `201` · ⚡5/min |
-| PUT | `/comunidad/publicaciones/:id` | 🔒 (solo autor) + feature | `{ contenido (≤5000), mediaUrl? }` | `200` · ⚡10/min |
+| POST | `/comunidad/publicaciones` | 🔒 + feature `comunidad` | `{ contenido (req ≤5000), grupoId?, mediaUrl?, categoriaCreativa?: 'arte'\|'dibujo'\|'historia'\|'general', exclusivoPadres? }` | `201` + `estado`/`moderacion` (revisión automática; ver §Moderación) · ⚡5/min |
+| PUT | `/comunidad/publicaciones/:id` | 🔒 (solo autor) + feature | `{ contenido (≤5000), mediaUrl? }` | `200` + `estado`/`moderacion` (el contenido editado se vuelve a moderar) · ⚡10/min |
 | DELETE | `/comunidad/publicaciones/:id` | 🔒 (autor/admin) | — | `204` |
 | GET | `/comunidad/publicaciones/:id/comentarios` | 🌐 | Paginación | Paginado |
 | POST | `/comunidad/publicaciones/:id/comentarios` | 🔒 + feature | `{ contenido (≤2000) }` | `201` · ⚡10/min |
@@ -185,6 +185,8 @@
 | GET | `/comunidad/conectemos/publicaciones` | 🌐 | `pagina`, `limite`, `categoriaCreativa`, `buscar` | Solo multimedia real |
 | GET | `/comunidad/galeria` | 🌐 | (alias de `/conectemos/publicaciones`) | — |
 
+> 🛡️ **Moderación automática:** toda publicación (POST y PUT) se revisa con IA antes de ser visible. La respuesta incluye `estado` (`aprobada`\|`rechazada`) y `moderacion` (`{ categoria, razon, sugerenciaMejora, fuente, fecha }`). Las rechazadas quedan ocultas de todos los feeds (el backend las filtra). Guía completa para frontend: [`docs/MODERACION-PUBLICACIONES.md`](docs/MODERACION-PUBLICACIONES.md).
+
 ---
 
 ## 9. Notificaciones — `/api/notificaciones`
@@ -195,6 +197,8 @@
 | PATCH | `/notificaciones/:id/leer` | 🔒 | `204` · ⚡30/min |
 | PATCH | `/notificaciones/leer-todas` | 🔒 | `204` |
 | GET | `/notificaciones/flujo` | 🔒 | **SSE** (`text/event-stream`) — tiempo real. ⚠️ `EventSource` no envía header Authorization; funciona con la cookie `token_acceso` |
+
+> Tipos de notificación de moderación de publicaciones: `publicacion_aprobada` y `publicacion_rechazada` (enlace a la publicación en `referenciaId`).
 
 ---
 
@@ -223,6 +227,8 @@
 | POST | `/administracion/usuarios/purgar-eliminados` | — | Purga cuentas con gracia de 60 días vencida · ⚡5/min |
 | GET | `/administracion/resenas` | Paginación | Moderación |
 | DELETE | `/administracion/resenas/:id` | — | `204` recalcula promedio · ⚡10/min |
+| GET | `/administracion/publicaciones-rechazadas` | `pagina`, `limite` | Cola de revisión: rechazadas por la IA pendientes de decisión, con detalle de `moderacion` y datos del autor |
+| PATCH | `/administracion/publicaciones/:id/moderacion` | `{ decision: 'aprobar'\|'rechazar' (req), nota? (≤500) }` | `200` `{ id, estado, moderacion, resueltaPor, fechaResolucion }` · `400` no pendiente · `404` · auditoría `moderar_publicacion` · ⚡20/min |
 | GET | `/administracion/alertas` | — | Alertas por severidad |
 | GET | `/administracion/configuracion` | — | — |
 | PUT | `/administracion/configuracion` | `nombrePlataforma?`, `emailSoporte?`, `permitirRegistro?`, `aprobacionInstitucionRequerida?`, `iaHabilitada?`, `modoMantenimiento?`, `maxResenasPorUsuario?`, `ciudadPorDefecto?` (valores como string) | `200` · ⚡10/min |

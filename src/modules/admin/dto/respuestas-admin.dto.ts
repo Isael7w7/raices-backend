@@ -1,6 +1,52 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 import { RespuestaPaginadaDto } from '../../../common/dto/paginacion.dto'
 
+/** Detalle de la revisión automática (o manual) de una publicación. */
+export class ModeracionPublicacionDto {
+  @ApiProperty({ example: 'spam', description: 'Categoría asignada por la moderación' })
+  categoria!: string
+  @ApiProperty({ example: 'Parece una cadena de texto sin valor para la comunidad.' })
+  razon!: string
+  @ApiProperty({ example: 'Comparte algo útil para la comunidad.', nullable: true, description: 'Sugerencia de mejora en Lectura Fácil' })
+  sugerenciaMejora!: string | null
+  @ApiProperty({ example: 'gemini', enum: ['gemini', 'reglas', 'admin'], description: 'Fuente: IA (Gemini), reglas de respaldo o decisión del administrador' })
+  fuente!: string
+  @ApiProperty({ example: '2026-10-22T12:00:00.000Z' })
+  fecha!: string
+}
+
+/** Publicación rechazada por la moderación, pendiente de revisión del admin. */
+export class PublicacionRechazadaDto {
+  @ApiProperty({ example: 'pub-uid' }) id!: string
+  @ApiProperty({ example: 'user-uid' }) autorId!: string
+  @ApiProperty({ example: '¿Alguien sabe cómo vender productos por internet?' }) contenido!: string
+  @ApiProperty({ example: 'grupo-uid', nullable: true }) grupoId!: string | null
+  @ApiProperty({ example: 'https://storage.../media.jpg', nullable: true }) mediaUrl!: string | null
+  @ApiProperty({ example: 'arte', nullable: true }) categoriaCreativa!: string | null
+  @ApiProperty({ example: 'rechazada', description: 'Estado de moderación (oculta del feed)' }) estado!: string
+  @ApiProperty({ example: '2026-10-22T12:00:00.000Z' }) fechaCreacion!: string
+  @ApiProperty({ type: ModeracionPublicacionDto, nullable: true, description: 'Detalle de la revisión que rechazó la publicación' })
+  moderacion!: ModeracionPublicacionDto | null
+  @ApiProperty({ example: 'María López', nullable: true }) nombreAutor!: string | null
+  @ApiProperty({ example: 'maria@correo.mx', nullable: true }) emailAutor!: string | null
+  @ApiProperty({ example: 'pcd', nullable: true }) rolAutor!: string | null
+}
+
+export class PaginaPublicacionesRechazadasDto extends RespuestaPaginadaDto<PublicacionRechazadaDto> {
+  @ApiProperty({ type: [PublicacionRechazadaDto] }) datos!: PublicacionRechazadaDto[]
+}
+
+/** Resultado de la resolución manual de una publicación rechazada. */
+export class RespuestaResolucionPublicacionDto {
+  @ApiProperty({ example: 'pub-uid' }) id!: string
+  @ApiProperty({ example: 'aprobada', enum: ['aprobada', 'rechazada'], description: 'Estado final: `aprobada` es visible en el feed; `rechazada` permanece oculta.' })
+  estado!: string
+  @ApiProperty({ type: ModeracionPublicacionDto, description: 'Registro de la decisión (fuente: admin)' })
+  moderacion!: ModeracionPublicacionDto
+  @ApiProperty({ example: 'admin-uid' }) resueltaPor!: string
+  @ApiProperty({ example: '2026-10-22T12:00:00.000Z' }) fechaResolucion!: string
+}
+
 export class EstadisticasDto {
   @ApiProperty({ example: 120 }) totalUsuarios!: number
   @ApiProperty({ example: 80 }) usuariosActivos!: number

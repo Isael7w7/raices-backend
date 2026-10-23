@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { NotFoundException, ForbiddenException } from '@nestjs/common'
 import { CommunityService } from './community.service'
+import { ModeracionService } from './moderacion.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 
 function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-doc-id') {
@@ -23,8 +24,14 @@ function usuario(id: string, features: Record<string, boolean> = {
 describe('CommunityService', () => {
   let service: CommunityService
   let firestoreMock: Record<string, any>
+  const moderacionMock = { moderarPublicacion: jest.fn() }
 
   beforeEach(async () => {
+    // Por defecto la moderación aprueba; los tests de rechazo lo sobreescriben.
+    moderacionMock.moderarPublicacion.mockReset().mockResolvedValue({
+      aprobado: true, categoria: 'comunidad', razon: 'Cumple las normas.',
+      sugerenciaMejora: null, fuente: 'gemini', fecha: '2026-10-22T00:00:00.000Z',
+    })
     firestoreMock = {
       collection: jest.fn(),
       batch: jest.fn(() => ({ set: jest.fn(), commit: jest.fn().mockResolvedValue(undefined) })),
@@ -56,7 +63,11 @@ describe('CommunityService', () => {
       }),
     }
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CommunityService, { provide: FIRESTORE, useValue: firestoreMock }],
+      providers: [
+        CommunityService,
+        { provide: FIRESTORE, useValue: firestoreMock },
+        { provide: ModeracionService, useValue: moderacionMock },
+      ],
     }).compile()
     service = module.get<CommunityService>(CommunityService)
   })
@@ -96,6 +107,22 @@ describe('CommunityService', () => {
       expect(result.datos).toHaveLength(1)
       expect(result.datos[0].nombreCompleto).toBe('Juan')
       expect(result.datos[0].usuarioMeGusta).toBe(false)
+    })
+
+    it('should exclude posts rejected by moderation', async () => {
+      const posts = [
+        { id: 'p1', autorId: 'u1', contenido: 'Aprobada', fechaCreacion: '2024-01-02' },
+        { id: 'p2', autorId: 'u1', contenido: 'Rechazada', estado: 'rechazada', fechaCreacion: '2024-01-01' },
+      ]
+
+      firestoreMock.collection
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: posts.map(p => ({ id: p.id, data: () => p })) }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [{ id: 'u1', data: () => ({ nombreCompleto: 'Juan' }) }], size: 1 }) })
+        .mockReturnValueOnce({ where: jest.fn().mockReturnThis(), get: jest.fn().mockResolvedValue({ docs: [] as never[], size: 0 }) })
+
+      const result = await service.getPosts(undefined, 'user1')
+      expect(result.datos).toHaveLength(1)
+      expect(result.datos[0].id).toBe('p1')
     })
 
     it('should filter by grupoId', async () => {
@@ -156,6 +183,44 @@ describe('CommunityService', () => {
 
       const result = await service.createPost(usuario('u1', { multimedia: false }), 'Solo texto')
       expect(result.mediaUrl).toBeNull()
+    })
+
+    it('should persist estado aprobada and the moderation details when approved', async () => {
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ nombreCompleto: 'Juan' }, true, 'u1')) }) })
+
+      const result = await service.createPost(usuario('u1'), 'Mi publicación')
+
+      expect(moderacionMock.moderarPublicacion).toHaveBeenCalledWith('Mi publicación', undefined)
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
+        estado: 'aprobada',
+        moderacion: expect.objectContaining({ aprobado: true, fuente: 'gemini' }),
+      }))
+      expect(result.estado).toBe('aprobada')
+      expect(result.moderacion.razon).toBe('Cumple las normas.')
+    })
+
+    it('should save the post hidden (estado rechazada) when moderation rejects it', async () => {
+      moderacionMock.moderarPublicacion.mockResolvedValueOnce({
+        aprobado: false, categoria: 'spam', razon: 'Parece una cadena.',
+        sugerenciaMejora: 'Comparte algo útil para la comunidad.',
+        fuente: 'gemini', fecha: '2026-10-22T00:00:00.000Z',
+      })
+      const setMock = jest.fn().mockResolvedValue(undefined)
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: setMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ nombreCompleto: 'Juan' }, true, 'u1')) }) })
+
+      const result = await service.createPost(usuario('u1'), 'Comparte esta cadena a 10 amigos')
+
+      expect(setMock).toHaveBeenCalledWith(expect.objectContaining({
+        estado: 'rechazada',
+        moderacion: expect.objectContaining({ aprobado: false, categoria: 'spam' }),
+      }))
+      expect(result.estado).toBe('rechazada')
+      expect(result.moderacion.sugerenciaMejora).toBe('Comparte algo útil para la comunidad.')
     })
   })
 
@@ -222,6 +287,26 @@ describe('CommunityService', () => {
 
       const result = await service.updatePost('p1', usuario('u1'), 'New content')
       expect(result.contenido).toBe('New content')
+    })
+
+    it('should re-moderate the edited content and update estado', async () => {
+      moderacionMock.moderarPublicacion.mockResolvedValueOnce({
+        aprobado: false, categoria: 'lenguaje_inapropiado', razon: 'Contiene un insulto.',
+        sugerenciaMejora: 'Reescribe con respeto.',
+        fuente: 'gemini', fecha: '2026-10-22T00:00:00.000Z',
+      })
+      const doc = mockDoc({ id: 'p1', autorId: 'u1', contenido: 'Old', grupoId: null, cantidadMeGustas: 0, fechaCreacion: '2024-01-01' }, true, 'p1')
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(doc) }) })
+
+      const result = await service.updatePost('p1', usuario('u1'), 'New content')
+
+      expect(doc.ref.update).toHaveBeenCalledWith(expect.objectContaining({
+        estado: 'rechazada',
+        moderacion: expect.objectContaining({ aprobado: false }),
+      }))
+      expect(result.estado).toBe('rechazada')
+      expect(result.moderacion.sugerenciaMejora).toBe('Reescribe con respeto.')
     })
 
     it('should update mediaUrl when provided', async () => {

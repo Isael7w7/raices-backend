@@ -66,6 +66,31 @@ const ETIQUETAS_DISCAPACIDAD: Record<string, string> = {
   visual: 'Visual', auditiva: 'Auditiva', multiple: 'Múltiple', psicosocial: 'Psicosocial',
 }
 
+/**
+ * Publicación de la colección `publicaciones` en la cola de moderación
+ * manual (rechazadas por la revisión automática).
+ */
+interface PublicacionRechazadaAdmin {
+  id: string
+  autorId: string
+  contenido?: string
+  grupoId?: string | null
+  mediaUrl?: string | null
+  categoriaCreativa?: string | null
+  /** `rechazada` = oculta del feed y en cola de revisión. */
+  estado?: string
+  /** Registro de la última revisión (automática o manual). */
+  moderacion?: Record<string, unknown>
+  /** ID del admin que resolvió la publicación (sale de la cola al definirse). */
+  resueltaPor?: string
+  fechaResolucion?: string
+  fechaCreacion?: string
+  /** Datos del autor (agregados al listar para la cola de revisión). */
+  nombreAutor?: string | null
+  emailAutor?: string | null
+  rolAutor?: string | null
+}
+
 const ETIQUETAS_CATEGORIA: Record<string, string> = {
   funcional: 'Salud y terapias', educativo: 'Educación',
   laboral: 'Empleo', social: 'Comunidad y social',
@@ -111,6 +136,122 @@ export class AdminService {
   ) {}
 
   private col(nombre: string) { return this.db.collection(nombre) }
+
+  /* ── Moderación de publicaciones (cola de revisión manual) ── */
+
+  /**
+   * Publicaciones rechazadas por la moderación automática y aún PENDIENTES
+   * de revisión manual (`resueltaPor` sin definir), con datos de su autor.
+   */
+  async getPublicacionesRechazadas(pagina = 1, limite = 20): Promise<RespuestaPaginada<PublicacionRechazadaAdmin>> {
+    const snap = await this.col(COLECCIONES.publicaciones).where('estado', '==', 'rechazada').get()
+    const publicaciones = snap.docs
+      .map(d => ({ id: d.id, ...(d.data() ?? {}) } as PublicacionRechazadaAdmin))
+      .filter(p => !p.resueltaPor)
+    publicaciones.sort((a, b) => (b.fechaCreacion ?? '').localeCompare(a.fechaCreacion ?? ''))
+
+    const autoresIds = [...new Set(publicaciones.map(p => p.autorId).filter(Boolean))] as string[]
+    const mapaAutores = autoresIds.length > 0
+      ? await obtenerDocumentosPorIds<PerfilDoc>(this.db, COLECCIONES.perfiles, autoresIds)
+      : new Map<string, PerfilDoc>()
+
+    const enriquecidas = publicaciones.map(p => {
+      const autor = mapaAutores.get(p.autorId)
+      return {
+        ...p,
+        nombreAutor: autor?.nombreCompleto ?? null,
+        emailAutor: autor?.email ?? null,
+        rolAutor: autor?.rol ?? null,
+      }
+    })
+
+    return paginar(enriquecidas, enriquecidas.length, pagina, limite)
+  }
+
+  /**
+   * Resolución manual de una publicación rechazada por la moderación:
+   * - `aprobar`  → estado `aprobada`: vuelve a ser visible en el feed.
+   * - `rechazar` → se confirma el rechazo: permanece oculta (estado `rechazada`).
+   *
+   * En ambos casos se registra la decisión (`fuente: 'admin'`) y sale de la
+   * cola de revisión (`resueltaPor` + `fechaResolucion`).
+   */
+  async resolverPublicacion(
+    publicacionId: string,
+    adminId: string,
+    decision: 'aprobar' | 'rechazar',
+    nota?: string,
+  ): Promise<{
+    id: string
+    estado: 'aprobada' | 'rechazada'
+    moderacion: Record<string, unknown>
+    resueltaPor: string
+    fechaResolucion: string
+  }> {
+    const doc = await this.col(COLECCIONES.publicaciones).doc(publicacionId).get()
+    if (!doc.exists) throw new NotFoundException('Publicación no encontrada')
+
+    const pub = (doc.data() ?? {}) as PublicacionRechazadaAdmin
+    if (pub.estado !== 'rechazada' || pub.resueltaPor) {
+      throw new BadRequestException('La publicación no está pendiente de revisión')
+    }
+
+    const ahora = new Date().toISOString()
+    const previa = (pub.moderacion ?? {}) as Record<string, unknown>
+    const estado: 'aprobada' | 'rechazada' = decision === 'aprobar' ? 'aprobada' : 'rechazada'
+    const moderacion = {
+      ...previa,
+      categoria: previa.categoria ?? 'comunidad',
+      razon: nota ?? (decision === 'aprobar'
+        ? 'Aprobada tras revisión manual del administrador.'
+        : 'Rechazada tras revisión manual del administrador.'),
+      sugerenciaMejora: null,
+      fuente: 'admin',
+      fecha: ahora,
+    }
+
+    const resultado = {
+      id: publicacionId,
+      estado,
+      moderacion,
+      resueltaPor: adminId,
+      fechaResolucion: ahora,
+    }
+    await doc.ref.update(resultado)
+
+    // Notificar al autor la decisión. La resolución ya quedó registrada:
+    // un fallo al notificar no debe deshacerla ni romper la respuesta.
+    await this.notificarResolucionAlAutor(pub.autorId, publicacionId, decision, nota, previa.razon)
+
+    return resultado
+  }
+
+  /** In-app notificación al autor de la publicación resuelta (aprobada o rechazada). */
+  private async notificarResolucionAlAutor(
+    autorId: string,
+    publicacionId: string,
+    decision: 'aprobar' | 'rechazar',
+    nota?: string,
+    razonPrevia?: unknown,
+  ): Promise<void> {
+    const aprobada = decision === 'aprobar'
+    const motivo = typeof razonPrevia === 'string' && razonPrevia.trim() ? razonPrevia.trim() : null
+    const cuerpo = aprobada
+      ? `Tu publicación ya es visible en la comunidad.${nota ? ` Nota del equipo: ${nota}` : ''}`
+      : `Tu publicación no será visible en la comunidad.${nota ? ` Motivo: ${nota}` : motivo ? ` Motivo: ${motivo}` : ''}`
+
+    try {
+      await this.notificaciones.crear(
+        autorId,
+        aprobada ? 'publicacion_aprobada' : 'publicacion_rechazada',
+        aprobada ? '¡Tu publicación fue aprobada!' : 'Tu publicación fue rechazada',
+        cuerpo,
+        publicacionId,
+      )
+    } catch (e: unknown) {
+      this.logger.warn(`No se pudo notificar la resolución de ${publicacionId} a ${autorId}: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   /* ───────────────────────── Stats y analytics ───────────────────────── */
 
