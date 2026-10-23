@@ -69,6 +69,5 @@ export class CrearEventoDto {
   @ApiPropertyOptional({ description: 'Etiquetas de accesibilidad del evento', example: ['rampas_acceso', 'interprete_lsm'], isArray: true })
   @IsOptional()
   @IsArray()
-  @Items?: any[]
   etiquetasAccesibilidad?: string[]
 }

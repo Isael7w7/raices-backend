@@ -95,7 +95,7 @@ export interface InstitucionDoc {
   usuarioId?: string
   activa?: boolean
   verificada?: boolean
-  /**/
+  /**
    * Constancia de Situación Fiscal (CSF) de la persona moral: URL del
    * documento. Es el requisito INDISPENSABLE de verificación para cuentas
    * institucionales/empresariales (la CURP no aplica a personas morales).
@@ -109,7 +109,7 @@ export interface InstitucionDoc {
   estado?: string
   urlLogo?: string
   fechaCreacion?: string
-  /**/
+  /**
    * Subtipo de la entidad: `'empresa'` cuando la cuenta se registró con rol
    * 'empresa' (misma colección que las instituciones, pero se oculta de las
    * vistas de directorio/descubrimiento/recomendaciones). Ausente en
@@ -118,15 +118,10 @@ export interface InstitucionDoc {
   tipo?: string
 }
 
-/**
- * Inscripción de un usuario a un servicio/programa de una institución
- * (colección `inscripcionesServicio`). Flujo con aprobación:
- * `pendiente` → `activa` | `rechazada`, y `cancelada` cuando la persona
- * retira su propia inscripción.
- */
- ID determinista `${servicioId}__${usuarioId}` para que una persona solo
+/** ID determinista `${servicioId}__${usuarioId}` para que una persona solo
  * tenga una inscripción por servicio (re-inscribir reactiva el documento).
  */
+
 export interface InscripcionServicioDoc {
   id?: string
   institucionId: string
@@ -292,29 +287,29 @@ export interface PublicacionDoc {
   cantidadMeGustas?: number
   fechaCreacion?: string
   fechaActualizacion?: string
-  /**/
+  /**
    * Adjuntos visuales (imágenes / dibujos / banners). Pueden venir vacíos.
    */
   imagenes?: (string | null)[]
-  /**/
+  /**
    * Adjuntos multimedia mixtos (imágenes y videos). Pueden venir vacíos.
    */
   multimedia?: (string | null)[]
-  /**/
+  /**
    * Adjuntos de archivo: pueden contener documentos no gráficos (PDF, TXT...).
    */
   archivos?: (string | null)[]
-  /**/
+  /**
    * Miniatura dedicada del feed (si el cliente la generó/alimentó).
    */
   urlThumbnail?: string | null
-  /**/
+  /**
    * Alias alternativo de miniatura usado por clientes antiguos.
    */
   thumbnailUrl?: string | null
 }
 
-/**/
+/**
  * Categorías permitidas para los eventos de la comunidad.
  */
 export const CATEGORIAS_EVENTO = ['taller', 'deporte', 'cultural', 'encuentro', 'voluntariado', 'otro'] as const
@@ -322,7 +317,6 @@ export const CATEGORIAS_EVENTO = ['taller', 'deporte', 'cultural', 'encuentro', 
 export type CategoriaEvento = (typeof CATEGORIAS_EVENTO)[number]
 
 /**
- */
  * Documento de la colección `eventos` (sección "Eventos" de la comunidad).
  */
 export interface EventoDoc {
@@ -331,7 +325,7 @@ export interface EventoDoc {
   titulo?: string
   descripcion?: string | null
   categoria?: CategoriaEvento | string
-  /**/
+  /**
    * ISO 8601 (acecha fecha simple `YYYY-MM-DD`).
    */
   fechaInicio?: string
@@ -339,28 +333,28 @@ export interface EventoDoc {
   ubicacion?: string | null
   urlImagen?: string | null
   cantidadAsistentes?: number
-  /**/
+  /**
    * Ciudad donde se realiza el evento.
    */
   ciudad?: string
-  /**/
+  /**
    * Modalidad del evento: 'presencial' | 'virtual' | 'hibrido'.
    */
   modalidad?: 'presencial' | 'virtual' | 'hibrido'
-  /**/
+  /**
    * Coordenadas geográficas para el mapa.
    */
   latitud?: number
   longitud?: number
-  /**/
+  /**
    * Cupo máximo de asistentes.
    */
   cupoMaximo?: number
-  /**/
+  /**
    * Total de inscritos/asistentes actuales.
    */
   totalInscritos?: number
-  /**/
+  /**
    * Etiquetas de accesibilidad del evento.
    */
   etiquetasAccesibilidad?: string[]
