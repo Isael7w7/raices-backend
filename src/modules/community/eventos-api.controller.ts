@@ -68,7 +68,7 @@ export class EventosApiController {
     description: 'Retorna el evento con su organizador y datos completos.',
   })
   @ApiParam({ name: 'id', description: 'ID del evento' })
-  @ApiResponse({ status: 200, type: EventoDoc, description: 'Evento encontrado' })
+  @ApiResponse({ status: 200, description: 'Evento encontrado' })
   @ApiResponse({ status: 404, description: 'Evento no encontrado' })
   async obtenerPorId(@Param('id') id: string): Promise<EventoDoc | null> {
     return this.eventosService.obtenerDetalle(id, '') as Promise<EventoDoc | null>

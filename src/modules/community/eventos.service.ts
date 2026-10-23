@@ -99,8 +99,9 @@ export class EventosService {
         // Already filtered at DB level, skip
       }
 
-      // Filtrar por proximos (fecha >= hoy)
-      if (proximos) {
+      // Filtrar por proximos (fecha >= hoy).
+      // Con `fecha` (día exacto) o `desde` explícito se omite: permiten ver historial.
+      if (proximos && !fecha && !filtros.desde) {
         const ahora = Date.now()
         eventos = eventos.filter(e => instante(e.fechaInicio) >= ahora)
       }
@@ -257,6 +258,7 @@ export class EventosService {
       latitud: dto.latitud ?? null,
       longitud: dto.longitud ?? null,
       cupoMaximo: dto.cupoMaximo ?? 0,
+      cantidadAsistentes: 0,
       totalInscritos: 0,
       activo: true,
       fechaCreacion: new Date().toISOString(),
