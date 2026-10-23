@@ -10,6 +10,7 @@ import { CurrentUserPayload } from '../../common/interfaces/current-user.interfa
 import { verificarMultimediaPermitida, normalizarMediaUrl } from '../../common/utils/multimedia-permiso'
 import { tieneMultimediaGaleria, construirItemGaleria, ItemGaleria } from './multimedia-galeria'
 import { ModeracionService, ResultadoModeracion } from './moderacion.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { CrearGrupoDto } from './dto/crear-grupo.dto'
 import { CrearForoDto } from './dto/crear-foro.dto'
 import { CrearRespuestaForoDto } from './dto/crear-respuesta-foro.dto'
@@ -120,9 +121,26 @@ export class CommunityService {
 
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly notificaciones: NotificationsService,
     // Opcional: los specs unitarios construyen el servicio sin el módulo de IA.
     @Optional() private readonly moderacion?: ModeracionService,
   ) {}
+
+  /** Notificación in-app best-effort: nunca interrumpe la operación principal. */
+  private async notificarEnSegundoPlano(
+    usuarioId: string,
+    tipo: string,
+    titulo: string,
+    cuerpo: string,
+    referenciaId?: string,
+  ): Promise<void> {
+    if (!usuarioId) return
+    try {
+      await this.notificaciones.crear(usuarioId, tipo, titulo, cuerpo, referenciaId)
+    } catch (e) {
+      this.logger.warn(`No se pudo crear notificación '${tipo}' para ${usuarioId}: ${(e as Error).message}`)
+    }
+  }
 
   /**
    * Revisa el contenido con la moderación automática (Gemini con fallback
@@ -332,6 +350,24 @@ export class CommunityService {
       fechaCreacion: new Date().toISOString(),
     })
 
+    // Notificar al autor de la publicación (best-effort, no bloquea el comentario).
+    try {
+      const pubDoc = await this.db.collection(COLECCIONES.publicaciones).doc(publicacionId).get()
+      const pubAutorId = pubDoc.exists ? (pubDoc.data()?.autorId as string | undefined) : undefined
+      if (pubAutorId && pubAutorId !== autorId) {
+        const extracto = contenido.length > 140 ? `${contenido.slice(0, 140)}…` : contenido
+        await this.notificarEnSegundoPlano(
+          pubAutorId,
+          'nuevo_comentario',
+          '💬 Nuevo comentario en tu publicación',
+          `Alguien comentó tu publicación: "${extracto}"`,
+          publicacionId,
+        )
+      }
+    } catch (e) {
+      this.logger.warn(`No se pudo notificar el comentario de ${publicacionId}: ${(e as Error).message}`)
+    }
+
     const doc = await this.db.collection(COLECCIONES.comentarios).doc(ref.id).get()
     const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(autorId).get()
     const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null
@@ -348,24 +384,39 @@ export class CommunityService {
     // del like y el incremento se resuelven en una única transacción.
     const refLike = this.db.collection(COLECCIONES.meGustas).doc(`${usuarioId}_${publicacionId}`)
 
-    return this.db.runTransaction(async (tx) => {
+    const resultado = await this.db.runTransaction(async (tx) => {
       const likeSnap = await tx.get(refLike)
       const refPublicacion = this.db.collection(COLECCIONES.publicaciones).doc(publicacionId)
       const pubSnap = await tx.get(refPublicacion)
       if (!pubSnap.exists) throw new NotFoundException('Publicación no encontrada')
+      const pubAutorId = (pubSnap.data()?.autorId as string | undefined) ?? null
 
       if (likeSnap.exists) {
         tx.delete(refLike)
         tx.update(refPublicacion, { cantidadMeGustas: FieldValue.increment(-1) })
-        return { meGusta: false }
+        return { meGusta: false as const, pubAutorId }
       }
 
       tx.set(refLike, {
         id: refLike.id, usuarioId, publicacionId, fechaCreacion: new Date().toISOString(),
       })
       tx.update(refPublicacion, { cantidadMeGustas: FieldValue.increment(1) })
-      return { meGusta: true }
+      return { meGusta: true as const, pubAutorId }
     })
+
+    // Notificar a la autora/autor que su publicación recibió un "me gusta"
+    // (solo al agregar, no al quitar; nunca a uno mismo).
+    if (resultado.meGusta && resultado.pubAutorId && resultado.pubAutorId !== usuarioId) {
+      await this.notificarEnSegundoPlano(
+        resultado.pubAutorId,
+        'nuevo_me_gusta',
+        '👍 A alguien le gustó tu publicación',
+        'Tu publicación acaba de recibir un "me gusta" de otro miembro de la comunidad.',
+        publicacionId,
+      )
+    }
+
+    return { meGusta: resultado.meGusta }
   }
 
   async updatePost(id: string, user: CurrentUserPayload, contenido: string, mediaUrl?: string) {
@@ -665,6 +716,19 @@ export class CommunityService {
       contenido: dto.contenido,
       fechaCreacion: new Date().toISOString(),
     })
+
+    // Notificar al creador del foro que su pregunta recibió una respuesta.
+    if (foro.creadorId && foro.creadorId !== user.id) {
+      const pregunta = preguntas[dto.preguntaIndex] ?? ''
+      const extracto = dto.contenido.length > 140 ? `${dto.contenido.slice(0, 140)}…` : dto.contenido
+      await this.notificarEnSegundoPlano(
+        foro.creadorId,
+        'respuesta_foro',
+        '🆕 Nueva respuesta en tu foro',
+        `Nueva respuesta a "${pregunta}": "${extracto}"`,
+        foroId,
+      )
+    }
 
     const autorDoc = await this.db.collection(COLECCIONES.perfiles).doc(user.id).get()
     const autor = autorDoc.exists ? (autorDoc.data() ?? null) : null

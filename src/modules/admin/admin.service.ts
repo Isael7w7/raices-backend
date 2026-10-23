@@ -560,6 +560,17 @@ export class AdminService {
     // directorio público y publicar vacantes (jobs exige activa + verificada).
     await this.col(COLECCIONES.instituciones).doc(id).update({ verificada: true, activa: true })
     await this.email.sendInstitutionApproved(inst.emailContacto ?? inst.email ?? '', inst.nombre)
+
+    // Notificación in-app al dueño de la institución (la resolución no depende de ella).
+    if (inst.usuarioId) {
+      await this.notificaciones.crear(
+        inst.usuarioId,
+        'institucion_aprobada',
+        '¡Institución aprobada! 🏛️',
+        `La institución "${inst.nombre}" fue aprobada: ya aparece en el directorio y puede publicar vacantes.`,
+        id,
+      ).catch((err: unknown) => this.logger.warn(`Error al notificar aprobación de institución ${id}: ${err instanceof Error ? err.message : String(err)}`))
+    }
   }
 
   async rejectInstitution(id: string) {
@@ -1282,6 +1293,12 @@ export class AdminService {
     // Verificar si todos los documentos del usuario están aprobados
     await this.verificarEstadoValidacionUsuario(data.usuarioId)
 
+    // Estado del perfil según el criterio del admin: aprobado + cuenta verificada.
+    await this.col(COLECCIONES.perfiles).doc(data.usuarioId).update({
+      estadoValidacionIdentidad: 'aprobado',
+      verificado: true,
+    })
+
     // Enviar correo de aceptación
     const perfilDoc = await this.col(COLECCIONES.perfiles).doc(data.usuarioId).get()
     if (perfilDoc.exists) {
@@ -1290,6 +1307,15 @@ export class AdminService {
         perfil.email,
         perfil.nombreCompleto,
       ).catch(err => this.logger.warn(`Error al enviar correo de aceptación: ${err.message}`))
+
+      // Notificación in-app: cuenta verificada.
+      await this.notificaciones.crear(
+        data.usuarioId,
+        'identidad_aprobada',
+        '¡Cuenta Verificada! 🛡️',
+        `Tu documento de identidad (${data.tipo === 'curp' ? 'CURP' : data.tipo === 'identificacion_oficial' ? 'INE / identificación oficial' : data.tipo ?? 'documento'}) fue aprobado. Tu cuenta quedó verificada.`,
+        documentoId,
+      ).catch((err: unknown) => this.logger.warn(`Error al notificar aprobación de documento: ${err instanceof Error ? err.message : String(err)}`))
     }
   }
 
@@ -1314,6 +1340,12 @@ export class AdminService {
     // Verificar estado de validación del usuario
     await this.verificarEstadoValidacionUsuario(data.usuarioId)
 
+    // Estado del perfil según el criterio del admin: rechazado + sin verificar.
+    await this.col(COLECCIONES.perfiles).doc(data.usuarioId).update({
+      estadoValidacionIdentidad: 'rechazado',
+      verificado: false,
+    })
+
     // Enviar correo de rechazo
     const perfilDoc = await this.col(COLECCIONES.perfiles).doc(data.usuarioId).get()
     if (perfilDoc.exists) {
@@ -1323,6 +1355,15 @@ export class AdminService {
         perfil.nombreCompleto,
         motivo,
       ).catch(err => this.logger.warn(`Error al enviar correo de rechazo: ${err.message}`))
+
+      // Notificación in-app: documento no aprobado (con el motivo).
+      await this.notificaciones.crear(
+        data.usuarioId,
+        'identidad_rechazada',
+        'Documento no aprobado ⚠️',
+        `Tu documento de identidad no fue aprobado. Motivo: ${motivo}`,
+        documentoId,
+      ).catch((err: unknown) => this.logger.warn(`Error al notificar rechazo de documento: ${err instanceof Error ? err.message : String(err)}`))
     }
   }
 

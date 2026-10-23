@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { Firestore, FieldValue, DocumentData } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
@@ -6,6 +6,7 @@ import { obtenerDocumentosPorIds } from '../../common/utils/firestore-helpers'
 import { paginar, RespuestaPaginada } from '../../common/dto/paginacion.dto'
 import type { EventoDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
 import type { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
+import { NotificationsService } from '../notifications/notifications.service'
 import { CrearEventoDto } from './dto/crear-evento.dto'
 
 /** Filtros del listado de eventos (sección "Eventos" de la comunidad). */
@@ -47,8 +48,125 @@ function instante(fecha: string | null | undefined): number {
 @Injectable()
 export class EventosService {
   private readonly logger = new Logger(EventosService.name)
+  private timerRecordatorios?: NodeJS.Timeout
 
-  constructor(@Inject(FIRESTORE) private readonly db: Firestore) {}
+  constructor(
+    @Inject(FIRESTORE) private readonly db: Firestore,
+    private readonly notificaciones: NotificationsService,
+  ) {
+    this.programarRecordatorios24h()
+  }
+
+  /**
+   * Programa el barrido horario de recordatorios "24 horas antes".
+   * Se omite en tests (NODE_ENV=test) para no dejar timers vivos.
+   */
+  private programarRecordatorios24h(): void {
+    if (process.env.NODE_ENV === 'test') return
+    this.timerRecordatorios = setInterval(() => {
+      void this.enviarRecordatorios24h().catch((e: unknown) =>
+        this.logger.error(`Error en recordatorios de eventos: ${(e as Error).message}`, (e as Error).stack),
+      )
+    }, 60 * 60 * 1000)
+    // No impide la salida del proceso si no hay más trabajo pendiente.
+    this.timerRecordatorios.unref?.()
+  }
+
+  /**
+   * Notifica a los usuarios activos de la misma ciudad que se publicó un
+   * evento nuevo ("evento cercano"). Best-effort en segundo plano.
+   */
+  private async notificarEventoCercano(datos: { id: string; titulo: string; ciudad: string | null; creadorId: string }): Promise<number> {
+    if (!datos.ciudad) return 0
+    try {
+      const snap = await this.db.collection(COLECCIONES.perfiles).where('ciudad', '==', datos.ciudad).get()
+      const destinatarios = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() ?? {}) } as { id: string; activo?: boolean }))
+        .filter(p => p.activo !== false && p.id !== datos.creadorId)
+        .slice(0, 200)
+
+      for (const p of destinatarios) {
+        await this.notificaciones.crear(
+          p.id,
+          'evento_cercano',
+          '📅 Nuevo evento en tu ciudad',
+          `Se publicó "${datos.titulo}" en ${datos.ciudad}. ¡Revisa los detalles y comparte tu asistencia!`,
+          datos.id,
+        ).catch((e: unknown) => this.logger.warn(`No se pudo notificar evento cercano a ${p.id}: ${(e as Error).message}`))
+      }
+      return destinatarios.length
+    } catch (e) {
+      this.logger.warn(`No se pudo notificar el evento cercano ${datos.id}: ${(e as Error).message}`)
+      return 0
+    }
+  }
+
+  /**
+   * Barrido de recordatorios: para cada evento activo que inicia dentro de las
+   * próximas 24 horas y aún no avisado, avisa a los asistentes inscritos.
+   *
+   * El marcado `recordatorio24hEnviado` se reclama en una transacción, así que
+   * si varias instancias de Cloud Run ejecutan el barrido a la vez, solo una
+   * envía cada recordatorio.
+   */
+  async enviarRecordatorios24h(): Promise<{ avisados: number }> {
+    const snap = await this.db.collection(COLECCIONES.eventos).where('activo', '==', true).get()
+    const ahora = Date.now()
+    const horizonte = ahora + 24 * 60 * 60 * 1000
+
+    const candidatos = snap.docs.filter(d => {
+      const e = d.data() as EventoDoc
+      if (e.recordatorio24hEnviado) return false
+      const inicio = instante(e.fechaInicio)
+      return inicio > ahora && inicio <= horizonte
+    })
+
+    let avisados = 0
+    for (const d of candidatos) {
+      const e = d.data() as EventoDoc
+
+      // Reclamo exclusivo: solo esta instancia envía el recordatorio.
+      let reclamado = false
+      try {
+        await this.db.runTransaction(async tx => {
+          const actual = await tx.get(d.ref)
+          if (!actual.exists || actual.data()?.recordatorio24hEnviado) return
+          tx.update(d.ref, {
+            recordatorio24hEnviado: true,
+            recordatorioEnviadoEn: new Date().toISOString(),
+          })
+          reclamado = true
+        })
+      } catch (e) {
+        this.logger.warn(`No se pudo reclamar el recordatorio de ${d.id}: ${(e as Error).message}`)
+        continue
+      }
+      if (!reclamado) continue
+
+      try {
+        const asistSnap = await this.db.collection(COLECCIONES.asistenciasEvento)
+          .where('eventoId', '==', d.id).get()
+        const destinatarios = [...new Set(
+          asistSnap.docs.map(a => a.data()?.usuarioId as string | undefined).filter((id): id is string => !!id),
+        )]
+
+        for (const usuarioId of destinatarios) {
+          await this.notificaciones.crear(
+            usuarioId,
+            'evento_recordatorio',
+            '⏰ Tu evento es en menos de 24 horas',
+            `Recuerda: "${e.titulo}" inicia el ${e.fechaInicio ?? ''}. ¡No faltes!`,
+            d.id,
+          ).catch((err: unknown) => this.logger.warn(`No se pudo notificar recordatorio a ${usuarioId}: ${(err as Error).message}`))
+          avisados++
+        }
+      } catch (e) {
+        this.logger.warn(`No se pudo notificar asistentes de ${d.id}: ${(e as Error).message}`)
+      }
+    }
+
+    return { avisados }
+  }
 
   /** Listado mejorado con filtros por ciudad, modalidad y proximos */
   async listar(
@@ -265,6 +383,10 @@ export class EventosService {
     }
     await ref.set(datos)
 
+    // "Evento cercano": avisa en segundo plano a los usuarios activos de la ciudad.
+    void this.notificarEventoCercano({ id: ref.id, titulo: datos.titulo, ciudad: datos.ciudad ?? null, creadorId: user.id })
+      .catch((e: unknown) => this.logger.warn(`Error al notificar evento cercano: ${(e as Error).message}`))
+
     let creador: PerfilDoc | undefined
     try {
       const perfil = await this.db.collection(COLECCIONES.perfiles).doc(user.id).get()
@@ -279,5 +401,32 @@ export class EventosService {
       nombreCreador: creador?.nombreCompleto ?? user.nombreCompleto ?? null,
       urlAvatarCreador: creador?.urlAvatar ?? null,
     } as EventoVista
+  }
+
+  /**
+   * Elimina un evento con **borrado lógico** (soft delete): el evento deja de
+   * aparecer en todos los listados (que filtran `activo === true`) pero el
+   * documento y su histórico (asistencias) se conservan para auditoría.
+   *
+   * Solo el creador (`creadorId`) o un usuario con rol `admin` pueden
+   * eliminarlo. `NotFoundException` si no existe.
+   */
+  async eliminarEvento(eventoId: string, usuarioId: string, rolUsuario?: string): Promise<{ eliminado: boolean }> {
+    const refEvento = this.db.collection(COLECCIONES.eventos).doc(eventoId)
+    const doc = await refEvento.get()
+    if (!doc.exists) throw new NotFoundException('Evento no encontrado')
+
+    const evento = doc.data() as EventoDoc | undefined
+    if (evento?.creadorId !== usuarioId && rolUsuario !== 'admin') {
+      throw new ForbiddenException('No tienes permiso para eliminar este evento')
+    }
+
+    await refEvento.update({
+      activo: false,
+      eliminadoEn: new Date().toISOString(),
+      eliminadoPor: usuarioId,
+    })
+
+    return { eliminado: true }
   }
 }

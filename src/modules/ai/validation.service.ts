@@ -34,6 +34,8 @@ export interface DatosUsuario {
 /** Campos que aplicarResultado escribe en el perfil del usuario. */
 interface ActualizacionPerfilValidacion {
   fechaUltimaValidacionIA: string
+  /** Acceso inmediato: la validación habilita la cuenta sin esperar la cola de documentos. */
+  activo?: boolean
   verificado?: boolean
   fechaVerificacion?: string
   metodoVerificacion?: 'ia' | 'admin'
@@ -536,10 +538,12 @@ Responde SOLO con JSON válido:
 
   /**
    * Aplica un resultado de validación de forma atómica: guarda el registro en
-   * `validacionesIA` y actualiza `verificado` en el perfil en el MISMO batch
-   * (todo o nada). Solo toca `verificado` cuando NO requiere revisión manual.
-   * Si se aprueba y hay documentos de identidad pendientes, se aprueban también
-   * en el mismo lote (menos trabajo manual para el administrador).
+   * `validacionesIA` y actualiza el perfil en el MISMO batch (todo o nada).
+   * Acceso inmediato: siempre habilita la cuenta (`activo: true`); la revisión
+   * manual de documentos NO bloquea el inicio de sesión. Los documentos de
+   * identidad se MANTIENEN en `pendiente` en la cola de revisión manual (la
+   * validación automática en background NO los auto-aprueba): la auto-aprobación
+   * queda reservada al `override` manual del administrador.
    */
   async aplicarResultado(
     usuarioId: string,
@@ -576,7 +580,9 @@ Responde SOLO con JSON válido:
     batch.set(registroRef, registro)
 
     // Actualización atómica del perfil (mismo batch que el registro).
-    const perfilUpdate: ActualizacionPerfilValidacion = { fechaUltimaValidacionIA: fecha }
+    // Acceso inmediato: la validación siempre habilita la cuenta; los casos
+    // dudosos siguen esperando en la cola de revisión manual sin bloquear el login.
+    const perfilUpdate: ActualizacionPerfilValidacion = { fechaUltimaValidacionIA: fecha, activo: true }
     if (!resultado.requiereRevisionManual) {
       perfilUpdate.verificado = resultado.aprobado
       // La fecha/método de verificación solo tienen sentido en aprobaciones:
@@ -586,10 +592,13 @@ Responde SOLO con JSON válido:
         perfilUpdate.metodoVerificacion = opciones?.tipo === 'override' ? 'admin' : 'ia'
       }
     }
-    if (resultado.aprobado && docsPendientes.length > 0) {
+    // Auto-aprobación de documentos SOLO bajo override manual del admin.
+    // En la validación automática (background) los documentos pendientes se
+    // conservan en estado 'pendiente' para la cola de revisión manual.
+    if (resultado.aprobado && docsPendientes.length > 0 && opciones?.tipo === 'override') {
       perfilUpdate.estadoValidacionIdentidad = 'aprobado'
       // En un override el revisor es el administrador, no la IA.
-      const revisadoPor = opciones?.tipo === 'override' ? (opciones.adminId ?? 'admin') : 'ia'
+      const revisadoPor = opciones.adminId ?? 'admin'
       for (const doc of docsPendientes) {
         batch.update(doc.ref, { estado: 'aprobado', fechaRevision: fecha, revisadoPor })
       }

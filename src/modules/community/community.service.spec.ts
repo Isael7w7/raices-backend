@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { NotFoundException, ForbiddenException } from '@nestjs/common'
 import { CommunityService } from './community.service'
 import { ModeracionService } from './moderacion.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { FIRESTORE } from '../../database/firebase.provider'
 
 function mockDoc(data: Record<string, any> | null, exists = true, docId = 'mock-doc-id') {
@@ -25,8 +26,10 @@ describe('CommunityService', () => {
   let service: CommunityService
   let firestoreMock: Record<string, any>
   const moderacionMock = { moderarPublicacion: jest.fn() }
+  const notificacionesMock = { crear: jest.fn() }
 
   beforeEach(async () => {
+    notificacionesMock.crear.mockReset().mockResolvedValue({ id: 'n1' })
     // Por defecto la moderación aprueba; los tests de rechazo lo sobreescriben.
     moderacionMock.moderarPublicacion.mockReset().mockResolvedValue({
       aprobado: true, categoria: 'comunidad', razon: 'Cumple las normas.',
@@ -67,6 +70,7 @@ describe('CommunityService', () => {
         CommunityService,
         { provide: FIRESTORE, useValue: firestoreMock },
         { provide: ModeracionService, useValue: moderacionMock },
+        { provide: NotificationsService, useValue: notificacionesMock },
       ],
     }).compile()
     service = module.get<CommunityService>(CommunityService)
@@ -231,12 +235,35 @@ describe('CommunityService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+        // Post dueño del comentario (para la notificación al autor)
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ autorId: 'u2' }, true, 'p1')) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(commentData, true, 'c1')) }) })
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc(autorData, true, 'u1')) }) })
 
       const result = await service.createComment('p1', 'u1', 'Genial')
       expect(result).toBeDefined()
       expect(result.id).toBeDefined()
+
+      // Notifica al autor del post (u2), no al comentarista
+      expect(notificacionesMock.crear).toHaveBeenCalledWith(
+        'u2',
+        'nuevo_comentario',
+        expect.stringContaining('comentario'),
+        expect.stringContaining('Genial'),
+        'p1',
+      )
+    })
+
+    it('should NOT notify when the author comments their own post', async () => {
+      firestoreMock.collection
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ set: jest.fn().mockResolvedValue(undefined) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ autorId: 'u1' }, true, 'p1')) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ id: 'c1' }, true, 'c1')) }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue(mockDoc({ nombreCompleto: 'Ana' }, true, 'u1')) }) })
+
+      await service.createComment('p1', 'u1', 'Mi propio post')
+
+      expect(notificacionesMock.crear).not.toHaveBeenCalled()
     })
   })
 
@@ -247,12 +274,21 @@ describe('CommunityService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'u1_p1', get: jest.fn().mockResolvedValue({ exists: false }), set: setLikeMock, delete: jest.fn().mockResolvedValue(undefined) }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: true }), update: updatePubMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ autorId: 'u2' }) }), update: updatePubMock }) })
 
       const result = await service.toggleLike('u1', 'p1')
       expect(result.meGusta).toBe(true)
       expect(setLikeMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'u1_p1', usuarioId: 'u1', publicacionId: 'p1' }))
       expect(updatePubMock).toHaveBeenCalled()
+
+      // Notifica a la autora/autor del post que recibió el me gusta
+      expect(notificacionesMock.crear).toHaveBeenCalledWith(
+        'u2',
+        'nuevo_me_gusta',
+        expect.any(String),
+        expect.any(String),
+        'p1',
+      )
     })
 
     it('should remove like atomically when already liked', async () => {
@@ -261,12 +297,14 @@ describe('CommunityService', () => {
 
       firestoreMock.collection
         .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ id: 'u1_p1', get: jest.fn().mockResolvedValue({ exists: true }), set: jest.fn().mockResolvedValue(undefined), delete: deleteLikeMock }) })
-        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: true }), update: updatePubMock }) })
+        .mockReturnValueOnce({ doc: jest.fn().mockReturnValue({ get: jest.fn().mockResolvedValue({ exists: true, data: () => ({ autorId: 'u2' }) }), update: updatePubMock }) })
 
       const result = await service.toggleLike('u1', 'p1')
       expect(result.meGusta).toBe(false)
       expect(deleteLikeMock).toHaveBeenCalled()
       expect(updatePubMock).toHaveBeenCalled()
+      // Quitar el like NO genera notificación
+      expect(notificacionesMock.crear).not.toHaveBeenCalled()
     })
 
     it('should throw NotFoundException when publication does not exist', async () => {

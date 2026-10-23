@@ -388,23 +388,22 @@ describe('Validación automática de usuarios por IA (E2E)', () => {
       expect(registro.aprobado).toBe(esperado.aprobado)
       expect(registro.requiereRevisionManual).toBe(esperado.requiereRevisionManual)
 
-      // El perfil y los documentos quedan consistentes con la decisión aplicada
+      // El perfil queda verificado si la decisión fue aprobada sin revisión.
       expect(perfil.verificado).toBe(registro.aprobado && !registro.requiereRevisionManual)
-      expect(perfil.estadoValidacionIdentidad).toBe(registro.aprobado ? 'aprobado' : 'pendiente')
+      if (registro.aprobado) {
+        expect(perfil.metodoVerificacion).toBe('ia')
+      }
 
+      // La validación automática NO auto-aprueba documentos: la CURP queda en
+      // la cola de revisión manual (estado del perfil 'pendiente') hasta que el
+      // admin la resuelva a mano o aplique un override.
+      expect(perfil.estadoValidacionIdentidad).toBe('pendiente')
       const docsSnap = await dbE2E().collection('documentosIdentidad')
         .where('usuarioId', '==', 'uid-usuario').get()
       expect(docsSnap.docs.length).toBe(1)
       const doc = docsSnap.docs[0].data()
-      if (registro.aprobado) {
-        // Aprobación por IA: el documento CURP se aprueba sin intervención del admin
-        expect(perfil.metodoVerificacion).toBe('ia')
-        expect(doc.estado).toBe('aprobado')
-        expect(doc.revisadoPor).toBe('ia')
-      } else {
-        // Revisión manual o rechazo: el documento queda pendiente del admin
-        expect(doc.estado).toBe('pendiente')
-      }
+      expect(doc.estado).toBe('pendiente')
+      expect(doc.revisadoPor).toBeUndefined()
     }, 60000)
 
     it('validacionIAHabilitada=false: el registro no genera validaciones ni verifica', async () => {

@@ -5,6 +5,7 @@ import { EmailModule } from '../email/email.module'
 import { FirebaseAnalyticsModule } from '../admin/firebase-analytics.module'
 import { AiModule } from '../ai/ai.module'
 import { StorageModule } from '../storage/storage.module'
+import { NotificationsModule } from '../notifications/notifications.module'
 
 @Module({
   imports: [
@@ -14,6 +15,8 @@ import { StorageModule } from '../storage/storage.module'
     AiModule,
     // Subida de la CSF adjunta al registro de institución → documentoCsf
     StorageModule,
+    // Notificación de bienvenida al completar el registro
+    NotificationsModule,
   ],
   controllers: [AuthController],
   providers: [AuthService],

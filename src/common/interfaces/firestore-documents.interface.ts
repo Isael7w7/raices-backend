@@ -359,6 +359,14 @@ export interface EventoDoc {
    */
   etiquetasAccesibilidad?: string[]
   activo?: boolean
+  /** Borrado lógico: fecha en que el evento fue eliminado (soft delete). */
+  eliminadoEn?: string
+  /** Borrado lógico: ID del usuario que eliminó el evento. */
+  eliminadoPor?: string
+  /** Recordatorio "24 horas antes" ya enviado a los asistentes (evita duplicados). */
+  recordatorio24hEnviado?: boolean
+  /** Fecha en que se envió el recordatorio de 24 horas. */
+  recordatorioEnviadoEn?: string
   fechaCreacion?: string
 }
 

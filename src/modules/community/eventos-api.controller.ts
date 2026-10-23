@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Post,
   Body,
@@ -93,5 +94,26 @@ export class EventosApiController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<EventoDoc> {
     return this.eventosService.crearEvento(user, dto) as Promise<EventoDoc>
+  }
+
+  /** DELETE /api/eventos/:id - Eliminar evento (borrado lógico, solo creador o admin) */
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Eliminar evento',
+    description:
+      'Borrado lógico: el evento queda inactivo (activo=false) y deja de aparecer en los listados. Solo el creador del evento o un admin pueden eliminarlo.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del evento' })
+  @ApiResponse({ status: 204, description: 'Evento eliminado (borrado lógico)' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 403, description: 'No eres el creador del evento ni admin' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  async eliminar(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<{ eliminado: boolean }> {
+    return this.eventosService.eliminarEvento(id, user.id, user.rol)
   }
 }

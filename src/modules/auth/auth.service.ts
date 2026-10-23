@@ -12,6 +12,7 @@ import { EmailService } from '../email/email.service'
 import { FirebaseAnalyticsService } from '../admin/firebase-analytics.service'
 import { ValidationService } from '../ai/validation.service'
 import { StorageService } from '../storage/storage.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import type { Auth as FirebaseAuth } from 'firebase-admin/auth'
 
 @Injectable()
@@ -31,6 +32,8 @@ export class AuthService {
     // Validación automática por IA (Optional: los specs unitarios la construyen sin AiModule)
     @Optional() private readonly validation?: ValidationService,
     @Optional() private readonly storage?: StorageService,
+    // Notificación in-app de bienvenida (Optional: los specs la construyen sin NotificationsModule)
+    @Optional() private readonly notificaciones?: NotificationsService,
   ) {
     // SECURITY: la API key de Firebase Auth se lee de ConfigService (secreto
     // montado desde GCP Secret Manager en Cloud Run). Sin valores hardcodeados.
@@ -218,6 +221,15 @@ export class AuthService {
     await this.analytics?.incrementar('usuariosActivos')
 
     this.emailService.sendWelcome(dto.email, dto.nombreCompleto).catch((): null => null)
+
+    // Notificación in-app de bienvenida (best-effort, no bloquea el registro).
+    void this.notificaciones?.crear(
+      uid,
+      'bienvenida',
+      '¡Bienvenido a Raíces! 🌱',
+      `Hola ${dto.nombreCompleto}, tu cuenta ya está lista. Completa tu perfil para descubrir instituciones, eventos y recursos de inclusión cerca de ti.`,
+      uid,
+    ).catch((e: unknown) => this.logger.warn(`No se pudo enviar la bienvenida a ${uid}: ${e instanceof Error ? e.message : String(e)}`))
 
     // Validación automática por IA en BACKGROUND: no bloquea el tiempo de
     // respuesta del registro. Aprueba cuentas válidas al instante (confianza

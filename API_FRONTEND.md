@@ -182,6 +182,7 @@
 | GET | `/comunidad/eventos/:id` | 🔒 | — | Detalle con organizador + `asisto` |
 | POST | `/comunidad/eventos` | 🔒 + feature `comunidad` | `{ titulo (≤200, req), descripcion? (≤5000), categoria (req), fechaInicio (ISO8601, req), fechaFin?, ubicacion? (≤300), urlImagen? (≤2000) }` | `201` · ⚡5/min |
 | POST | `/comunidad/eventos/:id/asistir` | 🔒 + feature | — | Toggle asistencia · ⚡10/min |
+| DELETE | `/comunidad/eventos/:id` | 🔒 | — | `204` borrado lógico: solo creador o `admin` (`403` en otro caso, `404` si no existe). El evento desaparece de los listados pero se conserva su histórico |
 | GET | `/comunidad/conectemos/publicaciones` | 🌐 | `pagina`, `limite`, `categoriaCreativa`, `buscar` | Solo multimedia real |
 | GET | `/comunidad/galeria` | 🌐 | (alias de `/conectemos/publicaciones`) | — |
 
@@ -198,7 +199,16 @@
 | PATCH | `/notificaciones/leer-todas` | 🔒 | `204` |
 | GET | `/notificaciones/flujo` | 🔒 | **SSE** (`text/event-stream`) — tiempo real. ⚠️ `EventSource` no envía header Authorization; funciona con la cookie `token_acceso` |
 
-> Tipos de notificación de moderación de publicaciones: `publicacion_aprobada` y `publicacion_rechazada` (enlace a la publicación en `referenciaId`).
+> **Tipos de notificación in-app** (todas enlazan su recurso en `referenciaId`):
+> - **Moderación de publicaciones:** `publicacion_aprobada`, `publicacion_rechazada`.
+> - **Identidad:** `identidad_aprobada` (documento aprobado y cuenta verificada), `identidad_rechazada` (con el motivo).
+> - **Instituciones:** `institucion_aprobada` (alta aprobada por el admin).
+> - **Comunidad:** `nuevo_comentario` (en tu publicación), `nuevo_me_gusta`, `respuesta_foro` (respuesta en un foro).
+> - **Eventos:** `evento_cercano` (evento próximo en tu ciudad al publicarse), `evento_recordatorio` (< 24 h para quienes asistirán).
+> - **Bienvenida:** `bienvenida` (al completar el registro).
+> - **Empleo:** `postulacion_aceptada` y `postulacion_rechazada` (cambios de estado en tus postulaciones).
+
+> Validación de identidad: la validación automática por IA habilita y verifica la cuenta, pero **NO auto-aprueba los documentos de identidad** — siguen en la cola de revisión manual del admin (`GET /administracion/documentos-identidad/pendientes`), que puede resolverlos con aprobar/rechazar o con el override `PATCH /ia/validar-usuario/:id/override`.
 
 ---
 

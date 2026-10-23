@@ -524,7 +524,7 @@ describe('ValidationService', () => {
       expect(fs.batch.commit).toHaveBeenCalledTimes(1)
     })
 
-    it('aprobado con documentos pendientes: los aprueba en el mismo batch', async () => {
+    it('aprobado con documentos pendientes: NO los auto-aprueba (quedan en la cola de revisión manual)', async () => {
       fs = crearFirestoreMock({
         perfil: { ...PERFIL_BASE },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }, { tipo: 'identificacion_oficial', estado: 'aprobado' }],
@@ -536,11 +536,14 @@ describe('ValidationService', () => {
 
       await svc.validarYAplicar('user-1')
 
-      // 1 update de perfil + 1 update del documento pendiente
-      expect(fs.batch.update).toHaveBeenCalledTimes(2)
-      const updates = fs.batch.update.mock.calls.map(c => c[1])
-      expect(updates.some(u => u.estado === 'aprobado' && u.revisadoPor === 'ia')).toBe(true)
-      expect(updates.some(u => u.verificado === true)).toBe(true)
+      // Solo 1 update (el perfil): los documentos pendientes NO se tocan.
+      // La auto-aprobación de documentos queda reservada al override del admin.
+      expect(fs.batch.update).toHaveBeenCalledTimes(1)
+      const perfilUpdate = fs.batch.update.mock.calls[0][1]
+      expect(perfilUpdate.verificado).toBe(true)
+      // Acceso inmediato: la validación habilita la cuenta aunque los docs esperen revisión
+      expect(perfilUpdate.activo).toBe(true)
+      expect(perfilUpdate.estadoValidacionIdentidad).toBeUndefined()
     })
 
     it('requiereRevisionManual: guarda el registro pero NO toca verificado', async () => {
@@ -652,7 +655,7 @@ describe('ValidationService', () => {
       expect(updateDoc![1].revisadoPor).toBe('admin-1')
     })
 
-    it('validación automática aprobada con documentos pendientes: revisadoPor="ia"', async () => {
+    it('validación automática aprobada con documentos pendientes: NO escribe revisadoPor="ia" (no auto-aprueba)', async () => {
       fs = crearFirestoreMock({
         perfil: { ...PERFIL_BASE },
         documentos: [{ tipo: 'curp', estado: 'pendiente' }],
@@ -665,8 +668,7 @@ describe('ValidationService', () => {
       await svc.validarYAplicar('user-1')
 
       const updateDoc = fs.batch.update.mock.calls.find(c => c[1].estado === 'aprobado')
-      expect(updateDoc).toBeDefined()
-      expect(updateDoc![1].revisadoPor).toBe('ia')
+      expect(updateDoc).toBeUndefined()
     })
 
     it('lanza NotFoundException cuando el usuario no existe', async () => {
