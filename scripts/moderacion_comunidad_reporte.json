@@ -1,0 +1,293 @@
+{
+  "fecha_auditoria": "2026-10-26",
+  "plataforma": "Raíces",
+  "archivos_analizados": [
+    "comunidad_raices_filtrada_1793006664307.json",
+    "comunidad_raices_filtrada_1793007109307.json",
+    "comunidad_raices_filtrada_1793007970759.json",
+    "comunidad_raices_filtrada_1793008667338.json",
+    "comunidad_raices_filtrada_1793009582355.json",
+    "comunidad_raices_filtrada_1793010125669.json"
+  ],
+  "resumen": {
+    "total_publicaciones": 38,
+    "aprobadas": 34,
+    "rechazadas": 4,
+    "por_categoria": {
+      "duda_tramite": 14,
+      "testimonio": 6,
+      "empleo": 6,
+      "comunidad": 8,
+      "fuera_de_lugar": 4
+    }
+  },
+  "resultados": [
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Ojalá Integren al estado de Jalisco y que Dios   quiera la Presidenta Claudia i terfiera por todos los Estados que estamos fuera del programa de apoyo que tanto necesitamos gracias saludos",
+      "aprobado": false,
+      "categoria": "fuera_de_lugar",
+      "justificacion": "Publicación de carácter político (mención y aval a la Presidenta) sin consulta ni contenido sobre inclusión o discapacidad; encuadra como debate político ajeno a la plataforma según la regla 2."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Muy sierto nadien pregunta como estas yo soy discapasitada operaron m cortaron mi pie arriba del rodiya y bibo sola y nadien tb nit bisitan",
+      "aprobado": true,
+      "categoria": "testimonio",
+      "justificacion": "Testimonio de vida personal sobre discapacidad y soledad; coincide con la regla 1 (historias de vida). Sin lenguaje de odio ni desinformación."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Hola buenas tardes disculpa una pregunta sobre la silla de ruedas necesito yo tengo dos años con la neuropatia diabetica y no puedo caminar sola tengo que estar pidiendo favor y es muy incomodo",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Solicitud respetuosa de orientación sobre obtención de silla de ruedas; corresponde a la regla 1 (dudas y solicitudes de orientación)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Pues como les dan apoyo a los centroamericanos tal vez x eso lo hacen sabían que ellos reciben una pensión y no xq sean discapacitados simplemente x ser migrantes",
+      "aprobado": false,
+      "categoria": "fuera_de_lugar",
+      "justificacion": "Generalización xenófoba hacia migrantes centroamericanos enmarcada en un agravio político; no aporta orientación sobre inclusión y entra en la regla 2 (lenguaje de exclusión + debate político ajeno)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Cambiamos el rumbo dices justo que los jaliscienses, sean los más pisoteados por esta cochina política del prianconvergencia, basta hagamos la transformación verdadera es justo.",
+      "aprobado": false,
+      "categoria": "fuera_de_lugar",
+      "justificacion": "Intervención puramente partidista (mención de partidos y lenguaje descalificador hacia la política) sin relación con inclusión o discapacidad; regla 2 (debate político ajeno)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "LA TARJETA DE BIENESTAR NADA TIENE QUE VER CON EL DIF! TU TIENES QUE IR TEMPRANO MAÑANA AL BANCO BIENESTAR Y EXPLICAR LOS HECHOS... SI AUN TIENES TU COMPROBANTE DE LA TARJETA LLEVALO, TU INE Y TU CURP",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Orientación concreta sobre trámite de Tarjeta de Bienestar (documentación y acudir a banco); regla 1 (dudas sobre trámites: Bienestar). Mayúsculas por énfasis, no por agresión."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "No entiendo xq dices 100%vulnerable a caso no te puedes mover ni un poco o no tienes familia que te apoye con tu Discapacitadad? Y en Querétaro no dan ayuda de discapacidad solo hasta los 29 años? Creo no está muy clara tu petición",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Pregunta de requisitos de una ayuda estatal con tono de duda (aunque algo directo), sin insultos ni descalificación de la discapacidad ajena; se trata como intercambio comunitario permitido por la regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "paso uno. - va a algún internet para que le saquen su certificado de no pertenencia al IMSS o al ISSTE con sus respectivas copias Copia a su credencial de elector Paso 2.-va a algún centro de salud cercano a su domicilio llevando su CURP, acta de Nacimiento, comprobante de domicilio que coincida con la credencial de elector , credencial de elector, si tiene su cartilla de salud igual y algún documento que certifique la fecha de ingreso y de alta cuando se operó solicitando su certificado médico por incapacidad permanente. Paso 3.- Ya con toda su documentación se dirige a las oficinas de el bienestar más cercanas a su domicilio presentando todos los documentos en original y copia todos los documentos deberán tener menos de 2 a 3 meses pues deben estar actualizados el acta de nacimiento en original es como de opalina la copia es de papel normal aunque sea a color la copia. puede usted tramitar todo como en enero para evitar dobles gastos pues por lo regular para la convocatoria a dicho apoyo es como en febrero o marzo y de octubre a esos meses son como 4 meses y los documentos pierden vigencia, y ya como última sugerencia cheque usted el domicilio de las oficinas del bienestar más cercanas a su domicilio para que ya la vallan tomando en cuenta y hasta si es posible le comuniquen por cel. cuando de inicio la convocatoria y el orden de la documentación requerida. Tenga usted mucha fé y fuerza para todos esto.",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Guía detallada de trámite (certificado de discapacidad / apoyo Bienestar) con tono de apoyo; ejemplo claro de la regla 1 (dudas sobre trámites: CEDis, Bienestar, CAM)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Hola amigooo, yo tengi discapacidad   intelectual y motriz, me sumo al grupo tambien necesito amigos y anigas!!!",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Saludo e integración al grupo, petición respetuosa de acompañamiento; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Hola amigooo, yo tengi discapacidad intelectual y motriz, me sumo al grupo tambien necesito amigos y anigas!!!",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Contenido aprobado por la regla 1, pero es una PUBLICACIÓN DUPLICADA del elemento anterior (misma redacción). Se aprueba por ser inocua; se recomienda deduplicar en el pipeline de ingesta."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Claro que entra! Es una discapacidad congénita, es decir que nació con eso, cuando la discapacidad se adquiere después del nacimiento es decir en un accidente etc, ahí no entraría…",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Respuesta orientativa sobre elegibilidad de una discapacidad congénita vs. adquirida; regla 1 (orientación sobre trámites)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "No es la tarjeta. La. Que. Esta. Bloqueada es la. Cuenta. En. Agosto metimos. Papeles. Para que nos desbloquearan la cuenta. Y las que llevaron papelería. Apenas se les. Desbloque. Aún la mía sigue bloqueada pero me recomendaron llevar papelería. A. Sucursal aztecas. Porque hay mismo. Le ayudan y no tarda tanto en que se la desbloquean al parecer solo tardan 15- a20 días",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Experiencia y orientación sobre desbloqueo de cuenta de la ayuda (trámite); regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Pues mi hijo tiene síndrome de Lennox gastaut es una epilepsia avanza y si tiene apoyo de discapacidad",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Aclara si una condición específica (epilepsia Lennox-Gastaut) califica para apoyo de discapacidad; información de elegibilidad, regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Autismo si entra . Mi hijo tiene autismo y le dieron su certificado de discapacidad permanente",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Confirma elegibilidad del autismo para certificado de discapacidad con caso propio; regla 1 (dudas sobre trámites)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Luz S L D Marquez no es confundir, lo que está en la lista de arriba no es una discapacidad, una discapacidad es aquella que no te permite realizar tus actividades como deben de ser osea te mantienen limitadas, por eso debes leer y saber que es una discapacidad y que es una enfermedad crónico degenerativa!",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Aclaración conceptual discapacidad vs. enfermedad crónica, útil para la comunidad. El tono es firme pero no constituye lenguaje de odio; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793006664307.json",
+      "contexto_original": "Esos papeles donde se entregan y d casualidad saben si entra como discapacidad un accidente d balistica y no me dan trabajo po… Ver más",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Consulta sobre entrega de documentos y elegibilidad por discapacidad derivada de lesión; regla 1 (dudas sobre trámites y solicitud de orientación)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007109307.json",
+      "contexto_original": "Soy sordo lengua de señas discapacidad no me contestó ya pasado solicitud no dar discapacidad permite si no que te paso del Bancomer mal escribe nada",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Usuario sordo reporta falta de respuesta a su solicitud de dictamen de discapacidad; consulta sobre estatus de trámite, regla 1. El texto es difícil de leer pero no ofensivo."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Así es Compá yo tengo 15 años en silla de ruedas tengo lesión medular completa y estos 15 años no ah sido nada fácil pero gracias a Dios hay muchas cosas que ya me adapte en mi vida y me es más fácil hacerlo como en los primeros años ánimo compá",
+      "aprobado": true,
+      "categoria": "testimonio",
+      "justificacion": "Historia de vida (lesión medular, 15 años en silla de ruedas) con mensaje de ánimo; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Buenos días a todos, elegí esta foto, es la ultima vez que acampe en cala Mondragón para ver las lágrimas de San Lorenzo como cada verano, a partir de ahí hace 5 años que no puedo ir, la silla de ruedas no me deja bajar por la escalinata de bajada a la playa. Es un bonito recuerdo y a la vez un poco triste, soy piscis y viviría en el mar.",
+      "aprobado": true,
+      "categoria": "testimonio",
+      "justificacion": "Testimonio personal sobre memoria, accesibilidad y limitaciones de movilidad; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Que ayuda le dió acaso el dios embustero y asesino de inocentes de la mitología judeo cristiana que se inventaron Esdras y Neh… Ver más",
+      "aprobado": false,
+      "categoria": "fuera_de_lugar",
+      "justificacion": "Debate religioso ofensivo (calificativos despectivos hacia una fe), ajeno a la inclusión y sin relación con discapacidad; regla 2 (debates religiosos y lenguaje de odio)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Estoy de acuerdo,yo tengo una condición de movilidad y es horrible depender de otras personas por qué no somos cargas para mue… Ver más",
+      "aprobado": true,
+      "categoria": "testimonio",
+      "justificacion": "Testimonio sobre dependencia familiar y condición de movilidad; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Estoy de acuerdo,yo tengo una condición de movilidad y es horrible depender de otras personas por qué no somos cargas para muestras familiares pero ellos se cansan y nosotros sufrimos",
+      "aprobado": true,
+      "categoria": "testimonio",
+      "justificacion": "Versión completa del testimonio anterior (duplicado/continuación); emocional pero respetuoso, regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Estoy en total acuerdo ya q el dolor es terrible tengo varias condiciones que solo yo sé lo q cuesta enfrentarlas y por eso yo apoyo totalmente la idea",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Aportación a un hilo sobre convivencia con dolor crónico; intercambio comunitario respetuoso, regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Me encantaría volver a jugar a básquet desde que voy en silla de ruedas no he vuelto a tocar un balón.",
+      "aprobado": true,
+      "categoria": "testimonio",
+      "justificacion": "Deseo personal ligado a discapacidad y recreación; historia de vida, regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793007970759.json",
+      "contexto_original": "Sres muy buenos días, necesitamos de su apoyo en su gestión para que las empresas públicas y privadas ofrezcan empleos dignos y no solamente empleos con 5to de secundaria, muchos somos profesionales, no queremos dinero del estado, queremos trabajar, le escribo desde Arequipa",
+      "aprobado": true,
+      "categoria": "empleo",
+      "justificacion": "Petición respetuosa de empleo digno para personas con discapacidad (inclusión laboral); regla 1 (búsqueda de empleo / solicitudes de orientación)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793008667338.json",
+      "contexto_original": "Ay mi amigo no se preocupe yo también en un grupo de discapacidad subí un proyecto muy bonito y me lo eliminaron así que no se mortifique",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Mensaje de apoyo entre miembros sobre moderación de contenido; tono respetuoso, regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793009582355.json",
+      "contexto_original": "Es mera mierd.... busca alguien que tenga discapacidad pero que este a la final bien, pase mi hoja de vida vieron mi discapaci… Ver más",
+      "aprobado": true,
+      "categoria": "empleo",
+      "justificacion": "Queja por discriminación laboral tras revelar la discapacidad en un proceso de selección. Usa una expresión soez dirigida a la empresa, no a un grupo protegido; no constituye odio ni desinformación, y el tema (empleo) está permitido por la regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793009582355.json",
+      "contexto_original": "Es mera mierd.... busca alguien que tenga discapacidad pero que este a la final bien, pase mi hoja de vida vieron mi discapacidad y eso que no la tengo leve, y ni me volvieron a escribir no pierdan el tiempo hay.. Como ahora salió la nueva ley de discapacidad hay si buscan, pero si buscan es que sea vean bien patéticos",
+      "aprobado": true,
+      "categoria": "empleo",
+      "justificacion": "Versión completa del caso anterior (duplicado). Denuncia de discriminación en contratación; permitido por la regla 1. Se recomienda deduplicar con el elemento previo."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793009582355.json",
+      "contexto_original": "Consulta, tengo discapacidad visual al 100% puedo optar a este trabajo o algún otro pregunto ￼",
+      "aprobado": true,
+      "categoria": "empleo",
+      "justificacion": "Consulta directa de elegibilidad laboral con discapacidad visual; regla 1 (búsqueda de empleo)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793009582355.json",
+      "contexto_original": "Con una Convención y leyes de discapacidad, no debíamos pedir inclusión, que hacen las Instituciones por la organización, atención y protección de las personas con discapacida",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Reflexión crítica sobre cumplimiento de la Convención de Discapacidad por parte de las instituciones; es crítica constructiva vinculada a la inclusión (no es debate partidista), regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793009582355.json",
+      "contexto_original": "Mi discapacidad es solo física y yo tampoco he podido conseguir un trabajo formal me preocupa por que ya casi llego a los 40 y no tengo nada para mí futuro y el de mi hijo aquí en México están bien cerrados todavía y por más estudios que tengas no te dan la oportunidad",
+      "aprobado": true,
+      "categoria": "empleo",
+      "justificacion": "Testimonio sobre barreras de acceso al empleo formal con discapacidad; regla 1 (búsqueda de empleo)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793009582355.json",
+      "contexto_original": "Buenos días en qué ciudad pueden ayudar a personas con discapacidad a conseguir empleo",
+      "aprobado": true,
+      "categoria": "empleo",
+      "justificacion": "Petición explícita de orientación para conseguir empleo; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793010125669.json",
+      "contexto_original": "Como puedo inscribir ami hijo o si alguien puede ayudarme apenas salimos del hospital dos meses y medio dentro mi hijo de 15 años con rotura de vertebras t6t7t8 lesión completa paraplejia si alguien puede ayudarme le agradecería ya que tengo meses sin trabajar despues de su accidente soy de merida yucatan 98-6110-9997 todo es comprobable ai alguien puede le mando mis datos",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Solicitud urgente y respetuosa de orientación para inscribir a su hijo con lesión medular reciente; regla 1. ADVERTENCIA: contiene teléfono y datos personales propios — se aprueba por ser autodivulgación en contexto de ayuda, pero se recomienda enmascarar el número antes de publicarlo.",
+      "requiere_revision_dato_personal": true
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793010125669.json",
+      "contexto_original": "Oigan hacen talleres para personas con discapacidad adquirida? Osea de como llevar dignamente la discapacidad?",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Consulta sobre talleres/orientación para discapacidad adquirida; regla 1 (solicitud de orientación)."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793010125669.json",
+      "contexto_original": "Creo que debería tener asesoría en técnica de orientación y movilidad. Para eso son las AC, para sumar y cada quien con su expertes. Estamos para apoyar desde la Red Incluyente por la Discapacidad. Ridis Yucatán",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Recomendación de asesoría técnica (orientación y movilidad) y ofrecimiento de apoyo institucional; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793010125669.json",
+      "contexto_original": "Gracias por el espacio y por visibilizar lo que compartí al final de la sesión. La inclusión no puede quedarse en palabras bonitas: necesitamos que sea estructural, cotidiana y con voz propia. Cuenten conmigo para seguir trabajando desde la crítica constructiva, la propuesta y la acción.",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Agradecimiento y compromiso con la inclusión; discurso constructivo alineado a la misión de la plataforma, regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793010125669.json",
+      "contexto_original": "buenas tardes ! Dan seguimiento con trabajadoras sociales a casos que se han dado apoyos? Saludos y excelente trabajo !",
+      "aprobado": true,
+      "categoria": "duda_tramite",
+      "justificacion": "Consulta sobre seguimiento de apoyos otorgados (proceso administrativo), con tono cordial; regla 1."
+    },
+    {
+      "archivo_origen": "comunidad_raices_filtrada_1793010125669.json",
+      "contexto_original": "Rene Ledesma Abdala muchas gracias y felicidades por su trabajo juntos por la inclusión",
+      "aprobado": true,
+      "categoria": "comunidad",
+      "justificacion": "Agradecimiento y felicitación sobre trabajo de inclusión; contenido pro-social, regla 1."
+    }
+  ]
+}
