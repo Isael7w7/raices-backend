@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai'
 import { Firestore, FieldValue } from 'firebase-admin/firestore'
 import { FIRESTORE } from '../../database/firebase.provider'
 import { COLECCIONES } from '../../database/firestore.constants'
+import { DiccionarioConsultasService } from '../ai/diccionario-consultas.service'
 
 // ─── Tipos ──────────────────────────────────────────────────────────────
 
@@ -35,6 +36,12 @@ export interface PerfilBusquedaVectorial {
   discapacidad?: string
   etapaVida?: string
   metas?: string
+  /**
+   * Texto libre escrito por el usuario (metas, consulta del chat...). Se pasa
+   * por el diccionario coloquial→técnico para expandir la consulta de búsqueda
+   * con los términos oficiales (CENETEC / SEP / LGIPD) antes de vectorizarla.
+   */
+  consulta?: string
 }
 
 /** Resultado de la ingesta del dataset. */
@@ -54,6 +61,9 @@ export interface ResultadoIngesta {
  * 2. `buscarContextoRelevante` recupera los 3 documentos más afines al perfil
  *    del usuario (similitud de coseno en memoria; Firestore Vector Search
  *    nativo no está habilitado en el proyecto).
+ * 3. Antes de vectorizar, la consulta se pasa por `DiccionarioConsultasService`
+ *    para expandir lenguaje coloquial ("me cortaron el pie") a términos
+ *    oficiales (amputación de miembro inferior / CEDis / CENETEC).
  */
 @Injectable()
 export class KnowledgeVectorService {
@@ -64,6 +74,7 @@ export class KnowledgeVectorService {
   constructor(
     @Inject(FIRESTORE) private readonly db: Firestore,
     private readonly config: ConfigService,
+    private readonly diccionario: DiccionarioConsultasService,
   ) {
     this.initializeAi()
   }
@@ -208,7 +219,22 @@ export class KnowledgeVectorService {
     try {
       if (!this.ai) return []
 
-      const textoBusqueda = `Ruta para discapacidad ${perfil.discapacidad ?? 'no especificada'} en ${perfil.etapaVida ?? 'no especificada'} con meta:${perfil.metas ?? 'no especificada'}`
+      const textoBase = `Ruta para discapacidad ${perfil.discapacidad ?? 'no especificada'} en ${perfil.etapaVida ?? 'no especificada'} con meta:${perfil.metas ?? 'no especificada'}`
+
+      // ── Enriquecimiento RAG con el diccionario coloquial→técnico ──
+      // Si el lenguaje del usuario coincide con una expresión/variante/palabra
+      // clave del diccionario, se agregan al texto de búsqueda los términos
+      // oficiales (clínico, legal/educativo y trámite) para que el embedding
+      // recupere evidencia de CENETEC/SEP/LGIPD precisa y no solo literal.
+      const textoLibre = [perfil.consulta, perfil.metas, perfil.discapacidad]
+        .filter((parte): parte is string => typeof parte === 'string' && parte.trim() !== '')
+        .join(' ')
+      const enriquecida = this.diccionario.preprocesarConsulta(textoLibre)
+
+      const textoBusqueda = enriquecida.textoExpansion
+        ? `${textoBase}\n${enriquecida.textoExpansion}`
+        : textoBase
+
       const embeddingConsulta = await this.generarEmbedding(textoBusqueda)
 
       const snap = await this.col(COLECCIONES.conocimientoClinico).limit(200).get()

@@ -11,6 +11,7 @@ import { FIRESTORE } from '../../database/firebase.provider';
 import { COLECCIONES } from '../../database/firestore.constants';
 import { ConfigService } from '@nestjs/config';
 import { RoutesAnalyticsService } from './routes-analytics.service';
+import { DiccionarioConsultasService } from '../ai/diccionario-consultas.service';
 
 // ─── Mock helpers ────────────────────────────────────────────────────────────
 
@@ -158,6 +159,8 @@ async function crearService(firestoreMock: any) {
       { provide: ConfigService, useValue: configMock },
       { provide: RoutesAnalyticsService, useValue: analyticsMock },
       { provide: KnowledgeVectorService, useValue: knowledgeVectorMock },
+      // Diccionario real (solo lectura del JSON, sin dependencias externas).
+      { provide: DiccionarioConsultasService, useClass: DiccionarioConsultasService },
     ],
   }).compile();
   return module.get<RoutesService>(RoutesService);

@@ -8,6 +8,7 @@ import { COLECCIONES } from '../../database/firestore.constants'
 import { CrearRutaDto, ActualizarRutaDto, CrearPasoDto } from './dto/ruta-desarrollo.dto'
 import { KnowledgeBaseService } from './knowledge-base.service'
 import { KnowledgeVectorService } from './knowledge-vector.service'
+import { DiccionarioConsultasService } from '../ai/diccionario-consultas.service'
 import { RoutesAnalyticsService } from './routes-analytics.service'
 import { parsearTiposDiscapacidad, parsearCampoJson } from '../../common/utils/firestore-helpers'
 import type { PerfilExtendidoDoc, PerfilDoc } from '../../common/interfaces/firestore-documents.interface'
@@ -48,6 +49,7 @@ export class RoutesService {
     private readonly config: ConfigService,
     private readonly analytics: RoutesAnalyticsService,
     private readonly knowledgeVector: KnowledgeVectorService,
+    private readonly diccionario: DiccionarioConsultasService,
   ) {
     this.initializeAi()
   }
@@ -641,10 +643,19 @@ export class RoutesService {
 
     // RAG: recupera la evidencia oficial (CENETEC/SEP/OMS) más relevante para
     // el perfil del usuario. Best-effort: si falla, el prompt continúa sin ella.
+    // El texto libre (metas/áreas, en lenguaje coloquial del usuario) se pasa
+    // por el diccionario para expandir la búsqueda vectorial con los términos
+    // oficiales (clínico, legal/educativo y trámite) antes de vectorizarlo.
+    const consultaLibre = [metas, areas]
+      .filter(valor => valor && valor !== 'no especificadas')
+      .join(' ')
+    const enriquecida = this.diccionario.preprocesarConsulta(consultaLibre)
+
     const contextoRecuperado = await this.knowledgeVector.buscarContextoRelevante({
       discapacidad: discapacidades,
       etapaVida: perfil.etapaVida ?? 'no especificada',
       metas,
+      consulta: consultaLibre,
     })
 
     const seccionEvidencia = contextoRecuperado.length > 0
@@ -655,6 +666,18 @@ export class RoutesService {
             .map(c => `FUENTE: ${c.title}\nCONTENIDO: ${c.content}\nGUÍA: ${c.practical_guidance}\nADVERTENCIAS: ${c.limitations_and_warnings}`)
             .join('\n\n'),
           '--- FIN DE EVIDENCIA ---',
+          '',
+        ]
+      : []
+
+    // Traducción del lenguaje cotidiano del usuario a términos oficiales
+    // (solo si el diccionario detectó coincidencias): ayuda a Gemini a mapear
+    // "me cortaron el pie" → "amputación de miembro inferior / CEDis".
+    const seccionDiccionario = enriquecida.textoExpansion
+      ? [
+          '--- TRADUCCIÓN DE LENGAJE COTIDIANO A TÉRMINOS OFICIALES ---',
+          enriquecida.textoExpansion,
+          '--- FIN DE LA TRADUCCIÓN ---',
           '',
         ]
       : []
@@ -715,6 +738,8 @@ export class RoutesService {
       `- Viabilidad económica: ${perfil.viabilidadEconomica ?? 'no especificada'}`,
       '',
       ...seccionEvidencia,
+      '',
+      ...seccionDiccionario,
       '',
       'Genera entre 5 y 7 pasos aplicando Lectura Fácil. Garantiza que cada "descripcion" empiece con un verbo de acción amable (Visita, Acude, Pregunta, Platica) y mantén el rigor técnico CENETEC/OMS.'
     ];
