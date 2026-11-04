@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody, ApiParam } from '@nestjs/swagger'
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator'
 import { JwtAuthGuard } from '../../common/guards/jwt.guard'
+import { AuthOpcionalGuard } from '../../common/guards/auth-opcional.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { Roles } from '../../common/decorators/roles.decorator'
 import { CrearEventoDto } from './dto/crear-evento.dto'
@@ -42,12 +43,15 @@ export class EventosApiController {
   @ApiQuery({ name: 'proximos', required: false, description: 'Solo eventos con fecha >= hoy', example: true, type: 'boolean' })
   @ApiQuery({ name: 'buscar', required: false, description: 'Buscar por título o descripción', example: 'taller' })
   @ApiResponse({ status: 200, description: 'Lista de eventos con paginación' })
+  @UseGuards(AuthOpcionalGuard)
   async listar(
     @Query() filtros: ListarEventosDto,
-    @CurrentUser() user: CurrentUserPayload,
+    @CurrentUser() user?: CurrentUserPayload,
   ): Promise<RespuestaPaginada<EventoDoc>> {
+    // Endpoint público/autenticado: no hay guard, así que `req.user` puede no
+    // existir. Sin esto `user.id` lanzaba TypeError (500) en cada petición.
     return this.eventosService.listar(
-      user.id,
+      user?.id ?? '',
       filtros.pagina ?? 1,
       filtros.limite ?? 20,
       {
@@ -73,6 +77,26 @@ export class EventosApiController {
   @ApiResponse({ status: 404, description: 'Evento no encontrado' })
   async obtenerPorId(@Param('id') id: string): Promise<EventoDoc | null> {
     return this.eventosService.obtenerDetalle(id, '') as Promise<EventoDoc | null>
+  }
+
+  /** POST /api/eventos/:id/asistir - Confirmar o cancelar asistencia */
+  @Post(':id/asistir')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Confirmar o cancelar asistencia',
+    description:
+      'Alterna la asistencia del usuario al evento: si ya estaba confirmada la cancela; si no, la confirma. `cantidadAsistentes` se actualiza atómicamente.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del evento' })
+  @ApiResponse({ status: 200, description: 'Estado de la asistencia tras el cambio' })
+  @ApiResponse({ status: 401, description: 'No autenticado' })
+  @ApiResponse({ status: 404, description: 'Evento no encontrado' })
+  async asistir(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<{ asistiendo: boolean; cantidadAsistentes: number }> {
+    return this.eventosService.toggleAsistencia(id, user.id)
   }
 
   /** POST /api/eventos - Crear evento (roles: institucion, empresa, admin) */

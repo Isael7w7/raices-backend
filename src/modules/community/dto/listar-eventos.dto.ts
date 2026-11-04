@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger'
 import { IsBoolean, IsDateString, IsIn, IsOptional, IsString } from 'class-validator'
+import { Transform } from 'class-transformer'
 import { PaginacionDto } from '../../../common/dto/paginacion.dto'
 import { CATEGORIAS_EVENTO } from '../../../common/interfaces/firestore-documents.interface'
 
@@ -43,6 +44,9 @@ export class ListarEventosDto extends PaginacionDto {
 
   @ApiPropertyOptional({ description: 'Solo eventos con fecha >= hoy. Por defecto: true', example: true, type: 'boolean' })
   @IsOptional()
+  // Los query params llegan por HTTP como cadenas ("true"/"false"); sin esta
+  // transformación explícita IsBoolean rechaza la petición con 400.
+  @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean({ message: 'proximos debe ser un booleano' })
   proximos?: boolean
 }
