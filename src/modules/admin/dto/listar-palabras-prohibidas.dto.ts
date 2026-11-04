@@ -35,9 +35,14 @@ export class ListarPalabrasProhibidasDto {
     type: 'boolean',
   })
   @IsOptional()
-  // Los query params llegan como cadenas ("true"/"false"); sin esta
-  // transformación explícita IsBoolean rechaza la petición con 400.
-  @Transform(({ value }) => value === 'true' || value === true)
+  // Los query params llegan como cadenas ("true"/"false"); se convierten solo
+  // esos dos valores. Cualquier otra cosa se deja intacta para que IsBoolean
+  // responda 400 en vez de interpretarse como "false" en silencio.
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true
+    if (value === 'false' || value === false) return false
+    return value
+  })
   @IsBoolean({ message: 'activa debe ser un booleano' })
   activa?: boolean
 }
