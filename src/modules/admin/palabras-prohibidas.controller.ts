@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common'
 import {
   ApiBearerAuth,
   ApiBody,
@@ -7,6 +7,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger'
@@ -17,6 +18,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface'
 import { CrearPalabraProhibidaDto } from './dto/crear-palabra-prohibida.dto'
+import { ListarPalabrasProhibidasDto } from './dto/listar-palabras-prohibidas.dto'
 import { PalabraProhibidaDto } from './dto/palabra-prohibida.dto'
 import { PalabrasProhibidasService } from './palabras-prohibidas.service'
 
@@ -31,12 +33,18 @@ export class PalabrasProhibidasController {
   @Get()
   @ApiOperation({
     summary: 'Listar palabras prohibidas',
-    description: 'Devuelve la lista de insultos locales / modismos prohibidos cargada en memoria.',
+    description:
+      'Devuelve la lista de insultos locales / modismos prohibidos cargada en memoria. ' +
+      'Acepta filtros opcionales (buscar, categoria, activa) que se combinan entre sí.',
   })
-  @ApiOkResponse({ type: [PalabraProhibidaDto], description: 'Lista completa de palabras prohibidas' })
+  @ApiQuery({ name: 'buscar', required: false, description: 'Texto a buscar en la palabra o en la categoría (sin distinguir mayúsculas ni acentos)', example: 'pendej' })
+  @ApiQuery({ name: 'categoria', required: false, description: 'Categoría exacta del término', example: 'groseria' })
+  @ApiQuery({ name: 'activa', required: false, type: Boolean, description: 'true solo activas, false solo desactivadas' })
+  @ApiOkResponse({ type: [PalabraProhibidaDto], description: 'Lista de palabras prohibidas que cumplen los filtros' })
+  @ApiResponse({ status: 400, description: 'Filtro inválido (por ejemplo activa que no es booleano)' })
   @ApiResponse({ status: 403, description: 'Rol insuficiente (se requiere admin)' })
-  todas() {
-    return this.svc.obtenerTodas()
+  todas(@Query() filtros: ListarPalabrasProhibidasDto) {
+    return this.svc.buscar(filtros)
   }
 
   @Post()

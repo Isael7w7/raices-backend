@@ -14,6 +14,7 @@ import {
   CATEGORIA_PALABRA_PROHIBIDA_POR_DEFECTO,
   CrearPalabraProhibidaDto,
 } from './dto/crear-palabra-prohibida.dto'
+import { ListarPalabrasProhibidasDto } from './dto/listar-palabras-prohibidas.dto'
 
 /** Palabra prohibida tal como se expone al panel de administración y a la moderación. */
 export interface PalabraProhibida {
@@ -135,7 +136,27 @@ export class PalabrasProhibidasService implements OnModuleInit {
 
   /** Lista completa de palabras (activas e inactivas) desde el caché. */
   obtenerTodas(): PalabraProhibida[] {
-    return Array.from(this.cache.values()).sort((a, b) => a.palabra.localeCompare(b.palabra))
+    return Array.from(this.cache.values()).sort((a, b) => a.palabra.localeCompare(b.palabra, 'es'))
+  }
+
+  /**
+   * Lista filtrada por texto, categoría y estado, ordenada alfabéticamente.
+   *
+   * El término de búsqueda se normaliza igual que las palabras guardadas, de
+   * modo que "Güey" o "guey" encuentran la misma entrada y las mayúsculas no
+   * importan. Los filtros se combinan entre sí (AND).
+   */
+  buscar(filtros: ListarPalabrasProhibidasDto = {}): PalabraProhibida[] {
+    const termino = filtros.buscar ? normalizarPalabra(filtros.buscar) : ''
+    const categoria = filtros.categoria ? normalizarPalabra(filtros.categoria) : ''
+
+    return this.obtenerTodas().filter(p => {
+      if (filtros.activa !== undefined && p.activa !== filtros.activa) return false
+      const categoriaPalabra = normalizarPalabra(p.categoria)
+      if (categoria && categoriaPalabra !== categoria) return false
+      if (termino && !p.palabra.includes(termino) && !categoriaPalabra.includes(termino)) return false
+      return true
+    })
   }
 
   /** Elimina la palabra de Firestore y del caché. */
@@ -155,7 +176,7 @@ export class PalabrasProhibidasService implements OnModuleInit {
     return Array.from(this.cache.values())
       .filter(p => p.activa)
       .map(p => p.palabra)
-      .sort((a, b) => a.localeCompare(b))
+      .sort((a, b) => a.localeCompare(b, 'es'))
   }
 
   // ─── Utilidades internas ────────────────────────────────────────────
