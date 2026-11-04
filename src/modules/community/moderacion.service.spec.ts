@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { ConfigService } from '@nestjs/config'
 import { GoogleGenAI } from '@google/genai'
 import { ModeracionService } from './moderacion.service'
+import { PalabrasProhibidasService } from '../admin/palabras-prohibidas.service'
 
 // ─── Mock de @google/genai ─────────────────────────────────────────────
 jest.mock('@google/genai')
@@ -22,9 +23,16 @@ function configMock(proyecto?: string) {
   } as unknown as ConfigService
 }
 
-async function crearServicio(config: ConfigService): Promise<ModeracionService> {
+async function crearServicio(config: ConfigService, palabrasProhibidas: string[] = []): Promise<ModeracionService> {
   const module: TestingModule = await Test.createTestingModule({
-    providers: [ModeracionService, { provide: ConfigService, useValue: config }],
+    providers: [
+      ModeracionService,
+      { provide: ConfigService, useValue: config },
+      {
+        provide: PalabrasProhibidasService,
+        useValue: { obtenerListaParaPrompt: jest.fn(() => palabrasProhibidas) },
+      },
+    ],
   }).compile()
   return module.get<ModeracionService>(ModeracionService)
 }
@@ -100,6 +108,66 @@ describe('ModeracionService', () => {
       expect(r.aprobado).toBe(false)
       expect(r.categoria).toBe('spam')
     })
+
+    it('rechaza las palabras agregadas por la administración', () => {
+      const r = svc.moderarPorReglas('Ese chaneque no sabe nada', undefined, ['chaneque'])
+      expect(r.aprobado).toBe(false)
+      expect(r.categoria).toBe('lenguaje_inapropiado')
+    })
+  })
+
+  // ═══════════════════════════════════════════════════════════════════
+  // La ñ es una letra distinta de la n
+  // ═══════════════════════════════════════════════════════════════════
+  describe('normalización de la ñ', () => {
+    let svc: ModeracionService
+
+    beforeEach(async () => {
+      svc = await crearServicio(configMock(undefined), ['coño'])
+    })
+
+    it('no rechaza "cono" cuando la lista solo tiene "coño"', () => {
+      const r = svc.moderarPorReglas('El cono de tránsito está en la banqueta', undefined, ['coño'])
+      expect(r.aprobado).toBe(true)
+    })
+
+    it('rechaza la palabra de la lista aunque la tilde llegue descompuesta', async () => {
+      // "coño" en NFD: n + tilde combinante, como puede llegar desde algunos teclados.
+      const texto = 'coño'.normalize('NFD')
+
+      const r = await svc.moderarPublicacion(`Ese ${texto}`)
+      expect(r.aprobado).toBe(false)
+      expect(r.categoria).toBe('lenguaje_inapropiado')
+    })
+  })
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Evasiones: el mismo insulto escrito distinto
+  // ═══════════════════════════════════════════════════════════════════
+  describe('detección de evasiones', () => {
+    const LISTA = ['pelana']
+
+    it.each([
+      ['separada por puntos', 'Ese p.e.l.a.n.a no sabe nada'],
+      ['separada por guiones', 'Ese p-e-l-a-n-a no sabe nada'],
+      ['con letras sueltas', 'Ese p e l a n a no sabe nada'],
+      ['disfrazada con números', 'Ese p3l4n4 no sabe nada'],
+      ['con separadores y números', 'Ese p.3.l.4.n.4 no sabe nada'],
+    ])('rechaza la palabra %s', async (_caso, texto) => {
+      const svc = await crearServicio(configMock(undefined), LISTA)
+
+      const r = await svc.moderarPublicacion(texto)
+      expect(r.aprobado).toBe(false)
+      expect(r.categoria).toBe('lenguaje_inapropiado')
+      expect(r.fuente).toBe('reglas')
+    })
+
+    it('no rechaza palabras que solo contienen la secuencia de letras', async () => {
+      const svc = await crearServicio(configMock(undefined), ['puta'])
+
+      const r = await svc.moderarPublicacion('Compré una computadora nueva para el aula')
+      expect(r.aprobado).toBe(true)
+    })
   })
 
   // ═══════════════════════════════════════════════════════════════════
@@ -122,6 +190,26 @@ describe('ModeracionService', () => {
       // El contrato usa camelCase; el prompt pide snake_case.
       expect(r.sugerenciaMejora).toBe('Reescribe sin insultos.')
       expect(r.fuente).toBe('gemini')
+    })
+
+    it('rechaza una palabra de la lista sin consultar a Gemini', async () => {
+      const svc = await crearServicio(configMock('proyecto-1'), ['chaneque'])
+
+      const r = await svc.moderarPublicacion('Ese chaneque no sabe nada')
+      expect(r.aprobado).toBe(false)
+      expect(r.categoria).toBe('lenguaje_inapropiado')
+      expect(r.fuente).toBe('reglas')
+      expect(mockGenerateContent).not.toHaveBeenCalled()
+    })
+
+    it('no envía la lista administrada en el prompt (la valida el código)', async () => {
+      const svc = await crearServicio(configMock('proyecto-1'), ['chaneque'])
+      mockGenerateContent.mockResolvedValue(geminiResponse(JSON.stringify({ aprobado: true })))
+
+      await svc.moderarPublicacion('Contenido ordinario')
+      const prompt = mockGenerateContent.mock.calls[0][0].contents as string
+      expect(prompt).not.toContain('chaneque')
+      expect(prompt).not.toContain('PALABRAS PROHIBIDAS')
     })
 
     it('tolera bloques ```json y campos faltantes', async () => {

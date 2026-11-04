@@ -33,6 +33,9 @@ export const COLECCIONES = {
   configuraciones: 'configuraciones',
   documentosIdentidad: 'documentosIdentidad',
   validacionesIA: 'validacionesIA',
+  // Insultos/modismos locales prohibidos, gestionados por el panel de admin
+  // y usados por el motor de moderación por IA.
+  palabrasProhibidas: 'palabras_prohibidas',
   rutasDesarrollo: 'rutasDesarrollo',
   pasosRuta: 'pasosRuta',
   // Conocimiento oficial (CENETEC / SEP / OMS) vectorizado para RAG en rutas

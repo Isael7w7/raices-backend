@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { GoogleGenAI } from '@google/genai'
 import type { ThinkingLevel } from '@google/genai'
+import { normalizarPalabra, PalabrasProhibidasService } from '../admin/palabras-prohibidas.service'
 
 /** Categorías de moderación permitidas (contrato estricto con el frontend). */
 export const CATEGORIAS_MODERACION = [
@@ -96,6 +97,95 @@ function esRelleno(texto: string): boolean {
   return letras.length >= 40 && letras === letras.toUpperCase()
 }
 
+// ─── Detección de evasiones de la lista administrada ──────────────────
+// La gente escribe el mismo insulto de formas distintas. Cada pasada
+// normaliza el texto para neutralizar una familia de trucos; el rechazo
+// ocurre si CUALQUIER pasada hace coincidir una palabra de la lista.
+
+/** Separadores que se intercalan entre letras (nunca el espacio). */
+const SEPARADORES_PALABRA = /[.\-_*~^`'´ºª·/\\]/g
+
+/** Símbolos y números usados para disfrazar letras: p3l4n4 → pelana. */
+const SUSTITUCIONES_LEET: Record<string, string> = {
+  '4': 'a', '@': 'a', '3': 'e', '€': 'e', '1': 'i', '!': 'i', '|': 'i',
+  '0': 'o', '5': 's', '$': 's', '7': 't', '+': 't', '8': 'b', '9': 'g', '2': 'z',
+}
+
+/** Caracteres de ancho cero: separan letras sin dejar rastro visible. */
+const INVISIBLES = /[\u200B-\u200D\uFEFF\u00AD\u2060]/g
+
+/**
+ * Quita los separadores DENTRO de cada palabra, no del texto completo: así
+ * "p.e.l.a.n.a" se vuelve "pelana" sin que "computadora" se convierta en un
+ * texto donde "puta" aparece pegada a otras letras.
+ */
+function compactarPalabras(texto: string): string {
+  return texto
+    .split(' ')
+    .map((palabra) => palabra.replace(SEPARADORES_PALABRA, ''))
+    .join(' ')
+}
+
+/**
+ * Traduce los símbolos de cada palabra a letras. Solo aplica a palabras que
+ * de verdad traen una sustitución y tienen 4+ caracteres: así "2024", "100"
+ * o "m4ma" (mamá) no empiezan a chocar con la lista.
+ */
+function desleetearPalabras(texto: string): string {
+  return texto
+    .split(' ')
+    .map((palabra) => {
+      if (palabra.length < 4) return palabra
+      if (!/[4@3€1!|05$7+892]/.test(palabra)) return palabra
+      return [...palabra].map((c) => SUSTITUCIONES_LEET[c] ?? c).join('')
+    })
+    .join(' ')
+}
+
+/** Une rachas de 3+ palabras de una sola letra: "p e l a n a" → "pelana". */
+function unirLetrasSueltas(texto: string): string {
+  const salida: string[] = []
+  let racha: string[] = []
+  const volcar = () => {
+    if (racha.length >= 3) salida.push(racha.join(''))
+    else salida.push(...racha)
+    racha = []
+  }
+
+  for (const palabra of texto.split(' ')) {
+    if (palabra.length === 1) {
+      racha.push(palabra)
+    } else {
+      volcar()
+      salida.push(palabra)
+    }
+  }
+  volcar()
+  return salida.join(' ')
+}
+
+/**
+ * Variantes del texto ya normalizado que se comparan contra la lista. Incluye
+ * las combinaciones útiles (separadores + leet) para que "p.3.l.4.n.4" también
+ * caiga, y descarta duplicados.
+ */
+function variantesDe(texto: string): string[] {
+  const base = normalizarPalabra(texto.replace(INVISIBLES, ''))
+  const variantes = new Set<string>([base])
+
+  for (let paso = 0; paso < 2; paso++) {
+    for (const variante of [...variantes]) {
+      variantes.add(compactarPalabras(variante))
+      variantes.add(desleetearPalabras(variante))
+    }
+  }
+  for (const variante of [...variantes]) {
+    variantes.add(unirLetrasSueltas(variante))
+  }
+
+  return [...variantes].filter((v) => v.trim().length > 0)
+}
+
 /**
  * Moderación automática de publicaciones de la comunidad (Gemini con
  * mecanismo de respaldo por reglas, misma filosofía que `ValidationService`).
@@ -113,7 +203,10 @@ export class ModeracionService {
   private ai: GoogleGenAI | null = null
   private modelName = 'gemini-3.1-flash-lite'
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly palabrasProhibidas: PalabrasProhibidasService,
+  ) {
     this.initializeModel()
   }
 
@@ -149,12 +242,21 @@ export class ModeracionService {
    * Nunca lanza: si Gemini falla, decide con `moderarPorReglas`.
    */
   async moderarPublicacion(contenido: string, categoriaUsuario?: string): Promise<ResultadoModeracion> {
-    if (!this.ai) return this.moderarPorReglas(contenido, categoriaUsuario)
+    const texto = contenido ?? ''
+
+    // Lista administrada desde el panel (caché en memoria). Se aplica EN CÓDIGO
+    // y antes de la IA: el bloqueo es determinista, no depende de que el modelo
+    // obedezca el prompt y no consume tokens.
+    if (this.contienePalabraProhibida(texto, this.palabrasProhibidas.obtenerListaParaPrompt())) {
+      return this.rechazoPorListaAdmin()
+    }
+
+    if (!this.ai) return this.moderarPorReglas(texto, categoriaUsuario)
 
     try {
       const result = await this.ai.models.generateContent({
         model: this.modelName,
-        contents: this.construirPrompt(contenido, categoriaUsuario),
+        contents: this.construirPrompt(texto, categoriaUsuario),
         config: {
           maxOutputTokens: 1024,
           thinkingConfig: { thinkingLevel: NIVEL_THINKING },
@@ -166,7 +268,7 @@ export class ModeracionService {
       return this.normalizarRespuesta(this.parseJsonResponse(text), categoriaUsuario)
     } catch (e: unknown) {
       this.logger.warn(`Moderación IA falló (${this.mensajeError(e)}) — usando reglas de respaldo`)
-      return this.moderarPorReglas(contenido, categoriaUsuario)
+      return this.moderarPorReglas(texto, categoriaUsuario)
     }
   }
 
@@ -269,7 +371,7 @@ Etiquetas/Categoría seleccionada: ${categoriaUsuario ?? 'general'}`
    * grave (datos sensibles, odio, desinformación) y, si nada coincide,
    * aprueba para no bloquear contenido legítimo de la comunidad.
    */
-  moderarPorReglas(contenido: string, categoriaUsuario?: string): ResultadoModeracion {
+  moderarPorReglas(contenido: string, categoriaUsuario?: string, palabrasProhibidas: string[] = []): ResultadoModeracion {
     const texto = contenido ?? ''
     const base = { fuente: 'reglas' as const, fecha: new Date().toISOString() }
 
@@ -284,7 +386,7 @@ Etiquetas/Categoría seleccionada: ${categoriaUsuario ?? 'general'}`
         'Elimina los números de tarjeta o contraseñas. Si necesitas ayuda con un trámite financiero, describe la situación sin datos privados.',
       )
     }
-    if (PATRONES_ODIO.some(p => p.test(texto))) {
+    if (PATRONES_ODIO.some(p => p.test(texto)) || this.contienePalabraProhibida(texto, palabrasProhibidas)) {
       return rechazar(
         'lenguaje_inapropiado',
         'Tu publicación contiene lenguaje ofensivo o discriminatorio, que no está permitido en la comunidad.',
@@ -318,6 +420,39 @@ Etiquetas/Categoría seleccionada: ${categoriaUsuario ?? 'general'}`
   // ═══════════════════════════════════════════════════════════════════
   // Utilidades
   // ═══════════════════════════════════════════════════════════════════
+
+  /**
+   * Rechazo por coincidencia con la lista administrada. La decisión se toma en
+   * código (nunca se consulta al modelo para esto), así que es determinista.
+   */
+  private rechazoPorListaAdmin(): ResultadoModeracion {
+    return {
+      aprobado: false,
+      categoria: 'lenguaje_inapropiado',
+      razon: 'Tu publicación contiene una palabra que la comunidad no permite porque suele usarse como agresión.',
+      sugerenciaMejora: 'Reescribe con respeto. Puedes expresar tu enojo o frustración sin usar esas palabras.',
+      fuente: 'reglas',
+      fecha: new Date().toISOString(),
+    }
+  }
+
+  /**
+   * Busca alguna de las palabras agregadas por la administración en el texto y
+   * en sus variantes (separadores, leet, letras sueltas), exigiendo límites de
+   * palabra para no rechazar textos legítimos que solo contienen la secuencia
+   * de letras ("computadora" no es "puta").
+   */
+  private contienePalabraProhibida(texto: string, palabras: string[]): boolean {
+    if (palabras.length === 0) return false
+    const variantes = variantesDe(texto)
+    return palabras.some((palabra) => {
+      const termino = normalizarPalabra(palabra)
+      if (!termino) return false
+      const escapado = termino.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const patron = new RegExp(`(^|[^a-z0-9])${escapado}([^a-z0-9]|$)`, 'i')
+      return variantes.some((variante) => patron.test(variante))
+    })
+  }
 
   /** Categoría aprobada inicial: la del usuario si es válida, si no 'comunidad'. */
   private categoriaInicial(categoriaUsuario?: string): CategoriaModeracion {
