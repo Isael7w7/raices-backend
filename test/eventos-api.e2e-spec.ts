@@ -38,14 +38,50 @@ describe('API Eventos (pública): query params, rutas por ID y cabeceras', () =>
   beforeEach(async () => {
     limpiarDb()
     await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true, nombreCompleto: 'Ana PCD' })
+    await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'padre_tutor', activo: true, nombreCompleto: 'Carlos Tutor' })
+    await sembrarPerfil({ id: 'uid-inst', email: 'inst@test.com', rol: 'institucion', activo: true, nombreCompleto: 'Centro Raíces' })
+    await sembrarPerfil({ id: 'uid-empresa', email: 'empresa@test.com', rol: 'empresa', activo: true, nombreCompleto: 'Empresa Inclusiva SA' })
+    await sembrarPerfil({ id: 'uid-admin', email: 'admin@test.com', rol: 'admin', activo: true, nombreCompleto: 'Admin' })
   })
 
-  async function crear(uid = 'uid-pcd') {
+  async function crear(uid = 'uid-inst') {
     return request(http)
       .post('/api/comunidad/eventos')
       .send(evento)
       .set('Authorization', token(uid))
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Publicación de eventos: solo instituciones, empresas y admins
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('POST /api/eventos y POST /api/comunidad/eventos — rol requerido', () => {
+    const publicar = (ruta: string, uid: string) =>
+      request(http).post(ruta).send(evento).set('Authorization', token(uid))
+
+    it('201: institucion, empresa y admin pueden publicar por ambas rutas', async () => {
+      for (const ruta of ['/api/eventos', '/api/comunidad/eventos']) {
+        for (const uid of ['uid-inst', 'uid-empresa', 'uid-admin']) {
+          const res = await publicar(ruta, uid)
+          expect(res.status).toBe(201)
+        }
+      }
+    })
+
+    it('403: cuenta personal (pcd) con Comunidad habilitada', async () => {
+      for (const ruta of ['/api/eventos', '/api/comunidad/eventos']) {
+        const res = await publicar(ruta, 'uid-pcd')
+        expect(res.status).toBe(403)
+      }
+    })
+
+    it('403: cuenta de tutor con Comunidad habilitada', async () => {
+      for (const ruta of ['/api/eventos', '/api/comunidad/eventos']) {
+        const res = await publicar(ruta, 'uid-tutor')
+        expect(res.status).toBe(403)
+      }
+    })
+  })
 
   // ═══════════════════════════════════════════════════════════════════
   // FALLA 1 — GET /api/eventos con query params como cadenas HTTP

@@ -305,14 +305,15 @@ export class CommunityController {
 
   @Post('eventos')
   @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 eventos por minuto
-  @UseGuards(JwtAuthGuard, FeatureGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, FeatureGuard)
+  @Roles('institucion', 'empresa', 'admin')
   @Feature('comunidad')
   @ApiBearerAuth('jwt-auth')
-  @ApiOperation({ summary: 'Crear evento', description: 'Publica un evento en la sección Eventos de la comunidad. Requiere el permiso de comunidad activo.' })
+  @ApiOperation({ summary: 'Crear evento', description: 'Publica un evento en la sección Eventos de la comunidad. Solo permitido a roles institucion, empresa y admin, con el permiso de comunidad activo.' })
   @ApiBody({ type: CrearEventoDto })
   @ApiCreatedResponse({ type: EventoDto, description: 'Evento creado' })
   @ApiResponse({ status: 400, description: 'Datos inválidos (fechas o categoría)' })
-  @ApiResponse({ status: 403, description: 'Funcionalidad de comunidad desactivada para tu cuenta' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente o funcionalidad de comunidad desactivada para tu cuenta' })
   @ApiResponse({ status: 401, description: 'No autenticado' })
   crearEvento(@Body() dto: CrearEventoDto, @CurrentUser() user: CurrentUserPayload) {
     return this.eventos.crearEvento(user, dto)

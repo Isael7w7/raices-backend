@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 import { crearAppE2E } from './helpers/app.e2e'
-import { limpiarDb, sembrarPerfil, token } from './helpers/fixtures'
+import { leerDoc, limpiarDb, sembrarPerfil, token } from './helpers/fixtures'
 import type { INestApplication } from '@nestjs/common'
 import request from 'supertest'
 
@@ -41,13 +41,15 @@ describe('Comunidad: Eventos (E2E)', () => {
     limpiarDb()
     await sembrarPerfil({ id: 'uid-pcd', email: 'pcd@test.com', rol: 'pcd', activo: true, nombreCompleto: 'Ana PCD' })
     await sembrarPerfil({ id: 'uid-tutor', email: 'tutor@test.com', rol: 'padre_tutor', activo: true, nombreCompleto: 'Carlos Tutor' })
+    await sembrarPerfil({ id: 'uid-inst', email: 'inst@test.com', rol: 'institucion', activo: true, nombreCompleto: 'Centro Raíces' })
+    await sembrarPerfil({ id: 'uid-empresa', email: 'empresa@test.com', rol: 'empresa', activo: true, nombreCompleto: 'Empresa Inclusiva SA' })
     await sembrarPerfil({
       id: 'uid-sin-comunidad', email: 'sincom@test.com', rol: 'pcd', activo: true,
       nombreCompleto: 'Sin Comunidad', features: { comunidad: false },
     })
   })
 
-  async function crear(payload: any, uid = 'uid-pcd') {
+  async function crear(payload: any, uid = 'uid-inst') {
     return request(http)
       .post('/api/comunidad/eventos')
       .send(payload)
@@ -69,7 +71,29 @@ describe('Comunidad: Eventos (E2E)', () => {
       expect(res.body.cantidadAsistentes).toBe(0)
       expect(res.body.activo).toBe(true)
       expect(res.body.asisto).toBe(false)
-      expect(res.body.nombreCreador).toBe('Ana PCD')
+      expect(res.body.nombreCreador).toBe('Centro Raíces')
+    })
+
+    it('201: permite crear a una empresa con comunidad habilitada', async () => {
+      const res = await crear(eventoAbril, 'uid-empresa')
+
+      expect(res.status).toBe(201)
+      expect(res.body.nombreCreador).toBe('Empresa Inclusiva SA')
+    })
+
+    it('403: cuenta personal (pcd) con Comunidad habilitada no puede publicar', async () => {
+      const perfil = await leerDoc('perfiles', 'uid-pcd')
+      expect((perfil.features?.comunidad ?? true)).toBe(true)
+
+      const res = await crear(eventoMarzo, 'uid-pcd')
+
+      expect(res.status).toBe(403)
+    })
+
+    it('403: cuenta de tutor con Comunidad habilitada no puede publicar', async () => {
+      const res = await crear(eventoMarzo, 'uid-tutor')
+
+      expect(res.status).toBe(403)
     })
 
     it('400: rechaza fechaFin anterior a fechaInicio', async () => {
@@ -117,7 +141,7 @@ describe('Comunidad: Eventos (E2E)', () => {
       expect(res.status).toBe(200)
       expect(res.body.total).toBe(2)
       expect(res.body.datos.map((e: any) => e.titulo)).toEqual(['Evento marzo', 'Evento abril'])
-      expect(res.body.datos[0].nombreCreador).toBe('Ana PCD')
+      expect(res.body.datos[0].nombreCreador).toBe('Centro Raíces')
       expect(res.body.datos[0].asisto).toBe(false)
     })
 
@@ -187,7 +211,7 @@ describe('Comunidad: Eventos (E2E)', () => {
       expect(res.status).toBe(200)
       expect(res.body.id).toBe(creado.body.id)
       expect(res.body.ubicacion).toBe('Auditorio municipal')
-      expect(res.body.nombreCreador).toBe('Ana PCD')
+      expect(res.body.nombreCreador).toBe('Centro Raíces')
       expect(res.body.asisto).toBe(false)
     })
 
