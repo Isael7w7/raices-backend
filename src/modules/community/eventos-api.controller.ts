@@ -8,8 +8,6 @@ import {
   Query,
   UseGuards,
   HttpCode,
-  ParseIntPipe,
-  DefaultValuePipe,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBody, ApiParam } from '@nestjs/swagger'
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator'

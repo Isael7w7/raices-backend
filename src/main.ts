@@ -1,11 +1,11 @@
 import "dotenv/config";
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe } from "@nestjs/common";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { join } from "path";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { configurarAppGlobal } from "./common/config/app-setup";
 import { GlobalExceptionFilter, instalarManejadoresDeErroresNoCapturados } from "./common/filters/global-exception.filter";
 import { obtenerOrigenesPermitidos } from "./common/utils/cors-origins";
 
@@ -48,7 +48,16 @@ async function bootstrap() {
   });
 
   app.use(cookieParser());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  // SEGURIDAD + VALIDACIÓN (configuración compartida con los tests E2E):
+  //  - Cabeceras HTTP con una CSP que NO bloquea la vista previa de documentos
+  //    (PDF/CV): permite marcos desde blob: y desde Firebase Storage / Google
+  //    Cloud Storage, y admite atributos inline en scripts. Sin `default-src`
+  //    ni `frame-ancestors` restrictivos para no romper Swagger UI (/docs).
+  //  - `ValidationPipe` con `transform` + `enableImplicitConversion`: los query
+  //    params llegan como cadena HTTP (pagina="1", proximos="true") y sin esa
+  //    conversión la petición se rechazaba con 400.
+  configurarAppGlobal(app);
   // OBSERVABILIDAD: logs estructurados JSON (severity/statusCode/path/method/
   // stack/userId) para Cloud Logging → métrica `critical_errors_counter` y
   // alertas de 5xx. Reemplaza al filtro por defecto de Nest.

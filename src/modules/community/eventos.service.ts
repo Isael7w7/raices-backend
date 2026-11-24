@@ -176,7 +176,7 @@ export class EventosService {
     filtros: FiltrosEventos = {},
   ): Promise<RespuestaPaginada<EventoVista>> {
     try {
-      const { categoria, fecha, desde, buscar, ciudad, modalidad, proximos = true } = filtros
+      const { categoria, fecha, buscar, ciudad, modalidad, proximos = true } = filtros
 
       let q = this.db.collection(COLECCIONES.eventos).where('activo', '==', true)
 
